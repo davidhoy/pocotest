@@ -32,11 +32,12 @@ SOURCES += \
     components/external/NMEA2000_socketCAN/NMEA2000_SocketCAN.cpp \
     src/n2k_linux_port.cpp \
     src/main.cpp \
-    src/mainwindow.cpp
+    src/mainwindow.cpp \
+    src/pgndialog.cpp
 
 HEADERS += \
     src/mainwindow.h \
-    src/mainwindow.h
+    src/pgndialog.h
 
 FORMS += \
     ui/mainwindow.ui

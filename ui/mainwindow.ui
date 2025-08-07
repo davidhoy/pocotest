@@ -40,6 +40,19 @@
      <string>PushButton</string>
     </property>
    </widget>
+   <widget class="QPushButton" name="sendPGNButton">
+    <property name="geometry">
+     <rect>
+      <x>500</x>
+      <y>520</y>
+      <width>88</width>
+      <height>26</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Send PGN</string>
+    </property>
+   </widget>
    <widget class="QTextEdit" name="logTextBox">
     <property name="geometry">
      <rect>

@@ -17,6 +17,7 @@ public:
 
 private slots:
     void on_sendButton_clicked();
+    void on_sendPGNButton_clicked();
 
 private:
     void handleN2kMsg(const tN2kMsg& msg);
