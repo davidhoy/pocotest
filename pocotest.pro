@@ -4,6 +4,12 @@ greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
 CONFIG += c++11 console
 
+DESTDIR = ./
+OBJECTS_DIR = build/obj
+MOC_DIR = build/moc
+UI_DIR = build/ui
+RCC_DIR = build/rcc
+
 # App details
 TARGET = pocotest
 TEMPLATE = app
