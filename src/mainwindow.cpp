@@ -3,6 +3,10 @@
  * @brief Implementation of the MainWindow class for tMainWindow::~MainWindow() 
 {
     delete ui;
+    if (m_deviceList) {
+        delete m_deviceList;
+        m_deviceList = nullptr;
+    }
     if (nmea2000 != nullptr) {
         // Gracefully shutdown the NMEA 2000 stack
         // Note: NMEA2000 library doesn't have a Close() method
@@ -49,12 +53,14 @@ MainWindow* MainWindow::instance = nullptr;
 void MainWindow::initNMEA2000()
 {
     nmea2000 = new tNMEA2000_SocketCAN(can_interface);
-    if (nmea2000 != nullptr) {
-        nmea2000->SetMode(tNMEA2000::N2km_ListenAndNode);
-        nmea2000->Open();
-        nmea2000->SetMsgHandler(&MainWindow::staticN2kMsgHandler);
-        startTimer(100);  // interval in milliseconds — this example triggers every 100 ms
-    }
+    nmea2000->SetMode(tNMEA2000::N2km_ListenAndNode);
+    nmea2000->Open();
+    nmea2000->SetMsgHandler(staticN2kMsgHandler);
+    
+    // Create and attach device list
+    m_deviceList = new tN2kDeviceList(nmea2000);
+    
+    startTimer(100);  // Set timer interval to 100 ms
 }
 
 /**
@@ -83,7 +89,7 @@ void MainWindow::timerEvent(QTimerEvent *event)
  * @param parent The parent widget, passed to the QMainWindow constructor.
  */
 MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent), ui(new Ui::MainWindow), m_canInterfaceCombo(nullptr)
+    : QMainWindow(parent), ui(new Ui::MainWindow), m_canInterfaceCombo(nullptr), m_deviceList(nullptr)
 {
     ui->setupUi(this);
     MainWindow::instance = this;  // Capture 'this' for static callback
@@ -282,6 +288,10 @@ QStringList MainWindow::getAvailableCanInterfaces()
 void MainWindow::reinitializeNMEA2000()
 {
     // Clean up existing NMEA2000 instance
+    if (m_deviceList) {
+        delete m_deviceList;
+        m_deviceList = nullptr;
+    }
     if (nmea2000 != nullptr) {
         delete nmea2000;
         nmea2000 = nullptr;
@@ -337,7 +347,7 @@ void MainWindow::clearLog()
 
 void MainWindow::showDeviceList()
 {
-    DeviceListDialog* deviceDialog = new DeviceListDialog(this);
+    DeviceListDialog* deviceDialog = new DeviceListDialog(this, m_deviceList);
     deviceDialog->show();
 }
 

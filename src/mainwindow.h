@@ -1,6 +1,7 @@
 #include <QMainWindow>
 #include <QComboBox>
 #include <N2kMsg.h>
+#include <N2kDeviceList.h>
 #include "ui_mainwindow.h"
 
 QT_BEGIN_NAMESPACE
@@ -15,6 +16,7 @@ public:
     ~MainWindow();
     void initNMEA2000();
     void timerEvent(QTimerEvent *event) override;
+    tN2kDeviceList* getDeviceList() const { return m_deviceList; }
 
 private slots:
     void on_sendButton_clicked();
@@ -38,4 +40,5 @@ private:
     Ui::MainWindow *ui;
     QComboBox* m_canInterfaceCombo;
     QString m_currentInterface;
+    tN2kDeviceList* m_deviceList;
 };

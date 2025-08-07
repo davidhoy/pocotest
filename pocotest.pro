@@ -29,6 +29,7 @@ SOURCES += \
     components/external/NMEA2000/src/N2kStream.cpp \
     components/external/NMEA2000/src/N2kGroupFunction.cpp \
     components/external/NMEA2000/src/N2kGroupFunctionDefaultHandlers.cpp \
+    components/external/NMEA2000/src/N2kDeviceList.cpp \
     components/external/NMEA2000_socketCAN/NMEA2000_SocketCAN.cpp \
     src/n2k_linux_port.cpp \
     src/main.cpp \

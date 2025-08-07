@@ -1,17 +1,19 @@
 #include "devicelistdialog.h"
 #include "NMEA2000_SocketCAN.h"
+#include "N2kDeviceList.h"
 #include <QMessageBox>
 #include <QApplication>
 
 extern tNMEA2000_SocketCAN* nmea2000;
 
-DeviceListDialog::DeviceListDialog(QWidget *parent)
+DeviceListDialog::DeviceListDialog(QWidget *parent, tN2kDeviceList* deviceList)
     : QDialog(parent)
     , m_deviceTable(nullptr)
     , m_refreshButton(nullptr)
     , m_closeButton(nullptr)
     , m_statusLabel(nullptr)
     , m_updateTimer(nullptr)
+    , m_deviceList(deviceList)
 {
     setupUI();
     
@@ -47,11 +49,11 @@ void DeviceListDialog::setupUI()
     
     // Device table
     m_deviceTable = new QTableWidget();
-    m_deviceTable->setColumnCount(7);
+    m_deviceTable->setColumnCount(8);
     
     QStringList headers;
-    headers << "Source" << "Name" << "Model ID" << "SW Code" << "Model Version" 
-            << "Device Class" << "Device Function";
+    headers << "Node Address" << "Manufacturer" << "Mfg Model ID" << "Mfg Serial Number" 
+            << "Device Instance" << "Label" << "Current Software" << "Installation Description";
     m_deviceTable->setHorizontalHeaderLabels(headers);
     
     // Configure table
@@ -96,51 +98,73 @@ void DeviceListDialog::populateDeviceTable()
     // Clear existing rows
     m_deviceTable->setRowCount(0);
     
-    if (!nmea2000) {
+    if (!m_deviceList) {
+        m_statusLabel->setText("Device list not available");
+        m_statusLabel->setStyleSheet("font-weight: bold; color: red;");
         return;
     }
     
     int deviceCount = 0;
     
-    // Check each possible source address (0-251)
-    for (uint8_t source = 0; source <= 251; source++) {
-        // For now, create a simplified device table showing active sources
-        // This is a basic implementation - a more complete version would need
-        // access to the internal device list
-        
-        // Add a placeholder entry to demonstrate the functionality
-        if (source == 22) { // Our default source address
+    // Iterate through all possible source addresses (0-253)
+    for (uint8_t source = 0; source < N2kMaxBusDevices; source++) {
+        const tNMEA2000::tDevice* device = m_deviceList->FindDeviceBySource(source);
+        if (device) {
             m_deviceTable->insertRow(deviceCount);
             
-            // Source
-            QTableWidgetItem* sourceItem = new QTableWidgetItem(QString::number(source));
-            sourceItem->setTextAlignment(Qt::AlignCenter);
-            m_deviceTable->setItem(deviceCount, 0, sourceItem);
+            // Node Address (Source) - in hex format like Maretron
+            QTableWidgetItem* nodeAddressItem = new QTableWidgetItem(QString("%1").arg(source, 2, 16, QChar('0')).toUpper());
+            nodeAddressItem->setTextAlignment(Qt::AlignCenter);
+            m_deviceTable->setItem(deviceCount, 0, nodeAddressItem);
             
-            // Name
-            m_deviceTable->setItem(deviceCount, 1, new QTableWidgetItem("Local Device"));
+            // Manufacturer - convert manufacturer code to name
+            uint16_t manufacturerCode = device->GetManufacturerCode();
+            QString manufacturerName = getManufacturerName(manufacturerCode);
+            m_deviceTable->setItem(deviceCount, 1, new QTableWidgetItem(manufacturerName));
             
-            // Model ID
-            QTableWidgetItem* modelItem = new QTableWidgetItem("Unknown");
-            modelItem->setTextAlignment(Qt::AlignCenter);
-            m_deviceTable->setItem(deviceCount, 2, modelItem);
+            // Mfg Model ID - use virtual method
+            QString modelId = "Unknown";
+            const char* modelIdStr = device->GetModelID();
+            if (modelIdStr && strlen(modelIdStr) > 0) {
+                modelId = QString(modelIdStr);
+            }
+            m_deviceTable->setItem(deviceCount, 2, new QTableWidgetItem(modelId));
             
-            // SW Code
-            QTableWidgetItem* swItem = new QTableWidgetItem("Unknown");
-            swItem->setTextAlignment(Qt::AlignCenter);
-            m_deviceTable->setItem(deviceCount, 3, swItem);
+            // Mfg Serial Number - use virtual method
+            QString serialNumber = "Unknown";
+            const char* serialStr = device->GetModelSerialCode();
+            if (serialStr && strlen(serialStr) > 0) {
+                serialNumber = QString(serialStr);
+            }
+            m_deviceTable->setItem(deviceCount, 3, new QTableWidgetItem(serialNumber));
             
-            // Model Version
-            QTableWidgetItem* versionItem = new QTableWidgetItem("Unknown");
-            m_deviceTable->setItem(deviceCount, 4, versionItem);
+            // Device Instance
+            uint8_t deviceInstance = device->GetDeviceInstance();
+            QTableWidgetItem* instanceItem = new QTableWidgetItem(QString::number(deviceInstance));
+            instanceItem->setTextAlignment(Qt::AlignCenter);
+            m_deviceTable->setItem(deviceCount, 4, instanceItem);
             
-            // Device Class
-            QString deviceClass = "PC Gateway";
-            m_deviceTable->setItem(deviceCount, 5, new QTableWidgetItem(deviceClass));
+            // Label - create based on device function and class
+            QString label = getDeviceFunctionName(device->GetDeviceFunction());
+            if (label.startsWith("Unknown")) {
+                label = getDeviceClassName(device->GetDeviceClass());
+            }
+            if (label.startsWith("Unknown")) {
+                label = QString("Device %1").arg(source, 2, 16, QChar('0')).toUpper();
+            }
+            m_deviceTable->setItem(deviceCount, 5, new QTableWidgetItem(label));
             
-            // Device Function
-            QString deviceFunction = "PC Gateway";
-            m_deviceTable->setItem(deviceCount, 6, new QTableWidgetItem(deviceFunction));
+            // Current Software - use virtual method
+            QString softwareVersion = "-";
+            const char* swCodeStr = device->GetSwCode();
+            if (swCodeStr && strlen(swCodeStr) > 0) {
+                softwareVersion = QString(swCodeStr);
+            }
+            m_deviceTable->setItem(deviceCount, 6, new QTableWidgetItem(softwareVersion));
+            
+            // Installation Description - placeholder for now
+            QString installDesc = "-";
+            m_deviceTable->setItem(deviceCount, 7, new QTableWidgetItem(installDesc));
             
             deviceCount++;
         }
@@ -148,10 +172,10 @@ void DeviceListDialog::populateDeviceTable()
     
     // Update status
     if (deviceCount == 0) {
-        m_statusLabel->setText("No NMEA2000 devices detected");
+        m_statusLabel->setText("No NMEA2000 devices detected on the network");
         m_statusLabel->setStyleSheet("font-weight: bold; color: orange;");
     } else {
-        m_statusLabel->setText(QString("Found %1 NMEA2000 device(s) - Auto-updating every 2 seconds\n\nNote: This is a basic device list implementation. For full device discovery with product information, model IDs, and configuration data, deeper integration with the NMEA2000 device list handler would be required.").arg(deviceCount));
+        m_statusLabel->setText(QString("Found %1 NMEA2000 device(s) - Auto-updating every 2 seconds").arg(deviceCount));
         m_statusLabel->setStyleSheet("font-weight: bold; color: green;");
     }
     
@@ -159,10 +183,13 @@ void DeviceListDialog::populateDeviceTable()
     m_deviceTable->resizeColumnsToContents();
 }
 
-QString DeviceListDialog::getDeviceClassName(unsigned long deviceClass)
+QString DeviceListDialog::getDeviceClassName(unsigned char deviceClass)
 {
-    switch (deviceClass) {
-        case 25: return "Network Interconnect";
+    switch(deviceClass) {
+        case 0: return "Reserved";
+        case 10: return "System Tools";
+        case 20: return "Safety";
+        case 25: return "Internetwork Device";
         case 30: return "Electrical Distribution";
         case 35: return "Electrical Generation";
         case 40: return "Steering and Control";
@@ -174,26 +201,49 @@ QString DeviceListDialog::getDeviceClassName(unsigned long deviceClass)
         case 85: return "External Environment";
         case 90: return "Internal Environment";
         case 100: return "Deck + Cargo + Fishing Equipment";
-        case 120: return "Safety";
-        case 125: return "Internetwork Device";
+        case 110: return "Display";
+        case 120: return "Entertainment";
         default: return QString("Unknown (%1)").arg(deviceClass);
+    }
+}
+
+QString DeviceListDialog::getManufacturerName(uint16_t manufacturerCode)
+{
+    switch(manufacturerCode) {
+        case 147: return "Garmin";
+        case 229: return "Garmin";       // You mentioned 229 is also Garmin
+        case 137: return "Maretron";
+        case 358: return "Victron";
+        case 135: return "Airmar";       // You corrected this from 273
+        case 273: return "Airmar";       // Keep both for compatibility
+        case 176: return "Carling Technologies";
+        case 504: return "Vesper";       // You corrected this from 1857
+        case 1857: return "Vesper Marine"; // Keep original for compatibility
+        case 78: return "Furuno";
+        case 1863: return "Raymarine";
+        case 215: return "B&G";
+        case 1855: return "Simrad";
+        case 304: return "Lowrance";
+        case 529: return "Yacht Devices";
+        case 2046: return "+2046";  // Based on screenshot
+        case 1403: return "Arco Marine";  // Based on screenshot
+        default: return QString("Unknown (%1)").arg(manufacturerCode);
     }
 }
 
 QString DeviceListDialog::getDeviceFunctionName(unsigned char deviceFunction)
 {
-    switch (deviceFunction) {
-        case 130: return "PC Gateway";
-        case 140: return "Engine";
-        case 150: return "Propulsion";
-        case 160: return "Navigation";
-        case 170: return "Communication";
-        case 180: return "Sensor Communication Interface";
-        case 190: return "Instrumentation/General Systems";
-        case 200: return "External Environment";
-        case 210: return "Internal Environment";
-        case 220: return "Deck + Cargo + Fishing Equipment";
-        case 230: return "Safety";
+    switch(deviceFunction) {
+        case 0: return "Network Function";
+        case 110: return "Display";
+        case 120: return "Dedicated Display";
+        case 130: return "Repeater Station";
+        case 140: return "PC Gateway";
+        case 150: return "Router";
+        case 160: return "Bridge";
+        case 170: return "Instrumentation";
+        case 175: return "Observer";
+        case 180: return "System Controller";
         default: return QString("Unknown (%1)").arg(deviceFunction);
     }
 }

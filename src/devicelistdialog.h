@@ -9,14 +9,16 @@
 #include <QTimer>
 #include <QHeaderView>
 #include <QLabel>
-#include <N2kDeviceList.h>
+
+// Forward declaration
+class tN2kDeviceList;
 
 class DeviceListDialog : public QDialog
 {
     Q_OBJECT
 
 public:
-    explicit DeviceListDialog(QWidget *parent = nullptr);
+    explicit DeviceListDialog(QWidget *parent = nullptr, tN2kDeviceList* deviceList = nullptr);
     ~DeviceListDialog();
 
 private slots:
@@ -27,8 +29,9 @@ private slots:
 private:
     void setupUI();
     void populateDeviceTable();
-    QString getDeviceClassName(unsigned long deviceClass);
+    QString getDeviceClassName(unsigned char deviceClass);
     QString getDeviceFunctionName(unsigned char deviceFunction);
+    QString getManufacturerName(uint16_t manufacturerCode);
 
 private:
     QTableWidget* m_deviceTable;
@@ -36,6 +39,7 @@ private:
     QPushButton* m_closeButton;
     QLabel* m_statusLabel;
     QTimer* m_updateTimer;
+    tN2kDeviceList* m_deviceList;
 };
 
 #endif // DEVICELISTDIALOG_H
