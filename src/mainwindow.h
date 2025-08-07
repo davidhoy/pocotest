@@ -21,6 +21,7 @@ private slots:
     void on_sendPGNButton_clicked();
     void on_canInterfaceChanged(const QString &interface);
     void clearLog();
+    void showDeviceList();
 
 private:
     void handleN2kMsg(const tN2kMsg& msg);

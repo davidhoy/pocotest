@@ -33,11 +33,13 @@ SOURCES += \
     src/n2k_linux_port.cpp \
     src/main.cpp \
     src/mainwindow.cpp \
-    src/pgndialog.cpp
+    src/pgndialog.cpp \
+    src/devicelistdialog.cpp
 
 HEADERS += \
     src/mainwindow.h \
-    src/pgndialog.h
+    src/pgndialog.h \
+    src/devicelistdialog.h
 
 FORMS += \
     ui/mainwindow.ui

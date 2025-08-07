@@ -20,6 +20,7 @@
 
 #include "mainwindow.h"
 #include "pgndialog.h"
+#include "devicelistdialog.h"
 #include "NMEA2000_SocketCAN.h"
 #include <QDir>
 #include <QProcess>
@@ -101,6 +102,7 @@ MainWindow::MainWindow(QWidget *parent)
     
     // Connect buttons
     connect(ui->pushButton_2, &QPushButton::clicked, this, &MainWindow::clearLog);
+    connect(ui->pushButton, &QPushButton::clicked, this, &MainWindow::showDeviceList);
     
     initNMEA2000();
 }
@@ -331,5 +333,11 @@ void MainWindow::clearLog()
     ui->logTextBox->append("NMEA2000 CAN Interface Tool - Log cleared");
     ui->logTextBox->append("Ready to receive and send CAN messages");
     ui->logTextBox->append("===========================================");
+}
+
+void MainWindow::showDeviceList()
+{
+    DeviceListDialog* deviceDialog = new DeviceListDialog(this);
+    deviceDialog->show();
 }
 

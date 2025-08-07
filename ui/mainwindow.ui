@@ -129,7 +129,7 @@
           <item>
            <widget class="QPushButton" name="pushButton">
             <property name="text">
-             <string>Settings</string>
+             <string>Device List</string>
             </property>
             <property name="minimumSize">
              <size>
