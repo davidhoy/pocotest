@@ -1,0 +1,28 @@
+#include <QMainWindow>
+#include <N2kMsg.h>
+#include "ui_mainwindow.h"
+
+QT_BEGIN_NAMESPACE
+namespace Ui { class MainWindow; }
+QT_END_NAMESPACE
+
+class MainWindow : public QMainWindow {
+    Q_OBJECT
+
+public:
+    explicit MainWindow(QWidget *parent = nullptr);
+    ~MainWindow();
+    void initNMEA2000();
+    void timerEvent(QTimerEvent *event) override;
+
+private slots:
+    void on_sendButton_clicked();
+
+private:
+    void handleN2kMsg(const tN2kMsg& msg);
+    static void staticN2kMsgHandler(const tN2kMsg &msg);
+    static MainWindow* instance; // Singleton-style reference for static callback
+
+private:
+    Ui::MainWindow *ui;
+};
