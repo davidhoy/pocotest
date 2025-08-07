@@ -21,9 +21,17 @@
 #include "mainwindow.h"
 #include "pgndialog.h"
 #include "NMEA2000_SocketCAN.h"
+#include <QDir>
+#include <QProcess>
+#include <QMessageBox>
+#include <QLabel>
+#include <QHBoxLayout>
+#include <QWidget>
+#include <QRegExp>
+#include <QToolBar>
 
 tNMEA2000_SocketCAN* nmea2000;
-extern char can_interface[];
+extern char can_interface[80];
 
 MainWindow* MainWindow::instance = nullptr;
 
@@ -74,11 +82,45 @@ void MainWindow::timerEvent(QTimerEvent *event)
  * @param parent The parent widget, passed to the QMainWindow constructor.
  */
 MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent), ui(new Ui::MainWindow) 
+    : QMainWindow(parent), ui(new Ui::MainWindow), m_canInterfaceCombo(nullptr)
 {
     ui->setupUi(this);
     MainWindow::instance = this;  // Capture 'this' for static callback
+    
+    // Set up CAN interface selector
+    setupCanInterfaceSelector();
+    
+    // Initialize with the current interface (from command line or default)
+    m_currentInterface = QString(can_interface);
+    
+    // Populate and set the current interface in the combo box
+    populateCanInterfaces();
+    
     initNMEA2000();
+}
+
+void MainWindow::setupCanInterfaceSelector()
+{
+    // Create a widget to hold the CAN interface selector
+    QWidget* canSelectorWidget = new QWidget();
+    QHBoxLayout* layout = new QHBoxLayout(canSelectorWidget);
+    layout->setContentsMargins(5, 5, 5, 5);
+    
+    // Create label and combo box
+    QLabel* label = new QLabel("CAN Interface:");
+    m_canInterfaceCombo = new QComboBox();
+    m_canInterfaceCombo->setMinimumWidth(120);
+    
+    // Connect the signal
+    connect(m_canInterfaceCombo, QOverload<const QString &>::of(&QComboBox::currentTextChanged),
+            this, &MainWindow::on_canInterfaceChanged);
+    
+    layout->addWidget(label);
+    layout->addWidget(m_canInterfaceCombo);
+    layout->addStretch(); // Push everything to the left
+    
+    // Add to the main window toolbar
+    ui->toolBar->addWidget(canSelectorWidget);
 }
 
 
@@ -110,6 +152,118 @@ void MainWindow::on_sendPGNButton_clicked()
 {
     PGNDialog dialog(this);
     dialog.exec();
+}
+
+void MainWindow::on_canInterfaceChanged(const QString &interface)
+{
+    if (interface != m_currentInterface && !interface.isEmpty()) {
+        m_currentInterface = interface;
+        
+        // Update the global can_interface variable
+        strncpy(can_interface, interface.toLocal8Bit().data(), sizeof(can_interface) - 1);
+        can_interface[sizeof(can_interface) - 1] = '\0';
+        
+        // Reinitialize NMEA2000 with new interface
+        reinitializeNMEA2000();
+        
+        // Log the interface change
+        QString message = QString("Switched to CAN interface: %1").arg(interface);
+        ui->logTextBox->append(message);
+    }
+}
+
+void MainWindow::populateCanInterfaces()
+{
+    if (!m_canInterfaceCombo) return;
+    
+    // Get available CAN interfaces
+    QStringList interfaces = getAvailableCanInterfaces();
+    
+    // Clear and populate the combo box
+    m_canInterfaceCombo->clear();
+    
+    if (interfaces.isEmpty()) {
+        // If no interfaces found, add default options
+        m_canInterfaceCombo->addItem("vcan0");
+        m_canInterfaceCombo->addItem("can0");
+        m_canInterfaceCombo->addItem("can1");
+    } else {
+        m_canInterfaceCombo->addItems(interfaces);
+    }
+    
+    // Set the current interface if it exists in the list
+    int index = m_canInterfaceCombo->findText(m_currentInterface);
+    if (index >= 0) {
+        m_canInterfaceCombo->setCurrentIndex(index);
+    } else {
+        // If current interface not in list, add it and select it
+        m_canInterfaceCombo->addItem(m_currentInterface);
+        m_canInterfaceCombo->setCurrentText(m_currentInterface);
+    }
+}
+
+QStringList MainWindow::getAvailableCanInterfaces()
+{
+    QStringList interfaces;
+    
+    // Check /sys/class/net/ for network interfaces
+    QDir netDir("/sys/class/net");
+    if (netDir.exists()) {
+        QStringList entries = netDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+        
+        for (const QString& entry : entries) {
+            // Check if it's a CAN interface by looking at the type file
+            QFile typeFile(QString("/sys/class/net/%1/type").arg(entry));
+            if (typeFile.open(QIODevice::ReadOnly)) {
+                QString type = typeFile.readAll().trimmed();
+                // CAN interfaces typically have type 280 (ARPHRD_CAN)
+                if (type == "280" || entry.startsWith("can") || entry.startsWith("vcan")) {
+                    interfaces.append(entry);
+                }
+                typeFile.close();
+            }
+        }
+    }
+    
+    // Also use ip command to get CAN interfaces
+    QProcess process;
+    process.start("ip", QStringList() << "link" << "show" << "type" << "can");
+    process.waitForFinished(3000); // 3 second timeout
+    
+    if (process.exitCode() == 0) {
+        QString output = process.readAllStandardOutput();
+        QStringList lines = output.split('\n');
+        
+        for (const QString& line : lines) {
+            // Parse lines like "2: vcan0: <NOARP,UP,LOWER_UP> mtu 16 qdisc noqueue state UNKNOWN mode DEFAULT group default qlen 1000"
+            if (line.contains(':') && (line.contains("can") || line.contains("vcan"))) {
+                QRegExp rx(R"(\d+:\s+(\w+):)");
+                if (rx.indexIn(line) != -1) {
+                    QString ifname = rx.cap(1);
+                    if (!interfaces.contains(ifname)) {
+                        interfaces.append(ifname);
+                    }
+                }
+            }
+        }
+    }
+    
+    // Sort the interfaces
+    interfaces.sort();
+    
+    return interfaces;
+}
+
+void MainWindow::reinitializeNMEA2000()
+{
+    // Clean up existing NMEA2000 instance
+    if (nmea2000 != nullptr) {
+        delete nmea2000;
+        nmea2000 = nullptr;
+    }
+    
+    // Initialize with new interface
+    initNMEA2000();
 }
 
 

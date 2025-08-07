@@ -1,4 +1,5 @@
 #include <QMainWindow>
+#include <QComboBox>
 #include <N2kMsg.h>
 #include "ui_mainwindow.h"
 
@@ -18,12 +19,20 @@ public:
 private slots:
     void on_sendButton_clicked();
     void on_sendPGNButton_clicked();
+    void on_canInterfaceChanged(const QString &interface);
 
 private:
     void handleN2kMsg(const tN2kMsg& msg);
     static void staticN2kMsgHandler(const tN2kMsg &msg);
     static MainWindow* instance; // Singleton-style reference for static callback
+    
+    void setupCanInterfaceSelector();
+    void populateCanInterfaces();
+    void reinitializeNMEA2000();
+    QStringList getAvailableCanInterfaces();
 
 private:
     Ui::MainWindow *ui;
+    QComboBox* m_canInterfaceCombo;
+    QString m_currentInterface;
 };
