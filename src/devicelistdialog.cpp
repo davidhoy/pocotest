@@ -69,18 +69,25 @@ void DeviceListDialog::setupUI()
     tableFont.setPointSize(9);  // Smaller font size
     m_deviceTable->setFont(tableFont);
     
+    // Connect row selection signal for conflict highlighting
+    connect(m_deviceTable->selectionModel(), &QItemSelectionModel::currentRowChanged,
+            this, &DeviceListDialog::onRowSelectionChanged);
+    
     mainLayout->addWidget(m_deviceTable);
     
     // Buttons
     QHBoxLayout* buttonLayout = new QHBoxLayout();
     
     m_refreshButton = new QPushButton("Refresh Now");
+    QPushButton* analyzeButton = new QPushButton("Analyze Instance Conflicts");
     m_closeButton = new QPushButton("Close");
     
     connect(m_refreshButton, &QPushButton::clicked, this, &DeviceListDialog::onRefreshClicked);
+    connect(analyzeButton, &QPushButton::clicked, this, &DeviceListDialog::analyzeInstanceConflicts);
     connect(m_closeButton, &QPushButton::clicked, this, &DeviceListDialog::onCloseClicked);
     
     buttonLayout->addWidget(m_refreshButton);
+    buttonLayout->addWidget(analyzeButton);
     buttonLayout->addStretch();
     buttonLayout->addWidget(m_closeButton);
     
@@ -199,8 +206,188 @@ void DeviceListDialog::populateDeviceTable()
         m_statusLabel->setStyleSheet("font-weight: bold; color: green;");
     }
     
+    // Analyze and highlight instance conflicts
+    highlightInstanceConflicts();
+    
     // Resize columns to content
     m_deviceTable->resizeColumnsToContents();
+}
+
+void DeviceListDialog::highlightInstanceConflicts()
+{
+    // Clear previous conflict data
+    m_conflictGroups.clear();
+    m_conflictingSources.clear();
+    
+    if (!m_deviceList) {
+        return;
+    }
+    
+    // Structure to track device instances by class and function
+    struct DeviceInfo {
+        uint8_t source;
+        uint8_t instance;
+        uint8_t deviceClass;
+        uint8_t deviceFunction;
+        int tableRow;
+    };
+    
+    QList<DeviceInfo> devices;
+    
+    // Collect all device information and find their table rows
+    for (int row = 0; row < m_deviceTable->rowCount(); row++) {
+        QTableWidgetItem* nodeItem = m_deviceTable->item(row, 0);
+        if (nodeItem) {
+            bool ok;
+            uint8_t source = nodeItem->text().toUInt(&ok, 16);
+            if (ok) {
+                const tNMEA2000::tDevice* device = m_deviceList->FindDeviceBySource(source);
+                if (device) {
+                    DeviceInfo info;
+                    info.source = source;
+                    info.instance = device->GetDeviceInstance();
+                    info.deviceClass = device->GetDeviceClass();
+                    info.deviceFunction = device->GetDeviceFunction();
+                    info.tableRow = row;
+                    devices.append(info);
+                }
+            }
+        }
+    }
+    
+    // Group devices by class and function, then check for instance conflicts
+    QMap<QString, QList<DeviceInfo>> deviceGroups;
+    
+    for (const DeviceInfo& device : devices) {
+        QString groupKey = QString("%1_%2").arg(device.deviceClass).arg(device.deviceFunction);
+        deviceGroups[groupKey].append(device);
+    }
+    
+    // Find conflicts and reset all row colors first
+    for (int row = 0; row < m_deviceTable->rowCount(); row++) {
+        for (int col = 0; col < m_deviceTable->columnCount(); col++) {
+            QTableWidgetItem* item = m_deviceTable->item(row, col);
+            if (item) {
+                item->setBackground(QBrush()); // Reset to default background
+            }
+        }
+    }
+    
+    // Check each group for instance conflicts
+    for (auto it = deviceGroups.begin(); it != deviceGroups.end(); ++it) {
+        const QList<DeviceInfo>& group = it.value();
+        
+        if (group.size() > 1) {
+            // Check for duplicate instances within the same class/function group
+            QMap<uint8_t, QList<DeviceInfo>> instanceMap;
+            
+            for (const DeviceInfo& device : group) {
+                instanceMap[device.instance].append(device);
+            }
+            
+            // Highlight conflicts
+            for (auto instIt = instanceMap.begin(); instIt != instanceMap.end(); ++instIt) {
+                const QList<DeviceInfo>& instanceDevices = instIt.value();
+                
+                if (instanceDevices.size() > 1) {
+                    // This is a conflict - collect all conflicting sources
+                    QList<uint8_t> conflictGroup;
+                    for (const DeviceInfo& conflictDevice : instanceDevices) {
+                        conflictGroup.append(conflictDevice.source);
+                        m_conflictingSources.insert(conflictDevice.source);
+                        
+                        // Highlight the row in red
+                        for (int col = 0; col < m_deviceTable->columnCount(); col++) {
+                            QTableWidgetItem* item = m_deviceTable->item(conflictDevice.tableRow, col);
+                            if (item) {
+                                item->setBackground(QBrush(QColor(255, 200, 200))); // Light red
+                            }
+                        }
+                    }
+                    
+                    // Store the conflict group for each source
+                    for (uint8_t source : conflictGroup) {
+                        m_conflictGroups[source] = conflictGroup;
+                    }
+                }
+            }
+        }
+    }
+    
+    // Update status to include conflict information
+    if (!m_conflictingSources.isEmpty()) {
+        int deviceCount = m_deviceTable->rowCount();
+        m_statusLabel->setText(QString("Found %1 NMEA2000 device(s) - Auto-updating every 2 seconds\n"
+                                     "⚠ %2 devices have instance conflicts (highlighted in red). Click a conflicted device to see all related conflicts.")
+                                     .arg(deviceCount).arg(m_conflictingSources.size()));
+        m_statusLabel->setStyleSheet("font-weight: bold; color: red;");
+    }
+}
+
+void DeviceListDialog::onRowSelectionChanged()
+{
+    int currentRow = m_deviceTable->currentRow();
+    if (currentRow < 0) {
+        return;
+    }
+    
+    // First, reset all highlighting except for the base conflict highlighting (red)
+    for (int row = 0; row < m_deviceTable->rowCount(); row++) {
+        QTableWidgetItem* nodeItem = m_deviceTable->item(row, 0);
+        if (nodeItem) {
+            bool ok;
+            uint8_t source = nodeItem->text().toUInt(&ok, 16);
+            if (ok && m_conflictingSources.contains(source)) {
+                // Keep red highlighting for conflicted devices
+                for (int col = 0; col < m_deviceTable->columnCount(); col++) {
+                    QTableWidgetItem* item = m_deviceTable->item(row, col);
+                    if (item) {
+                        item->setBackground(QBrush(QColor(255, 200, 200))); // Light red
+                    }
+                }
+            } else {
+                // Reset non-conflicted devices to default
+                for (int col = 0; col < m_deviceTable->columnCount(); col++) {
+                    QTableWidgetItem* item = m_deviceTable->item(row, col);
+                    if (item) {
+                        item->setBackground(QBrush()); // Default background
+                    }
+                }
+            }
+        }
+    }
+    
+    // Check if the selected row has conflicts
+    QTableWidgetItem* selectedNodeItem = m_deviceTable->item(currentRow, 0);
+    if (selectedNodeItem) {
+        bool ok;
+        uint8_t selectedSource = selectedNodeItem->text().toUInt(&ok, 16);
+        if (ok && m_conflictGroups.contains(selectedSource)) {
+            // Highlight all devices in the same conflict group in orange
+            const QList<uint8_t>& conflictGroup = m_conflictGroups[selectedSource];
+            
+            for (uint8_t conflictSource : conflictGroup) {
+                // Find the row for this conflicting source
+                for (int row = 0; row < m_deviceTable->rowCount(); row++) {
+                    QTableWidgetItem* nodeItem = m_deviceTable->item(row, 0);
+                    if (nodeItem) {
+                        bool rowOk;
+                        uint8_t rowSource = nodeItem->text().toUInt(&rowOk, 16);
+                        if (rowOk && rowSource == conflictSource) {
+                            // Highlight this row in orange
+                            for (int col = 0; col < m_deviceTable->columnCount(); col++) {
+                                QTableWidgetItem* item = m_deviceTable->item(row, col);
+                                if (item) {
+                                    item->setBackground(QBrush(QColor(255, 180, 100))); // Orange
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 QString DeviceListDialog::getDeviceClassName(unsigned char deviceClass)
@@ -271,6 +458,151 @@ QString DeviceListDialog::getDeviceFunctionName(unsigned char deviceFunction)
 void DeviceListDialog::onRefreshClicked()
 {
     updateDeviceList();
+}
+
+void DeviceListDialog::analyzeInstanceConflicts()
+{
+    if (!m_deviceList) {
+        QMessageBox::warning(this, "Analysis Error", "Device list not available for analysis.");
+        return;
+    }
+
+    // Structure to track device instances by class and function
+    struct DeviceInfo {
+        uint8_t source;
+        uint8_t instance;
+        uint8_t deviceClass;
+        uint8_t deviceFunction;
+        QString manufacturer;
+        QString modelId;
+    };
+    
+    QList<DeviceInfo> devices;
+    QStringList conflicts;
+    
+    // Collect all device information
+    for (uint8_t source = 0; source < N2kMaxBusDevices; source++) {
+        const tNMEA2000::tDevice* device = m_deviceList->FindDeviceBySource(source);
+        if (device) {
+            DeviceInfo info;
+            info.source = source;
+            info.instance = device->GetDeviceInstance();
+            info.deviceClass = device->GetDeviceClass();
+            info.deviceFunction = device->GetDeviceFunction();
+            info.manufacturer = getManufacturerName(device->GetManufacturerCode());
+            
+            const char* modelIdStr = device->GetModelID();
+            info.modelId = (modelIdStr && strlen(modelIdStr) > 0) ? QString(modelIdStr) : "Unknown";
+            
+            devices.append(info);
+        }
+    }
+    
+    // Analyze for conflicts
+    // Group devices by class and function, then check for instance conflicts
+    QMap<QString, QList<DeviceInfo>> deviceGroups;
+    
+    for (const DeviceInfo& device : devices) {
+        QString groupKey = QString("%1_%2").arg(device.deviceClass).arg(device.deviceFunction);
+        deviceGroups[groupKey].append(device);
+    }
+    
+    // Check each group for instance conflicts
+    for (auto it = deviceGroups.begin(); it != deviceGroups.end(); ++it) {
+        const QList<DeviceInfo>& group = it.value();
+        
+        if (group.size() > 1) {
+            // Check for duplicate instances within the same class/function group
+            QMap<uint8_t, QList<DeviceInfo>> instanceMap;
+            
+            for (const DeviceInfo& device : group) {
+                instanceMap[device.instance].append(device);
+            }
+            
+            // Report conflicts
+            for (auto instIt = instanceMap.begin(); instIt != instanceMap.end(); ++instIt) {
+                const QList<DeviceInfo>& instanceDevices = instIt.value();
+                
+                if (instanceDevices.size() > 1) {
+                    QString deviceClassName = getDeviceClassName(instanceDevices[0].deviceClass);
+                    QString deviceFunctionName = getDeviceFunctionName(instanceDevices[0].deviceFunction);
+                    
+                    QString conflictMsg = QString("INSTANCE CONFLICT - %1/%2 (Instance %3):")
+                        .arg(deviceClassName)
+                        .arg(deviceFunctionName)
+                        .arg(instanceDevices[0].instance);
+                    
+                    for (const DeviceInfo& conflictDevice : instanceDevices) {
+                        conflictMsg += QString("\n  • Node %1 (%2 %3)")
+                            .arg(conflictDevice.source, 2, 16, QChar('0')).toUpper()
+                            .arg(conflictDevice.manufacturer)
+                            .arg(conflictDevice.modelId);
+                    }
+                    
+                    conflicts.append(conflictMsg);
+                }
+            }
+        }
+    }
+    
+    // Additional analysis for specific PGN conflicts (common problematic PGNs)
+    QStringList criticalPGNConflicts;
+    
+    // Check for devices that might transmit the same critical PGNs
+    QList<DeviceInfo> tankDevices;
+    QList<DeviceInfo> batteryDevices;
+    QList<DeviceInfo> engineDevices;
+    QList<DeviceInfo> navigationDevices;
+    
+    for (const DeviceInfo& device : devices) {
+        // Tank level devices (class 30 = Electrical Distribution, but also check others)
+        if (device.deviceClass == 30 || device.deviceClass == 80) {
+            tankDevices.append(device);
+        }
+        // Battery monitoring (class 30 = Electrical Distribution)
+        if (device.deviceClass == 30 || device.deviceClass == 35) {
+            batteryDevices.append(device);
+        }
+        // Engine data (class 50 = Propulsion)
+        if (device.deviceClass == 50) {
+            engineDevices.append(device);
+        }
+        // Navigation data (class 60 = Navigation)
+        if (device.deviceClass == 60) {
+            navigationDevices.append(device);
+        }
+    }
+    
+    // Display results
+    QString analysisResult;
+    
+    if (conflicts.isEmpty() && criticalPGNConflicts.isEmpty()) {
+        analysisResult = QString("✓ ANALYSIS COMPLETE - No instance conflicts detected!\n\n"
+                               "Analyzed %1 devices across %2 device groups.\n"
+                               "All device instances appear to be properly configured.")
+                               .arg(devices.size())
+                               .arg(deviceGroups.size());
+    } else {
+        analysisResult = QString("⚠ INSTANCE CONFLICTS DETECTED ⚠\n\n"
+                               "Found %1 instance conflict(s) that may cause data corruption:\n\n")
+                               .arg(conflicts.size());
+        
+        analysisResult += conflicts.join("\n\n");
+        
+        analysisResult += QString("\n\n📋 RECOMMENDATIONS:\n"
+                                "• Each device of the same type should have a unique instance number\n"
+                                "• Use manufacturer configuration tools to change instance numbers\n"
+                                "• Critical for: Tank levels, Battery monitoring, Engine data, Navigation data\n"
+                                "• Instance conflicts can cause intermittent or incorrect readings");
+    }
+    
+    // Show analysis in a dialog
+    QMessageBox msgBox(this);
+    msgBox.setWindowTitle("NMEA 2000 Instance Conflict Analysis");
+    msgBox.setText(analysisResult);
+    msgBox.setIcon(conflicts.isEmpty() ? QMessageBox::Information : QMessageBox::Warning);
+    msgBox.setStandardButtons(QMessageBox::Ok);
+    msgBox.exec();
 }
 
 void DeviceListDialog::onCloseClicked()

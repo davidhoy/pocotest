@@ -25,10 +25,13 @@ private slots:
     void updateDeviceList();
     void onRefreshClicked();
     void onCloseClicked();
+    void onRowSelectionChanged();
 
 private:
     void setupUI();
     void populateDeviceTable();
+    void analyzeInstanceConflicts();
+    void highlightInstanceConflicts();
     QString getDeviceClassName(unsigned char deviceClass);
     QString getDeviceFunctionName(unsigned char deviceFunction);
     QString getManufacturerName(uint16_t manufacturerCode);
@@ -40,6 +43,10 @@ private:
     QLabel* m_statusLabel;
     QTimer* m_updateTimer;
     tN2kDeviceList* m_deviceList;
+    
+    // Conflict tracking
+    QMap<uint8_t, QList<uint8_t>> m_conflictGroups; // source -> list of conflicting sources
+    QSet<uint8_t> m_conflictingSources; // all sources that have conflicts
 };
 
 #endif // DEVICELISTDIALOG_H
