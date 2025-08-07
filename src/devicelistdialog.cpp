@@ -53,7 +53,7 @@ void DeviceListDialog::setupUI()
     
     QStringList headers;
     headers << "Node Address" << "Manufacturer" << "Mfg Model ID" << "Mfg Serial Number" 
-            << "Device Instance" << "Label" << "Current Software" << "Installation Description";
+            << "Device Instance" << "Type" << "Current Software" << "Installation Description";
     m_deviceTable->setHorizontalHeaderLabels(headers);
     
     // Configure table
@@ -63,6 +63,11 @@ void DeviceListDialog::setupUI()
     m_deviceTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
     m_deviceTable->verticalHeader()->setVisible(false);
     m_deviceTable->setSortingEnabled(true);
+    
+    // Set smaller font for the table
+    QFont tableFont = m_deviceTable->font();
+    tableFont.setPointSize(9);  // Smaller font size
+    m_deviceTable->setFont(tableFont);
     
     mainLayout->addWidget(m_deviceTable);
     
@@ -144,15 +149,15 @@ void DeviceListDialog::populateDeviceTable()
             instanceItem->setTextAlignment(Qt::AlignCenter);
             m_deviceTable->setItem(deviceCount, 4, instanceItem);
             
-            // Label - create based on device function and class
-            QString label = getDeviceFunctionName(device->GetDeviceFunction());
-            if (label.startsWith("Unknown")) {
-                label = getDeviceClassName(device->GetDeviceClass());
+            // Type - create based on device function and class
+            QString type = getDeviceFunctionName(device->GetDeviceFunction());
+            if (type.startsWith("Unknown")) {
+                type = getDeviceClassName(device->GetDeviceClass());
             }
-            if (label.startsWith("Unknown")) {
-                label = QString("Device %1").arg(source, 2, 16, QChar('0')).toUpper();
+            if (type.startsWith("Unknown")) {
+                type = QString("Device %1").arg(source, 2, 16, QChar('0')).toUpper();
             }
-            m_deviceTable->setItem(deviceCount, 5, new QTableWidgetItem(label));
+            m_deviceTable->setItem(deviceCount, 5, new QTableWidgetItem(type));
             
             // Current Software - use virtual method
             QString softwareVersion = "-";
@@ -162,8 +167,23 @@ void DeviceListDialog::populateDeviceTable()
             }
             m_deviceTable->setItem(deviceCount, 6, new QTableWidgetItem(softwareVersion));
             
-            // Installation Description - placeholder for now
-            QString installDesc = "-";
+            // Installation Description - combine InstallationDescription1 and InstallationDescription2 from PGN 126998
+            QString installDesc = "";
+            const char* installDesc1 = device->GetInstallationDescription1();
+            const char* installDesc2 = device->GetInstallationDescription2();
+            
+            if (installDesc1 && strlen(installDesc1) > 0) {
+                installDesc = QString(installDesc1);
+            }
+            if (installDesc2 && strlen(installDesc2) > 0) {
+                if (!installDesc.isEmpty()) {
+                    installDesc += " / ";
+                }
+                installDesc += QString(installDesc2);
+            }
+            if (installDesc.isEmpty()) {
+                installDesc = "-";
+            }
             m_deviceTable->setItem(deviceCount, 7, new QTableWidgetItem(installDesc));
             
             deviceCount++;
