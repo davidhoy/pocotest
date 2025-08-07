@@ -20,6 +20,7 @@ private slots:
     void on_sendButton_clicked();
     void on_sendPGNButton_clicked();
     void on_canInterfaceChanged(const QString &interface);
+    void clearLog();
 
 private:
     void handleN2kMsg(const tN2kMsg& msg);
@@ -27,6 +28,7 @@ private:
     static MainWindow* instance; // Singleton-style reference for static callback
     
     void setupCanInterfaceSelector();
+    void setupMainWindowProperties();
     void populateCanInterfaces();
     void reinitializeNMEA2000();
     QStringList getAvailableCanInterfaces();

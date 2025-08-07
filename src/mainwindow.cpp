@@ -87,6 +87,9 @@ MainWindow::MainWindow(QWidget *parent)
     ui->setupUi(this);
     MainWindow::instance = this;  // Capture 'this' for static callback
     
+    // Set up the main window properties for better resizing
+    setupMainWindowProperties();
+    
     // Set up CAN interface selector
     setupCanInterfaceSelector();
     
@@ -96,7 +99,27 @@ MainWindow::MainWindow(QWidget *parent)
     // Populate and set the current interface in the combo box
     populateCanInterfaces();
     
+    // Connect buttons
+    connect(ui->pushButton_2, &QPushButton::clicked, this, &MainWindow::clearLog);
+    
     initNMEA2000();
+}
+
+void MainWindow::setupMainWindowProperties()
+{
+    // Set minimum and reasonable default sizes
+    setMinimumSize(600, 400);
+    resize(800, 600);
+    
+    // Configure the log text box for better display
+    ui->logTextBox->setLineWrapMode(QTextEdit::WidgetWidth);
+    ui->logTextBox->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    ui->logTextBox->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    
+    // Add some initial content to show the layout
+    ui->logTextBox->append("NMEA2000 CAN Interface Tool initialized");
+    ui->logTextBox->append("Ready to receive and send CAN messages");
+    ui->logTextBox->append("===========================================");
 }
 
 void MainWindow::setupCanInterfaceSelector()
@@ -300,5 +323,13 @@ void MainWindow::handleN2kMsg(const tN2kMsg& msg) {
 
     // Append to the scrolling text box
     ui->logTextBox->append(pgnInfo);
+}
+
+void MainWindow::clearLog()
+{
+    ui->logTextBox->clear();
+    ui->logTextBox->append("NMEA2000 CAN Interface Tool - Log cleared");
+    ui->logTextBox->append("Ready to receive and send CAN messages");
+    ui->logTextBox->append("===========================================");
 }
 
