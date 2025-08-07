@@ -2,7 +2,7 @@
 #include "NMEA2000_SocketCAN.h"
 
 tNMEA2000_SocketCAN* nmea2000;
-char can_interface[80] = "vcan0";
+extern char can_interface[];
 
 MainWindow* MainWindow::instance = nullptr;
 
