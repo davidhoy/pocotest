@@ -5,6 +5,8 @@
 #include <QHeaderView>
 #include <QSplitter>
 #include <QRegExp>
+#include <QCheckBox>
+#include <QLabel>
 
 extern tNMEA2000_SocketCAN* nmea2000;
 
@@ -147,6 +149,7 @@ void PGNDialog::populateCommonPGNs()
     m_commonPGNs.append({127250, "Vessel Heading", "Vessel magnetic heading", {"SID", "Heading", "Deviation", "Variation", "Reference"}});
     m_commonPGNs.append({127251, "Rate of Turn", "Rate of turn", {"SID", "Rate of Turn"}});
     m_commonPGNs.append({127488, "Engine Parameters, Rapid", "Engine parameters rapid update", {"Engine Instance", "Engine Speed", "Engine Boost Pressure", "Engine Tilt/Trim"}});
+    m_commonPGNs.append({127502, "Binary Switch Bank Control", "Control up to 8 binary switches (lights, pumps, etc.)", {"Instance", "Indicator Bank", "Switch 1", "Switch 2", "Switch 3", "Switch 4", "Switch 5", "Switch 6", "Switch 7", "Switch 8"}});
     m_commonPGNs.append({127505, "Fluid Level", "Fluid level", {"Instance", "Type", "Level", "Capacity"}});
     m_commonPGNs.append({127508, "Battery Status", "DC battery status", {"Battery Instance", "Voltage", "Current", "Temperature", "SID"}});
     m_commonPGNs.append({128259, "Boat Speed", "Speed through water", {"SID", "Speed Water Referenced", "Speed Water Referenced Type"}});
@@ -217,10 +220,33 @@ void PGNDialog::updateDataFieldsForPGN(unsigned long pgn)
     
     if (pgnInfo) {
         // Add parameter fields based on PGN
-        for (const QString& param : pgnInfo->parameters) {
-            QLineEdit* paramEdit = new QLineEdit();
-            paramEdit->setPlaceholderText("Enter value");
-            m_parameterLayout->addRow(param + ":", paramEdit);
+        if (pgn == 127502) {
+            // Special handling for Binary Switch Bank Control
+            QLineEdit* instanceEdit = new QLineEdit();
+            instanceEdit->setPlaceholderText("0-255");
+            instanceEdit->setText("0");
+            m_parameterLayout->addRow("Instance:", instanceEdit);
+            
+            QLineEdit* indicatorEdit = new QLineEdit();
+            indicatorEdit->setPlaceholderText("0-255");
+            indicatorEdit->setText("0");
+            m_parameterLayout->addRow("Indicator Bank:", indicatorEdit);
+            
+            // Add checkboxes for switches 1-8
+            for (int i = 1; i <= 8; i++) {
+                QCheckBox* switchBox = new QCheckBox();
+                switchBox->setText(QString("Switch %1").arg(i));
+                switchBox->setObjectName(QString("switch_%1").arg(i));
+                switchBox->setToolTip(QString("Enable/disable switch %1 (bit %2)").arg(i).arg(i-1));
+                m_parameterLayout->addRow(switchBox);
+            }
+        } else {
+            // Standard parameter handling for other PGNs
+            for (const QString& param : pgnInfo->parameters) {
+                QLineEdit* paramEdit = new QLineEdit();
+                paramEdit->setPlaceholderText("Enter value");
+                m_parameterLayout->addRow(param + ":", paramEdit);
+            }
         }
     } else {
         // Custom PGN - just show a note
@@ -277,6 +303,10 @@ void PGNDialog::onClearData()
             QLineEdit* lineEdit = qobject_cast<QLineEdit*>(item->widget());
             if (lineEdit) {
                 lineEdit->clear();
+            }
+            QCheckBox* checkBox = qobject_cast<QCheckBox*>(item->widget());
+            if (checkBox) {
+                checkBox->setChecked(false);
             }
         }
     }
@@ -338,6 +368,54 @@ tN2kMsg PGNDialog::createMessageFromInputs()
                 msg.Add2ByteDouble(0.0, 0.0001);   // Deviation
                 msg.Add2ByteDouble(0.0, 0.0001);   // Variation
                 msg.AddByte(0);  // Reference
+                break;
+            case 127502: // Binary Switch Bank Control
+                {
+                    // Get instance and indicator values from input fields
+                    unsigned char instance = 0;
+                    unsigned char indicator = 0;
+                    unsigned char switchByte = 0;
+                    
+                    // Find the input fields
+                    for (int i = 0; i < m_parameterLayout->rowCount(); i++) {
+                        QLayoutItem* labelItem = m_parameterLayout->itemAt(i, QFormLayout::LabelRole);
+                        QLayoutItem* fieldItem = m_parameterLayout->itemAt(i, QFormLayout::FieldRole);
+                        
+                        if (labelItem && fieldItem) {
+                            QLabel* label = qobject_cast<QLabel*>(labelItem->widget());
+                            if (label) {
+                                QString labelText = label->text();
+                                if (labelText.startsWith("Instance:")) {
+                                    QLineEdit* edit = qobject_cast<QLineEdit*>(fieldItem->widget());
+                                    if (edit) {
+                                        instance = edit->text().toUInt();
+                                    }
+                                } else if (labelText.startsWith("Indicator Bank:")) {
+                                    QLineEdit* edit = qobject_cast<QLineEdit*>(fieldItem->widget());
+                                    if (edit) {
+                                        indicator = edit->text().toUInt();
+                                    }
+                                }
+                            }
+                            
+                            // Check for switch checkboxes
+                            QCheckBox* checkbox = qobject_cast<QCheckBox*>(fieldItem->widget());
+                            if (checkbox) {
+                                QString objectName = checkbox->objectName();
+                                if (objectName.startsWith("switch_")) {
+                                    int switchNum = objectName.split("_")[1].toInt();
+                                    if (switchNum >= 1 && switchNum <= 8 && checkbox->isChecked()) {
+                                        switchByte |= (1 << (switchNum - 1));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    msg.AddByte(instance);
+                    msg.AddByte(indicator);
+                    msg.AddByte(switchByte);
+                }
                 break;
             default:
                 // For unknown PGNs, add a single byte to make it valid
