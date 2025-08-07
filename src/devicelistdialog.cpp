@@ -1,4 +1,5 @@
 #include "devicelistdialog.h"
+#include "mainwindow.h"
 #include "NMEA2000_SocketCAN.h"
 #include "N2kDeviceList.h"
 #include <QMessageBox>
@@ -14,6 +15,7 @@ DeviceListDialog::DeviceListDialog(QWidget *parent, tN2kDeviceList* deviceList)
     , m_statusLabel(nullptr)
     , m_updateTimer(nullptr)
     , m_deviceList(deviceList)
+    , m_mainWindow(qobject_cast<MainWindow*>(parent))
 {
     setupUI();
     
@@ -215,55 +217,15 @@ void DeviceListDialog::populateDeviceTable()
 
 void DeviceListDialog::highlightInstanceConflicts()
 {
-    // Clear previous conflict data
-    m_conflictGroups.clear();
-    m_conflictingSources.clear();
-    
-    if (!m_deviceList) {
+    if (!m_mainWindow) {
         return;
     }
     
-    // Structure to track device instances by class and function
-    struct DeviceInfo {
-        uint8_t source;
-        uint8_t instance;
-        uint8_t deviceClass;
-        uint8_t deviceFunction;
-        int tableRow;
-    };
+    // Get real-time PGN instance conflicts from MainWindow
+    QList<InstanceConflict> conflicts = m_mainWindow->getInstanceConflicts();
+    QSet<uint8_t> conflictingSources = m_mainWindow->getConflictingSources();
     
-    QList<DeviceInfo> devices;
-    
-    // Collect all device information and find their table rows
-    for (int row = 0; row < m_deviceTable->rowCount(); row++) {
-        QTableWidgetItem* nodeItem = m_deviceTable->item(row, 0);
-        if (nodeItem) {
-            bool ok;
-            uint8_t source = nodeItem->text().toUInt(&ok, 16);
-            if (ok) {
-                const tNMEA2000::tDevice* device = m_deviceList->FindDeviceBySource(source);
-                if (device) {
-                    DeviceInfo info;
-                    info.source = source;
-                    info.instance = device->GetDeviceInstance();
-                    info.deviceClass = device->GetDeviceClass();
-                    info.deviceFunction = device->GetDeviceFunction();
-                    info.tableRow = row;
-                    devices.append(info);
-                }
-            }
-        }
-    }
-    
-    // Group devices by class and function, then check for instance conflicts
-    QMap<QString, QList<DeviceInfo>> deviceGroups;
-    
-    for (const DeviceInfo& device : devices) {
-        QString groupKey = QString("%1_%2").arg(device.deviceClass).arg(device.deviceFunction);
-        deviceGroups[groupKey].append(device);
-    }
-    
-    // Find conflicts and reset all row colors first
+    // Reset all row colors first
     for (int row = 0; row < m_deviceTable->rowCount(); row++) {
         for (int col = 0; col < m_deviceTable->columnCount(); col++) {
             QTableWidgetItem* item = m_deviceTable->item(row, col);
@@ -273,63 +235,75 @@ void DeviceListDialog::highlightInstanceConflicts()
         }
     }
     
-    // Check each group for instance conflicts
-    for (auto it = deviceGroups.begin(); it != deviceGroups.end(); ++it) {
-        const QList<DeviceInfo>& group = it.value();
-        
-        if (group.size() > 1) {
-            // Check for duplicate instances within the same class/function group
-            QMap<uint8_t, QList<DeviceInfo>> instanceMap;
-            
-            for (const DeviceInfo& device : group) {
-                instanceMap[device.instance].append(device);
-            }
-            
-            // Highlight conflicts
-            for (auto instIt = instanceMap.begin(); instIt != instanceMap.end(); ++instIt) {
-                const QList<DeviceInfo>& instanceDevices = instIt.value();
-                
-                if (instanceDevices.size() > 1) {
-                    // This is a conflict - collect all conflicting sources
-                    QList<uint8_t> conflictGroup;
-                    for (const DeviceInfo& conflictDevice : instanceDevices) {
-                        conflictGroup.append(conflictDevice.source);
-                        m_conflictingSources.insert(conflictDevice.source);
-                        
-                        // Highlight the row in red
-                        for (int col = 0; col < m_deviceTable->columnCount(); col++) {
-                            QTableWidgetItem* item = m_deviceTable->item(conflictDevice.tableRow, col);
-                            if (item) {
-                                item->setBackground(QBrush(QColor(255, 200, 200))); // Light red
-                            }
-                        }
-                    }
-                    
-                    // Store the conflict group for each source
-                    for (uint8_t source : conflictGroup) {
-                        m_conflictGroups[source] = conflictGroup;
+    // Highlight conflicting devices in red
+    for (int row = 0; row < m_deviceTable->rowCount(); row++) {
+        QTableWidgetItem* nodeItem = m_deviceTable->item(row, 0);
+        if (nodeItem) {
+            bool ok;
+            uint8_t source = nodeItem->text().toUInt(&ok, 16);
+            if (ok && conflictingSources.contains(source)) {
+                // Highlight the row in red
+                for (int col = 0; col < m_deviceTable->columnCount(); col++) {
+                    QTableWidgetItem* item = m_deviceTable->item(row, col);
+                    if (item) {
+                        item->setBackground(QBrush(QColor(255, 200, 200))); // Light red
                     }
                 }
             }
         }
     }
     
-    // Update status to include conflict information
-    if (!m_conflictingSources.isEmpty()) {
+    // Update status with conflict information
+    if (!conflicts.isEmpty()) {
+        int deviceCount = m_deviceTable->rowCount();
+        QString conflictDetails;
+        
+        for (const InstanceConflict& conflict : conflicts) {
+            QString sources;
+            QStringList sourceList;
+            for (uint8_t source : conflict.conflictingSources) {
+                sourceList.append(QString::number(source, 16).toUpper());
+            }
+            sources = sourceList.join(", ");
+            
+            QString pgnName = getPGNName(conflict.pgn);
+            conflictDetails += QString("PGN %1 (%2) Instance %3: Sources [%4]; ")
+                                 .arg(conflict.pgn)
+                                 .arg(pgnName)
+                                 .arg(conflict.instance)
+                                 .arg(sources);
+        }
+        
+        m_statusLabel->setText(QString("Found %1 NMEA2000 device(s) - Auto-updating every 2 seconds\n"
+                                     "⚠ INSTANCE CONFLICTS DETECTED: %2 devices affected\n"
+                                     "Conflicts: %3")
+                                     .arg(deviceCount)
+                                     .arg(conflictingSources.size())
+                                     .arg(conflictDetails));
+        m_statusLabel->setStyleSheet("font-weight: bold; color: red;");
+    } else {
         int deviceCount = m_deviceTable->rowCount();
         m_statusLabel->setText(QString("Found %1 NMEA2000 device(s) - Auto-updating every 2 seconds\n"
-                                     "⚠ %2 devices have instance conflicts (highlighted in red). Click a conflicted device to see all related conflicts.")
-                                     .arg(deviceCount).arg(m_conflictingSources.size()));
-        m_statusLabel->setStyleSheet("font-weight: bold; color: red;");
+                                     "✓ No PGN instance conflicts detected")
+                                     .arg(deviceCount));
+        m_statusLabel->setStyleSheet("font-weight: bold; color: green;");
     }
 }
 
 void DeviceListDialog::onRowSelectionChanged()
 {
+    if (!m_mainWindow) {
+        return;
+    }
+    
     int currentRow = m_deviceTable->currentRow();
     if (currentRow < 0) {
         return;
     }
+    
+    // Get current conflict data from MainWindow
+    QList<InstanceConflict> conflicts = m_mainWindow->getInstanceConflicts();
+    QSet<uint8_t> conflictingSources = m_mainWindow->getConflictingSources();
     
     // First, reset all highlighting except for the base conflict highlighting (red)
     for (int row = 0; row < m_deviceTable->rowCount(); row++) {
@@ -337,7 +311,7 @@ void DeviceListDialog::onRowSelectionChanged()
         if (nodeItem) {
             bool ok;
             uint8_t source = nodeItem->text().toUInt(&ok, 16);
-            if (ok && m_conflictingSources.contains(source)) {
+            if (ok && conflictingSources.contains(source)) {
                 // Keep red highlighting for conflicted devices
                 for (int col = 0; col < m_deviceTable->columnCount(); col++) {
                     QTableWidgetItem* item = m_deviceTable->item(row, col);
@@ -362,26 +336,30 @@ void DeviceListDialog::onRowSelectionChanged()
     if (selectedNodeItem) {
         bool ok;
         uint8_t selectedSource = selectedNodeItem->text().toUInt(&ok, 16);
-        if (ok && m_conflictGroups.contains(selectedSource)) {
-            // Highlight all devices in the same conflict group in orange
-            const QList<uint8_t>& conflictGroup = m_conflictGroups[selectedSource];
-            
-            for (uint8_t conflictSource : conflictGroup) {
-                // Find the row for this conflicting source
-                for (int row = 0; row < m_deviceTable->rowCount(); row++) {
-                    QTableWidgetItem* nodeItem = m_deviceTable->item(row, 0);
-                    if (nodeItem) {
-                        bool rowOk;
-                        uint8_t rowSource = nodeItem->text().toUInt(&rowOk, 16);
-                        if (rowOk && rowSource == conflictSource) {
-                            // Highlight this row in orange
-                            for (int col = 0; col < m_deviceTable->columnCount(); col++) {
-                                QTableWidgetItem* item = m_deviceTable->item(row, col);
-                                if (item) {
-                                    item->setBackground(QBrush(QColor(255, 180, 100))); // Orange
+        
+        if (ok && conflictingSources.contains(selectedSource)) {
+            // Find all conflicts involving this source and highlight related sources in orange
+            for (const InstanceConflict& conflict : conflicts) {
+                if (conflict.conflictingSources.contains(selectedSource)) {
+                    // Highlight all sources in this conflict group in orange
+                    for (uint8_t conflictSource : conflict.conflictingSources) {
+                        // Find the row for this conflicting source
+                        for (int row = 0; row < m_deviceTable->rowCount(); row++) {
+                            QTableWidgetItem* nodeItem = m_deviceTable->item(row, 0);
+                            if (nodeItem) {
+                                bool rowOk;
+                                uint8_t rowSource = nodeItem->text().toUInt(&rowOk, 16);
+                                if (rowOk && rowSource == conflictSource) {
+                                    // Highlight this row in orange
+                                    for (int col = 0; col < m_deviceTable->columnCount(); col++) {
+                                        QTableWidgetItem* item = m_deviceTable->item(row, col);
+                                        if (item) {
+                                            item->setBackground(QBrush(QColor(255, 180, 100))); // Orange
+                                        }
+                                    }
+                                    break;
                                 }
                             }
-                            break;
                         }
                     }
                 }
@@ -462,150 +440,99 @@ void DeviceListDialog::onRefreshClicked()
 
 void DeviceListDialog::analyzeInstanceConflicts()
 {
-    if (!m_deviceList) {
-        QMessageBox::warning(this, "Analysis Error", "Device list not available for analysis.");
+    if (!m_mainWindow) {
+        QMessageBox::warning(this, "Analysis Error", "Main window reference not available for analysis.");
         return;
     }
 
-    // Structure to track device instances by class and function
-    struct DeviceInfo {
-        uint8_t source;
-        uint8_t instance;
-        uint8_t deviceClass;
-        uint8_t deviceFunction;
-        QString manufacturer;
-        QString modelId;
-    };
+    // Get real-time PGN instance conflicts from MainWindow
+    QList<InstanceConflict> pgnConflicts = m_mainWindow->getInstanceConflicts();
+    QSet<uint8_t> conflictingSources = m_mainWindow->getConflictingSources();
     
-    QList<DeviceInfo> devices;
-    QStringList conflicts;
-    
-    // Collect all device information
-    for (uint8_t source = 0; source < N2kMaxBusDevices; source++) {
-        const tNMEA2000::tDevice* device = m_deviceList->FindDeviceBySource(source);
-        if (device) {
-            DeviceInfo info;
-            info.source = source;
-            info.instance = device->GetDeviceInstance();
-            info.deviceClass = device->GetDeviceClass();
-            info.deviceFunction = device->GetDeviceFunction();
-            info.manufacturer = getManufacturerName(device->GetManufacturerCode());
-            
-            const char* modelIdStr = device->GetModelID();
-            info.modelId = (modelIdStr && strlen(modelIdStr) > 0) ? QString(modelIdStr) : "Unknown";
-            
-            devices.append(info);
-        }
-    }
-    
-    // Analyze for conflicts
-    // Group devices by class and function, then check for instance conflicts
-    QMap<QString, QList<DeviceInfo>> deviceGroups;
-    
-    for (const DeviceInfo& device : devices) {
-        QString groupKey = QString("%1_%2").arg(device.deviceClass).arg(device.deviceFunction);
-        deviceGroups[groupKey].append(device);
-    }
-    
-    // Check each group for instance conflicts
-    for (auto it = deviceGroups.begin(); it != deviceGroups.end(); ++it) {
-        const QList<DeviceInfo>& group = it.value();
-        
-        if (group.size() > 1) {
-            // Check for duplicate instances within the same class/function group
-            QMap<uint8_t, QList<DeviceInfo>> instanceMap;
-            
-            for (const DeviceInfo& device : group) {
-                instanceMap[device.instance].append(device);
-            }
-            
-            // Report conflicts
-            for (auto instIt = instanceMap.begin(); instIt != instanceMap.end(); ++instIt) {
-                const QList<DeviceInfo>& instanceDevices = instIt.value();
-                
-                if (instanceDevices.size() > 1) {
-                    QString deviceClassName = getDeviceClassName(instanceDevices[0].deviceClass);
-                    QString deviceFunctionName = getDeviceFunctionName(instanceDevices[0].deviceFunction);
-                    
-                    QString conflictMsg = QString("INSTANCE CONFLICT - %1/%2 (Instance %3):")
-                        .arg(deviceClassName)
-                        .arg(deviceFunctionName)
-                        .arg(instanceDevices[0].instance);
-                    
-                    for (const DeviceInfo& conflictDevice : instanceDevices) {
-                        conflictMsg += QString("\n  • Node %1 (%2 %3)")
-                            .arg(conflictDevice.source, 2, 16, QChar('0')).toUpper()
-                            .arg(conflictDevice.manufacturer)
-                            .arg(conflictDevice.modelId);
-                    }
-                    
-                    conflicts.append(conflictMsg);
-                }
-            }
-        }
-    }
-    
-    // Additional analysis for specific PGN conflicts (common problematic PGNs)
-    QStringList criticalPGNConflicts;
-    
-    // Check for devices that might transmit the same critical PGNs
-    QList<DeviceInfo> tankDevices;
-    QList<DeviceInfo> batteryDevices;
-    QList<DeviceInfo> engineDevices;
-    QList<DeviceInfo> navigationDevices;
-    
-    for (const DeviceInfo& device : devices) {
-        // Tank level devices (class 30 = Electrical Distribution, but also check others)
-        if (device.deviceClass == 30 || device.deviceClass == 80) {
-            tankDevices.append(device);
-        }
-        // Battery monitoring (class 30 = Electrical Distribution)
-        if (device.deviceClass == 30 || device.deviceClass == 35) {
-            batteryDevices.append(device);
-        }
-        // Engine data (class 50 = Propulsion)
-        if (device.deviceClass == 50) {
-            engineDevices.append(device);
-        }
-        // Navigation data (class 60 = Navigation)
-        if (device.deviceClass == 60) {
-            navigationDevices.append(device);
-        }
-    }
-    
-    // Display results
     QString analysisResult;
     
-    if (conflicts.isEmpty() && criticalPGNConflicts.isEmpty()) {
-        analysisResult = QString("✓ ANALYSIS COMPLETE - No instance conflicts detected!\n\n"
-                               "Analyzed %1 devices across %2 device groups.\n"
-                               "All device instances appear to be properly configured.")
-                               .arg(devices.size())
-                               .arg(deviceGroups.size());
+    if (pgnConflicts.isEmpty()) {
+        analysisResult = QString("✓ ANALYSIS COMPLETE - No PGN instance conflicts detected!\n\n"
+                               "Real-time monitoring has not detected any devices transmitting\n"
+                               "the same PGN with identical instance numbers.\n\n"
+                               "📋 MONITORED PGNs:\n"
+                               "• PGN 127488 - Engine Parameters (Engine Instance)\n"
+                               "• PGN 127502 - Binary Switch Bank Control (Instance)\n"
+                               "• PGN 127505 - Fluid Level (Tank Instance)\n"
+                               "• PGN 127508 - Battery Status (Battery Instance)\n"
+                               "• PGN 130312 - Temperature (Sensor Instance)\n"
+                               "• PGN 130314 - Actual Pressure (Sensor Instance)\n\n"
+                               "⚠ NOTE: Conflicts are only detected when devices actively transmit data.\n"
+                               "Make sure all devices are powered on and transmitting to get complete analysis.");
     } else {
-        analysisResult = QString("⚠ INSTANCE CONFLICTS DETECTED ⚠\n\n"
-                               "Found %1 instance conflict(s) that may cause data corruption:\n\n")
-                               .arg(conflicts.size());
+        analysisResult = QString("⚠ REAL-TIME PGN INSTANCE CONFLICTS DETECTED ⚠\n\n"
+                               "Found %1 PGN instance conflict(s) that WILL cause data corruption:\n\n")
+                               .arg(pgnConflicts.size());
         
-        analysisResult += conflicts.join("\n\n");
+        for (const InstanceConflict& conflict : pgnConflicts) {
+            QString pgnName = getPGNName(conflict.pgn);
+            QString sources;
+            QStringList sourceList;
+            for (uint8_t source : conflict.conflictingSources) {
+                sourceList.append(QString("Node %1").arg(source, 2, 16, QChar('0')).toUpper());
+            }
+            sources = sourceList.join(", ");
+            
+            analysisResult += QString("🔴 PGN %1 (%2) - Instance %3:\n"
+                                    "   Conflicting sources: %4\n"
+                                    "   ⚠ Data from these devices cannot be differentiated!\n\n")
+                                    .arg(conflict.pgn)
+                                    .arg(pgnName)
+                                    .arg(conflict.instance)
+                                    .arg(sources);
+        }
         
-        analysisResult += QString("\n\n📋 RECOMMENDATIONS:\n"
-                                "• Each device of the same type should have a unique instance number\n"
-                                "• Use manufacturer configuration tools to change instance numbers\n"
-                                "• Critical for: Tank levels, Battery monitoring, Engine data, Navigation data\n"
-                                "• Instance conflicts can cause intermittent or incorrect readings");
+        analysisResult += QString("📋 CRITICAL RECOMMENDATIONS:\n"
+                                "• Instance conflicts cause real data corruption and confusion\n"
+                                "• Each device must use a unique instance number for the same PGN\n"
+                                "• Use manufacturer configuration tools to change instance numbers immediately\n"
+                                "• For fluid levels: Tank 1=0, Tank 2=1, Tank 3=2, etc.\n"
+                                "• For batteries: Battery 1=0, Battery 2=1, Battery 3=2, etc.\n"
+                                "• For engines: Engine 1=0, Engine 2=1, etc.\n"
+                                "• Test after changes to ensure conflicts are resolved");
     }
     
     // Show analysis in a dialog
     QMessageBox msgBox(this);
-    msgBox.setWindowTitle("NMEA 2000 Instance Conflict Analysis");
+    msgBox.setWindowTitle("NMEA 2000 Real-Time PGN Instance Conflict Analysis");
     msgBox.setText(analysisResult);
-    msgBox.setIcon(conflicts.isEmpty() ? QMessageBox::Information : QMessageBox::Warning);
+    msgBox.setIcon(pgnConflicts.isEmpty() ? QMessageBox::Information : QMessageBox::Critical);
     msgBox.setStandardButtons(QMessageBox::Ok);
+    
+    // Make the dialog wider for better readability
+    msgBox.setStyleSheet("QMessageBox { min-width: 600px; }");
     msgBox.exec();
 }
 
 void DeviceListDialog::onCloseClicked()
 {
     accept();
+}
+
+QString DeviceListDialog::getPGNName(unsigned long pgn)
+{
+    switch(pgn) {
+        case 127245: return "Rudder";
+        case 127250: return "Vessel Heading";
+        case 127251: return "Rate of Turn";
+        case 127488: return "Engine Parameters, Rapid";
+        case 127502: return "Binary Switch Bank Control";
+        case 127505: return "Fluid Level";
+        case 127508: return "Battery Status";
+        case 128259: return "Boat Speed";
+        case 128267: return "Water Depth";
+        case 129025: return "Position Rapid";
+        case 129026: return "COG & SOG Rapid";
+        case 129029: return "GNSS Position";
+        case 130306: return "Wind Data";
+        case 130310: return "Environmental Parameters";
+        case 130312: return "Temperature";
+        case 130314: return "Actual Pressure";
+        default: return QString("PGN %1").arg(pgn);
+    }
 }

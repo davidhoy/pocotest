@@ -12,6 +12,7 @@
 
 // Forward declaration
 class tN2kDeviceList;
+class MainWindow;
 
 class DeviceListDialog : public QDialog
 {
@@ -35,6 +36,7 @@ private:
     QString getDeviceClassName(unsigned char deviceClass);
     QString getDeviceFunctionName(unsigned char deviceFunction);
     QString getManufacturerName(uint16_t manufacturerCode);
+    QString getPGNName(unsigned long pgn);
 
 private:
     QTableWidget* m_deviceTable;
@@ -44,9 +46,8 @@ private:
     QTimer* m_updateTimer;
     tN2kDeviceList* m_deviceList;
     
-    // Conflict tracking
-    QMap<uint8_t, QList<uint8_t>> m_conflictGroups; // source -> list of conflicting sources
-    QSet<uint8_t> m_conflictingSources; // all sources that have conflicts
+    // Keep reference to main window for PGN conflict data
+    class MainWindow* m_mainWindow;
 };
 
 #endif // DEVICELISTDIALOG_H

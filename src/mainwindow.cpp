@@ -34,6 +34,7 @@
 #include <QWidget>
 #include <QRegExp>
 #include <QToolBar>
+#include <QDateTime>
 
 tNMEA2000_SocketCAN* nmea2000;
 extern char can_interface[80];
@@ -333,6 +334,9 @@ void MainWindow::handleN2kMsg(const tN2kMsg& msg) {
                           .arg(msg.Source)
                           .arg(msg.Destination);
 
+    // Track PGN instances for conflict detection
+    trackPGNInstance(msg);
+
     // Append to the scrolling text box
     ui->logTextBox->append(pgnInfo);
 }
@@ -349,5 +353,150 @@ void MainWindow::showDeviceList()
 {
     DeviceListDialog* deviceDialog = new DeviceListDialog(this, m_deviceList);
     deviceDialog->show();
+}
+
+// PGN instance tracking methods
+void MainWindow::trackPGNInstance(const tN2kMsg& msg) {
+    // Only track PGNs that contain instance data
+    if (!isPGNWithInstance(msg.PGN)) {
+        return;
+    }
+    
+    uint8_t instance = extractInstanceFromPGN(msg);
+    if (instance == 255) { // Invalid instance
+        return;
+    }
+    
+    QString key = QString("%1_%2").arg(msg.PGN).arg(msg.Source);
+    
+    PGNInstanceData data;
+    data.pgn = msg.PGN;
+    data.source = msg.Source;
+    data.instance = instance;
+    data.lastSeen = QDateTime::currentMSecsSinceEpoch();
+    
+    m_pgnInstances[key] = data;
+    
+    // Update conflict detection
+    updateInstanceConflicts();
+}
+
+uint8_t MainWindow::extractInstanceFromPGN(const tN2kMsg& msg) {
+    // Extract instance data based on PGN type
+    // Instance is typically the first byte of data for most PGNs
+    
+    if (msg.DataLen < 1) {
+        return 255; // Invalid
+    }
+    
+    uint8_t instance = 255;
+    
+    switch (msg.PGN) {
+        case 127505: // Fluid Level
+            if (msg.DataLen >= 1) {
+                instance = msg.Data[0]; // Instance is first byte
+            }
+            break;
+            
+        case 127508: // Battery Status
+            if (msg.DataLen >= 1) {
+                instance = msg.Data[0]; // Battery instance is first byte
+            }
+            break;
+            
+        case 127502: // Binary Switch Bank Control
+            if (msg.DataLen >= 1) {
+                instance = msg.Data[0]; // Instance is first byte
+            }
+            break;
+            
+        case 130312: // Temperature
+            if (msg.DataLen >= 2) {
+                instance = msg.Data[1]; // Instance is second byte (after SID)
+            }
+            break;
+            
+        case 130314: // Actual Pressure
+            if (msg.DataLen >= 2) {
+                instance = msg.Data[1]; // Instance is second byte (after SID)
+            }
+            break;
+            
+        case 127488: // Engine Parameters, Rapid
+            if (msg.DataLen >= 1) {
+                instance = msg.Data[0]; // Engine instance is first byte
+            }
+            break;
+            
+        default:
+            // For other PGNs, assume instance is first byte if present
+            if (msg.DataLen >= 1) {
+                instance = msg.Data[0];
+            }
+            break;
+    }
+    
+    return instance;
+}
+
+void MainWindow::updateInstanceConflicts() {
+    m_instanceConflicts.clear();
+    m_conflictingSources.clear();
+    
+    // Group PGN instances by PGN and instance number
+    QMap<QString, QList<PGNInstanceData>> groupedInstances;
+    
+    for (auto it = m_pgnInstances.begin(); it != m_pgnInstances.end(); ++it) {
+        const PGNInstanceData& data = it.value();
+        QString groupKey = QString("%1_%2").arg(data.pgn).arg(data.instance);
+        groupedInstances[groupKey].append(data);
+    }
+    
+    // Find conflicts (same PGN + instance from different sources)
+    for (auto it = groupedInstances.begin(); it != groupedInstances.end(); ++it) {
+        const QList<PGNInstanceData>& instances = it.value();
+        
+        if (instances.size() > 1) {
+            // This is a conflict!
+            InstanceConflict conflict;
+            conflict.pgn = instances[0].pgn;
+            conflict.instance = instances[0].instance;
+            
+            for (const PGNInstanceData& data : instances) {
+                conflict.conflictingSources.insert(data.source);
+                m_conflictingSources.insert(data.source);
+            }
+            
+            m_instanceConflicts.append(conflict);
+        }
+    }
+}
+
+bool MainWindow::isPGNWithInstance(unsigned long pgn) {
+    // List of PGNs that contain instance data
+    static QSet<unsigned long> instancePGNs = {
+        127488, // Engine Parameters, Rapid
+        127502, // Binary Switch Bank Control
+        127505, // Fluid Level
+        127508, // Battery Status
+        130312, // Temperature
+        130314, // Actual Pressure
+        127245, // Rudder (may have instance in some implementations)
+        // Add more PGNs as needed
+    };
+    
+    return instancePGNs.contains(pgn);
+}
+
+QList<InstanceConflict> MainWindow::getInstanceConflicts() const {
+    return m_instanceConflicts;
+}
+
+bool MainWindow::hasInstanceConflicts() const {
+    return !m_instanceConflicts.isEmpty();
+}
+
+QSet<uint8_t> MainWindow::getConflictingSources() const {
+    return m_conflictingSources;
 }
 
