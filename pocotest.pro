@@ -33,14 +33,15 @@ SOURCES += \
     components/external/NMEA2000_socketCAN/NMEA2000_SocketCAN.cpp \
     src/n2k_linux_port.cpp \
     src/main.cpp \
-    src/mainwindow.cpp \
-    src/pgndialog.cpp \
-    src/devicelistdialog.cpp
+    src/devicemainwindow.cpp \
+    src/pgnlogdialog.cpp \
+    src/pgndialog.cpp
 
 HEADERS += \
-    src/mainwindow.h \
-    src/pgndialog.h \
-    src/devicelistdialog.h
+    src/devicemainwindow.h \
+    src/pgnlogdialog.h \
+    src/pgndialog.h
 
-FORMS += \
-    ui/mainwindow.ui
+# Remove the old UI form since we're not using it anymore
+# FORMS += \
+#     ui/mainwindow.ui

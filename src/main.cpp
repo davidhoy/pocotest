@@ -8,7 +8,8 @@
  */
 
 #include <QApplication>
-#include "mainwindow.h"
+#include <QDebug>
+#include "devicemainwindow.h"
 
 char can_interface[80] = "vcan0";  // Default CAN interface, can be overridden by command line argument
 
@@ -32,16 +33,17 @@ int main(int argc, char *argv[])
     }
 
     // Initialize the Qt application
-    //QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
-    //QCoreApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
-    //QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
-    //QCoreApplication::setAttribute(Qt::AA_UseDesktopOpenGL);
     QApplication app(argc, argv);
 
     // Create and show the main window
-    QApplication::setApplicationName("Lumitec Poco Tester");
-    MainWindow w;
+    QApplication::setApplicationName("NMEA2000 Network Analyzer");
+    QApplication::setApplicationVersion("1.0");
+    
+    qDebug() << "Creating DeviceMainWindow...";
+    DeviceMainWindow w;
+    qDebug() << "Showing DeviceMainWindow...";
     w.show();
+    qDebug() << "DeviceMainWindow shown, starting event loop...";
 
     return app.exec();
 }
