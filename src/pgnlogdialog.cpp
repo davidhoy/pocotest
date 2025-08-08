@@ -7,6 +7,8 @@ PGNLogDialog::PGNLogDialog(QWidget *parent)
     , m_clearButton(nullptr)
     , m_closeButton(nullptr)
     , m_statusLabel(nullptr)
+    , m_sourceFilter(255)  // No filter initially
+    , m_filterEnabled(false)
 {
     setupUI();
     
@@ -60,10 +62,15 @@ void PGNLogDialog::setupUI()
 
 void PGNLogDialog::appendMessage(const tN2kMsg& msg)
 {
-    QString pgnInfo = QString("PGN: %1, Priority: %2, Source: %3, Destination: %4")
+    // Apply source filter if enabled
+    if (m_filterEnabled && msg.Source != m_sourceFilter) {
+        return; // Skip this message
+    }
+    
+    QString pgnInfo = QString("PGN: %1, Priority: %2, Source: 0x%3, Destination: %4")
                           .arg(msg.PGN)
                           .arg(msg.Priority)
-                          .arg(msg.Source)
+                          .arg(msg.Source, 2, 16, QChar('0')).toUpper()
                           .arg(msg.Destination);
 
     // Append to the scrolling text box
@@ -86,4 +93,20 @@ void PGNLogDialog::clearLog()
 void PGNLogDialog::onCloseClicked()
 {
     hide(); // Hide instead of close so it can be reopened
+}
+
+void PGNLogDialog::setSourceFilter(uint8_t sourceAddress)
+{
+    m_sourceFilter = sourceAddress;
+    m_filterEnabled = true;
+    
+    // Update status label to show filter
+    m_statusLabel->setText(QString("PGN Log - Filtered for Device 0x%1")
+                          .arg(sourceAddress, 2, 16, QChar('0')).toUpper());
+    
+    // Clear existing log and add new header
+    clearLog();
+    m_logTextEdit->append(QString("Filtering messages from device 0x%1")
+                         .arg(sourceAddress, 2, 16, QChar('0')).toUpper());
+    m_logTextEdit->append("===========================================");
 }

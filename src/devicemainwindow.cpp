@@ -15,6 +15,7 @@
 #include <QApplication>
 #include <QMenuBar>
 #include <QStatusBar>
+#include <QClipboard>
 
 tNMEA2000_SocketCAN* nmea2000;
 extern char can_interface[80];
@@ -132,6 +133,11 @@ void DeviceMainWindow::setupUI()
     // Connect row selection signal for conflict highlighting
     connect(m_deviceTable->selectionModel(), &QItemSelectionModel::currentRowChanged,
             this, &DeviceMainWindow::onRowSelectionChanged);
+    
+    // Enable context menu for the device table
+    m_deviceTable->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_deviceTable, &QTableWidget::customContextMenuRequested,
+            this, &DeviceMainWindow::showDeviceContextMenu);
     
     mainLayout->addWidget(m_deviceTable);
     
@@ -476,6 +482,100 @@ void DeviceMainWindow::onRowSelectionChanged()
     // Will add later - for now just a stub
 }
 
+void DeviceMainWindow::showDeviceContextMenu(const QPoint& position)
+{
+    QTableWidgetItem* item = m_deviceTable->itemAt(position);
+    if (!item) {
+        return; // No item clicked
+    }
+    
+    int row = item->row();
+    if (row < 0 || row >= m_deviceTable->rowCount()) {
+        return;
+    }
+    
+    // Get device information from the table
+    QTableWidgetItem* nodeAddressItem = m_deviceTable->item(row, 0); // Node Address column
+    QTableWidgetItem* manufacturerItem = m_deviceTable->item(row, 1); // Manufacturer column
+    QTableWidgetItem* modelItem = m_deviceTable->item(row, 2);        // Model ID column
+    QTableWidgetItem* typeItem = m_deviceTable->item(row, 5);         // Type column
+    
+    if (!nodeAddressItem) {
+        return;
+    }
+    
+    QString nodeAddress = nodeAddressItem->text();
+    QString manufacturer = manufacturerItem ? manufacturerItem->text() : "Unknown";
+    QString model = modelItem ? modelItem->text() : "Unknown";
+    QString type = typeItem ? typeItem->text() : "Unknown";
+    
+    // Convert hex node address to decimal for PGN sending
+    bool ok;
+    uint8_t sourceAddress = nodeAddressItem->text().toUInt(&ok, 16);
+    if (!ok) {
+        return;
+    }
+    
+    // Create context menu using QMenuBar's functionality
+    QMenuBar* contextMenuBar = new QMenuBar(this);
+    QMenu* contextMenu = contextMenuBar->addMenu(QString("Device 0x%1").arg(nodeAddress));
+    
+    // Add device info header (non-clickable)
+    QAction* headerAction = contextMenu->addAction(QString("Device 0x%1 (%2)").arg(nodeAddress, manufacturer));
+    headerAction->setEnabled(false);
+    QFont boldFont = headerAction->font();
+    boldFont.setBold(true);
+    headerAction->setFont(boldFont);
+    
+    contextMenu->addSeparator();
+    
+    // Send PGN to Device action
+    QAction* sendPGNAction = contextMenu->addAction("Send PGN to Device...");
+    connect(sendPGNAction, &QAction::triggered, [this, sourceAddress, nodeAddress]() {
+        showSendPGNToDevice(sourceAddress, nodeAddress);
+    });
+    
+    // Get Device Details action
+    QAction* deviceDetailsAction = contextMenu->addAction("Show Device Details...");
+    connect(deviceDetailsAction, &QAction::triggered, [this, row]() {
+        showDeviceDetails(row);
+    });
+    
+    contextMenu->addSeparator();
+    
+    // Query Device Configuration action
+    QAction* queryConfigAction = contextMenu->addAction("Query Device Configuration");
+    connect(queryConfigAction, &QAction::triggered, [this, sourceAddress]() {
+        queryDeviceConfiguration(sourceAddress);
+    });
+    
+    // Request Product Information action
+    QAction* productInfoAction = contextMenu->addAction("Request Product Information");
+    connect(productInfoAction, &QAction::triggered, [this, sourceAddress]() {
+        requestProductInformation(sourceAddress);
+    });
+    
+    contextMenu->addSeparator();
+    
+    // Copy Node Address action
+    QAction* copyAddressAction = contextMenu->addAction("Copy Node Address");
+    connect(copyAddressAction, &QAction::triggered, [nodeAddress]() {
+        QApplication::clipboard()->setText(nodeAddress);
+    });
+    
+    // Show PGN History for Device action
+    QAction* pgnHistoryAction = contextMenu->addAction("Show PGN History for Device");
+    connect(pgnHistoryAction, &QAction::triggered, [this, sourceAddress]() {
+        showPGNHistoryForDevice(sourceAddress);
+    });
+    
+    // Show context menu at the clicked position
+    contextMenu->exec(m_deviceTable->mapToGlobal(position));
+    
+    // Clean up
+    delete contextMenuBar;
+}
+
 void DeviceMainWindow::showPGNLog()
 {
     if (!m_pgnLogDialog) {
@@ -491,6 +591,141 @@ void DeviceMainWindow::showSendPGNDialog()
     PGNDialog* pgnDialog = new PGNDialog(this);
     pgnDialog->exec();
     delete pgnDialog;
+}
+
+void DeviceMainWindow::showSendPGNToDevice(uint8_t targetAddress, const QString& nodeAddress)
+{
+    PGNDialog* pgnDialog = new PGNDialog(this);
+    
+    // Set the destination field to the target device's node address
+    pgnDialog->setDestinationAddress(targetAddress);
+    pgnDialog->setWindowTitle(QString("Send PGN to Device 0x%1").arg(nodeAddress));
+    
+    pgnDialog->exec();
+    delete pgnDialog;
+}
+
+void DeviceMainWindow::showDeviceDetails(int row)
+{
+    if (row < 0 || row >= m_deviceTable->rowCount()) {
+        return;
+    }
+    
+    // Gather all device information from the table
+    QString nodeAddress = m_deviceTable->item(row, 0) ? m_deviceTable->item(row, 0)->text() : "Unknown";
+    QString manufacturer = m_deviceTable->item(row, 1) ? m_deviceTable->item(row, 1)->text() : "Unknown";
+    QString modelId = m_deviceTable->item(row, 2) ? m_deviceTable->item(row, 2)->text() : "Unknown";
+    QString serialNumber = m_deviceTable->item(row, 3) ? m_deviceTable->item(row, 3)->text() : "Unknown";
+    QString instance = m_deviceTable->item(row, 4) ? m_deviceTable->item(row, 4)->text() : "Unknown";
+    QString type = m_deviceTable->item(row, 5) ? m_deviceTable->item(row, 5)->text() : "Unknown";
+    QString software = m_deviceTable->item(row, 6) ? m_deviceTable->item(row, 6)->text() : "Unknown";
+    QString installDesc = m_deviceTable->item(row, 7) ? m_deviceTable->item(row, 7)->text() : "Unknown";
+    
+    // Get additional device details from the device list
+    bool ok;
+    uint8_t source = nodeAddress.toUInt(&ok, 16);
+    QString additionalInfo = "";
+    
+    if (ok && m_deviceList) {
+        const tNMEA2000::tDevice* device = m_deviceList->FindDeviceBySource(source);
+        if (device) {
+            additionalInfo += QString("Device Function: %1\n").arg(device->GetDeviceFunction());
+            additionalInfo += QString("Device Class: %1\n").arg(device->GetDeviceClass());
+            additionalInfo += QString("Manufacturer Code: %1\n").arg(device->GetManufacturerCode());
+            additionalInfo += QString("Industry Group: %1\n").arg(device->GetIndustryGroup());
+            
+            // Check if device has instance conflicts
+            if (m_conflictingSources.contains(source)) {
+                additionalInfo += "\n⚠️  WARNING: This device has instance conflicts!\n";
+                
+                // List the conflicting PGNs
+                for (const InstanceConflict& conflict : m_instanceConflicts) {
+                    if (conflict.conflictingSources.contains(source)) {
+                        additionalInfo += QString("• PGN %1 (%2), Instance %3\n")
+                                         .arg(conflict.pgn)
+                                         .arg(getPGNName(conflict.pgn))
+                                         .arg(conflict.instance);
+                    }
+                }
+            }
+        }
+    }
+    
+    QString detailsText = QString(
+        "Node Address: 0x%1\n"
+        "Manufacturer: %2\n"
+        "Model ID: %3\n"
+        "Serial Number: %4\n"
+        "Device Instance: %5\n"
+        "Type: %6\n"
+        "Software Version: %7\n"
+        "Installation Description: %8\n\n"
+        "Additional Information:\n%9"
+    ).arg(nodeAddress, manufacturer, modelId, serialNumber, instance, type, software, installDesc, additionalInfo);
+    
+    QMessageBox msgBox(this);
+    msgBox.setWindowTitle(QString("Device Details - 0x%1").arg(nodeAddress));
+    msgBox.setIcon(QMessageBox::Information);
+    msgBox.setText(QString("Detailed information for device 0x%1:").arg(nodeAddress));
+    msgBox.setDetailedText(detailsText);
+    msgBox.setStandardButtons(QMessageBox::Ok);
+    msgBox.exec();
+}
+
+void DeviceMainWindow::queryDeviceConfiguration(uint8_t targetAddress)
+{
+    // Send PGN 126996 (Product Information) request to the device
+    if (!nmea2000) {
+        QMessageBox::warning(this, "Error", "NMEA2000 interface not available");
+        return;
+    }
+    
+    // TODO: Implement sending of configuration query PGNs
+    // This would typically involve sending PGN 59904 (ISO Request) 
+    // to request specific PGNs like 126996, 126998, etc.
+    
+    QMessageBox::information(this, "Query Configuration", 
+                            QString("Sending configuration query to device 0x%1...\n\n"
+                                   "This feature will send standard NMEA2000 requests for:\n"
+                                   "• Product Information (PGN 126996)\n"
+                                   "• Configuration Information (PGN 126998)\n"
+                                   "• Supported PGNs (PGN 126464)\n\n"
+                                   "Implementation coming soon!")
+                            .arg(targetAddress, 2, 16, QChar('0')).toUpper());
+}
+
+void DeviceMainWindow::requestProductInformation(uint8_t targetAddress)
+{
+    // Send PGN 59904 (ISO Request) requesting PGN 126996 (Product Information)
+    if (!nmea2000) {
+        QMessageBox::warning(this, "Error", "NMEA2000 interface not available");
+        return;
+    }
+    
+    // TODO: Implement ISO Request for Product Information
+    QMessageBox::information(this, "Request Product Info", 
+                            QString("Requesting product information from device 0x%1...\n\n"
+                                   "This will send an ISO Request (PGN 59904) asking for:\n"
+                                   "• Product Information (PGN 126996)\n\n"
+                                   "Implementation coming soon!")
+                            .arg(targetAddress, 2, 16, QChar('0')).toUpper());
+}
+
+void DeviceMainWindow::showPGNHistoryForDevice(uint8_t sourceAddress)
+{
+    // Show PGN log dialog filtered for this specific device
+    if (!m_pgnLogDialog) {
+        m_pgnLogDialog = new PGNLogDialog(this);
+    }
+    
+    // Set filter for the specific source address
+    m_pgnLogDialog->setSourceFilter(sourceAddress);
+    m_pgnLogDialog->setWindowTitle(QString("PGN History - Device 0x%1")
+                                   .arg(sourceAddress, 2, 16, QChar('0')).toUpper());
+    
+    m_pgnLogDialog->show();
+    m_pgnLogDialog->raise();
+    m_pgnLogDialog->activateWindow();
 }
 
 void DeviceMainWindow::clearConflictHistory()

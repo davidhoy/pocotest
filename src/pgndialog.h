@@ -21,6 +21,7 @@ class PGNDialog : public QDialog
 
 public:
     explicit PGNDialog(QWidget *parent = nullptr);
+    void setDestinationAddress(uint8_t address);
 
 private slots:
     void onSendPGN();

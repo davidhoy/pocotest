@@ -62,6 +62,7 @@ private slots:
     void showSendPGNDialog();
     void onCanInterfaceChanged(const QString &interface);
     void clearConflictHistory();
+    void showDeviceContextMenu(const QPoint& position);
 
 private:
     void setupUI();
@@ -88,6 +89,13 @@ private:
     uint8_t extractInstanceFromPGN(const tN2kMsg& msg);
     void updateInstanceConflicts();
     bool isPGNWithInstance(unsigned long pgn);
+    
+    // Context menu methods
+    void showSendPGNToDevice(uint8_t targetAddress, const QString& nodeAddress);
+    void showDeviceDetails(int row);
+    void queryDeviceConfiguration(uint8_t targetAddress);
+    void requestProductInformation(uint8_t targetAddress);
+    void showPGNHistoryForDevice(uint8_t sourceAddress);
 
 private:
     // UI Components

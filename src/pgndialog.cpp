@@ -426,3 +426,10 @@ tN2kMsg PGNDialog::createMessageFromInputs()
     
     return msg;
 }
+
+void PGNDialog::setDestinationAddress(uint8_t address)
+{
+    if (m_destinationSpinBox) {
+        m_destinationSpinBox->setValue(address);
+    }
+}
