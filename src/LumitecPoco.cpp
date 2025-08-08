@@ -55,7 +55,6 @@ bool SetLumitecExtSwStateInfo(tN2kMsg &N2kMsg, uint8_t extSwId, uint8_t extSwSta
     uint16_t mfgCode = LUMITEC_MANUFACTURER_CODE | (MARINE_INDUSTRY_CODE << 13);
     N2kMsg.Set2ByteUInt(mfgCode, Index);
     
-    // Industry code (3 bits) + reserved bits (lower 2 bits set to 11)
     N2kMsg.SetByte(PID_EXTSW_STATE_INFO, Index);
     N2kMsg.SetByte(extSwId, Index);
     N2kMsg.SetByte(extSwState, Index);
@@ -74,7 +73,6 @@ bool SetLumitecExtSwCustomHSB(tN2kMsg &N2kMsg, uint8_t destination, uint8_t acti
     uint16_t mfgCode = LUMITEC_MANUFACTURER_CODE | (MARINE_INDUSTRY_CODE << 13);
     N2kMsg.Set2ByteUInt(mfgCode, Index);
     
-    // Industry code (3 bits) + reserved bits (lower 2 bits set to 11)
     N2kMsg.SetByte(PID_EXTSW_CUSTOM_HSB, Index);
     N2kMsg.SetByte(actionId, Index);
     N2kMsg.SetByte(switchId, Index);
@@ -95,7 +93,6 @@ bool SetLumitecExtSwStartPattern(tN2kMsg &N2kMsg, uint8_t destination, uint8_t s
     uint16_t mfgCode = LUMITEC_MANUFACTURER_CODE | (MARINE_INDUSTRY_CODE << 13);
     N2kMsg.Set2ByteUInt(mfgCode, Index);
     
-    // Proprietary ID
     N2kMsg.SetByte(PID_EXTSW_START_PATTERN, Index);
     N2kMsg.SetByte(switchId, Index);
     N2kMsg.SetByte(patternId, Index);
@@ -113,7 +110,6 @@ bool SetLumitecOutputChannelStatus(tN2kMsg &N2kMsg, uint8_t channel, uint8_t cha
     uint16_t mfgCode = LUMITEC_MANUFACTURER_CODE | (MARINE_INDUSTRY_CODE << 13);
     N2kMsg.Set2ByteUInt(mfgCode, Index);
     
-    // Industry code (3 bits) + reserved bits (lower 2 bits set to 11)
     N2kMsg.SetByte(PID_OUTPUT_CHANNEL_STATUS, Index);
     N2kMsg.SetByte(channel, Index);
     N2kMsg.SetByte(channelMode, Index);
@@ -134,7 +130,6 @@ bool SetLumitecOutputChannelBin(tN2kMsg &N2kMsg, uint8_t destination, uint8_t ch
     uint16_t mfgCode = LUMITEC_MANUFACTURER_CODE | (MARINE_INDUSTRY_CODE << 13);
     N2kMsg.Set2ByteUInt(mfgCode, Index);
     
-    // Industry code (3 bits) + reserved bits (lower 2 bits set to 11)
     N2kMsg.SetByte(PID_OUTPUT_CHANNEL_BIN, Index);
     N2kMsg.SetByte(channel, Index);
     N2kMsg.SetByte(state, Index);
@@ -152,7 +147,6 @@ bool SetLumitecOutputChannelPWM(tN2kMsg &N2kMsg, uint8_t destination, uint8_t ch
     uint16_t mfgCode = LUMITEC_MANUFACTURER_CODE | (MARINE_INDUSTRY_CODE << 13);
     N2kMsg.Set2ByteUInt(mfgCode, Index);
     
-    // Industry code (3 bits) + reserved bits (lower 2 bits set to 11)
     N2kMsg.SetByte(PID_OUTPUT_CHANNEL_PWM, Index);
     N2kMsg.SetByte(channel, Index);
     N2kMsg.SetByte(duty, Index);
@@ -171,7 +165,6 @@ bool SetLumitecOutputChannelPLI(tN2kMsg &N2kMsg, uint8_t destination, uint8_t ch
     uint16_t mfgCode = LUMITEC_MANUFACTURER_CODE | (MARINE_INDUSTRY_CODE << 13);
     N2kMsg.Set2ByteUInt(mfgCode, Index);
     
-    // Industry code (3 bits) + reserved bits (lower 2 bits set to 11)
     N2kMsg.SetByte(PID_OUTPUT_CHANNEL_PLI, Index);
     N2kMsg.SetByte(channel, Index);
     
@@ -193,8 +186,7 @@ bool SetLumitecOutputChannelPLIT2HSB(tN2kMsg &N2kMsg, uint8_t destination, uint8
     int Index = 0;
     uint16_t mfgCode = LUMITEC_MANUFACTURER_CODE | (MARINE_INDUSTRY_CODE << 13);
     N2kMsg.Set2ByteUInt(mfgCode, Index);
-    
-    // Industry code (3 bits) + reserved bits (lower 2 bits set to 11)
+
     N2kMsg.SetByte(PID_OUTPUT_CHANNEL_PLI_T2HSB, Index);
     N2kMsg.SetByte(channel, Index);
     
