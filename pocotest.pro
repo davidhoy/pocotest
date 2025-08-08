@@ -4,6 +4,9 @@ greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
 CONFIG += c++11 console
 
+# Treat warnings as errors for high code quality
+QMAKE_CXXFLAGS += -Werror
+
 DESTDIR = ./
 OBJECTS_DIR = build/obj
 MOC_DIR = build/moc
