@@ -14,9 +14,9 @@
 #include "N2kMsg.h"
 
 // Lumitec Constants
-#define LUMITEC_MANUFACTURER_CODE   1512
-#define MARINE_INDUSTRY_CODE        4
-#define LUMITEC_PGN_61184          61184
+#define LUMITEC_MANUFACTURER_CODE 1512
+#define LUMITEC_PGN_61184 61184
+#define MARINE_INDUSTRY_CODE 4  // Standard marine industry code
 
 // Proprietary IDs for PGN 61184
 enum LumitecPocoProprietaryID {

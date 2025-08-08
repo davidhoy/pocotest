@@ -107,6 +107,7 @@ private:
     
     // Lumitec Poco message handling
     void handleLumitecPocoMessage(const tN2kMsg& msg);
+    void handleProductInformationResponse(const tN2kMsg& msg);
     void displayLumitecMessage(const tN2kMsg& msg, const QString& description);
     
     // Lumitec Poco control methods
@@ -144,6 +145,12 @@ private:
     };
     QMap<uint8_t, DeviceActivity> m_deviceActivity; // key: source address
     static const int DEVICE_TIMEOUT_MS = 30000; // 30 seconds
+    
+    // Product information request tracking
+    QSet<uint8_t> m_pendingProductInfoRequests; // Track which devices we've requested info from
+    
+    // Helper methods
+    void updatePGNDialogDeviceList();
     
     // Secondary dialogs
     PGNLogDialog* m_pgnLogDialog;

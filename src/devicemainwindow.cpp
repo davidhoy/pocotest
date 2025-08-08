@@ -3,6 +3,7 @@
 #include "pgndialog.h"
 #include "LumitecPoco.h"
 #include "NMEA2000_SocketCAN.h"
+#include <NMEA2000.h>
 #include <QDir>
 #include <QProcess>
 #include <QMessageBox>
@@ -280,6 +281,11 @@ void DeviceMainWindow::handleN2kMsg(const tN2kMsg& msg) {
     if (msg.PGN == LUMITEC_PGN_61184) {
         handleLumitecPocoMessage(msg);
     }
+    
+    // Handle Product Information responses (PGN 126996)
+    if (msg.PGN == N2kPGNProductInformation) {
+        handleProductInformationResponse(msg);
+    }
 
     // Forward to PGN log dialog if it exists and is visible
     if (m_pgnLogDialog && m_pgnLogDialog->isVisible()) {
@@ -460,6 +466,9 @@ void DeviceMainWindow::populateDeviceTable()
     
     // Resize columns to content
     m_deviceTable->resizeColumnsToContents();
+    
+    // Update PGN dialog device list if it exists
+    updatePGNDialogDeviceList();
 }
 
 // Slot implementations
@@ -748,13 +757,25 @@ void DeviceMainWindow::requestProductInformation(uint8_t targetAddress)
         return;
     }
     
-    // TODO: Implement ISO Request for Product Information
-    QMessageBox::information(this, "Request Product Info", 
-                            QString("Requesting product information from device 0x%1...\n\n"
-                                   "This will send an ISO Request (PGN 59904) asking for:\n"
-                                   "• Product Information (PGN 126996)\n\n"
-                                   "Implementation coming soon!")
+    tN2kMsg N2kMsg;
+    SetN2kPGN59904(N2kMsg, targetAddress, N2kPGNProductInformation);
+    
+    if (nmea2000->SendMsg(N2kMsg)) {
+        // Track that we've requested product info from this device
+        m_pendingProductInfoRequests.insert(targetAddress);
+        
+        QMessageBox::information(this, "Request Sent", 
+                                QString("Product information request sent to device 0x%1\n\n"
+                                       "Sent ISO Request (PGN 59904) requesting:\n"
+                                       "• Product Information (PGN 126996)\n\n"
+                                       "The device should respond with its product details.\n"
+                                       "A dialog will show the response when received.")
+                                .arg(targetAddress, 2, 16, QChar('0')).toUpper());
+    } else {
+        QMessageBox::warning(this, "Send Failed", 
+                            QString("Failed to send product information request to device 0x%1")
                             .arg(targetAddress, 2, 16, QChar('0')).toUpper());
+    }
 }
 
 void DeviceMainWindow::showPGNHistoryForDevice(uint8_t sourceAddress)
@@ -1158,6 +1179,93 @@ void DeviceMainWindow::handleLumitecPocoMessage(const tN2kMsg& msg) {
     }
 }
 
+// Product Information Message Handling
+void DeviceMainWindow::handleProductInformationResponse(const tN2kMsg& msg) {
+    if (msg.PGN != N2kPGNProductInformation) {
+        return;
+    }
+    
+    // Check if this is a response to a request we made
+    bool showDialog = m_pendingProductInfoRequests.contains(msg.Source);
+    if (showDialog) {
+        // Remove from pending requests since we got the response
+        m_pendingProductInfoRequests.remove(msg.Source);
+    }
+    
+    // Basic parsing of Product Information (PGN 126996)
+    if (msg.DataLen < 10) { // Minimum expected length
+        qDebug() << "Product Information message too short: " << msg.DataLen << " bytes";
+        return;
+    }
+    
+    int Index = 0;
+    uint16_t N2kVersion = msg.Get2ByteUInt(Index);
+    uint16_t ProductCode = msg.Get2ByteUInt(Index);
+    char ModelID[33] = {0}; // Max 32 chars + null terminator
+    char SoftwareVersion[33] = {0};
+    char ModelVersion[33] = {0};
+    char SerialCode[33] = {0};
+    
+    // Read strings with length prefixes
+    int len;
+    
+    // Model ID
+    len = msg.GetByte(Index);
+    if (len > 32) len = 32; // Prevent buffer overflow
+    for (int i = 0; i < len && Index < msg.DataLen; i++) {
+        ModelID[i] = msg.GetByte(Index);
+    }
+    
+    // Software Version
+    if (Index < msg.DataLen) {
+        len = msg.GetByte(Index);
+        if (len > 32) len = 32;
+        for (int i = 0; i < len && Index < msg.DataLen; i++) {
+            SoftwareVersion[i] = msg.GetByte(Index);
+        }
+    }
+    
+    // Model Version
+    if (Index < msg.DataLen) {
+        len = msg.GetByte(Index);
+        if (len > 32) len = 32;
+        for (int i = 0; i < len && Index < msg.DataLen; i++) {
+            ModelVersion[i] = msg.GetByte(Index);
+        }
+    }
+    
+    // Serial Code
+    if (Index < msg.DataLen) {
+        len = msg.GetByte(Index);
+        if (len > 32) len = 32;
+        for (int i = 0; i < len && Index < msg.DataLen; i++) {
+            SerialCode[i] = msg.GetByte(Index);
+        }
+    }
+    
+    if (showDialog) {
+        // Show detailed dialog for responses to our explicit requests
+        QString productInfo = QString(
+            "Product Information Response from Device 0x%1:\n\n"
+            "• N2K Version: %2\n"
+            "• Product Code: %3\n"
+            "• Model ID: %4\n"
+            "• Software Version: %5\n"
+            "• Model Version: %6\n"
+            "• Serial Code: %7"
+        ).arg(msg.Source, 2, 16, QChar('0'))
+         .arg(N2kVersion)
+         .arg(ProductCode)
+         .arg(QString::fromLatin1(ModelID))
+         .arg(QString::fromLatin1(SoftwareVersion))
+         .arg(QString::fromLatin1(ModelVersion))
+         .arg(QString::fromLatin1(SerialCode));
+        
+        QMessageBox::information(this, "Product Information Response", productInfo);
+    }
+    // Note: Unsolicited product information is silently ignored
+}
+
 // Lumitec Poco Control Methods
 void DeviceMainWindow::sendLumitecSimpleAction(uint8_t targetAddress, uint8_t actionId, uint8_t switchId) {
     if (!nmea2000) {
@@ -1402,4 +1510,34 @@ void DeviceMainWindow::displayLumitecMessage(const tN2kMsg& msg, const QString& 
     
     // Also log to debug output
     qDebug() << "Lumitec Poco Message:" << statusText;
+}
+
+void DeviceMainWindow::updatePGNDialogDeviceList()
+{
+    // Only update if the PGN dialog exists
+    if (!m_pgnLogDialog) {
+        return;
+    }
+    
+    // Build a list of current devices for the filter combo boxes
+    QStringList devices;
+    
+    for (int row = 0; row < m_deviceTable->rowCount(); row++) {
+        QTableWidgetItem* nodeItem = m_deviceTable->item(row, 0);  // Node address
+        QTableWidgetItem* nameItem = m_deviceTable->item(row, 1);  // Device name
+        
+        if (nodeItem && nameItem) {
+            QString nodeAddr = nodeItem->text();
+            QString deviceName = nameItem->text();
+            
+            // Format: "Device Name (0xXX)"
+            QString deviceEntry = QString("%1 (0x%2)")
+                                .arg(deviceName)
+                                .arg(nodeAddr);
+            devices.append(deviceEntry);
+        }
+    }
+    
+    // Update the PGN dialog's device list
+    m_pgnLogDialog->updateDeviceList(devices);
 }
