@@ -41,9 +41,40 @@ cmake ..
 make
 ```
 
+## Tunneling CAN Traffic with canneloni
+
+To forward CAN traffic from a remote device with CAN hardware to your local machine, you can use [canneloni](https://github.com/mguentner/canneloni).
+
+### Example Setup
+
+#### On the remote device (with CAN hardware):
+
+```sh
+canneloni -i can0 -r <local_device_ip> -p 20000
+```
+
+- `-i can0`: CAN interface to tunnel.
+- `-r <local_device_ip>`: IP address of your local device.
+- `-p 20000`: UDP port (default is 20000).
+
+#### On your local device:
+
+```sh
+sudo modprobe vcan
+sudo ip link add dev vcan0 type vcan
+sudo ip link set up vcan0
+canneloni -i vcan0 -l -p 20000
+```
+
+- `-i vcan0`: Virtual CAN interface.
+- `-l`: Listen mode.
+- `-p 20000`: UDP port (must match remote).
+
+Now, CAN traffic from the remote device's `can0` will be available on your local `vcan0` interface.
+
 ## Running
 
-After building, the executable will be in the `build` directory:
+After building, the executable will be in the `build` directory.  The application will autodetect the available CAN interfaces:
 
 ```sh
 ./pocotest
