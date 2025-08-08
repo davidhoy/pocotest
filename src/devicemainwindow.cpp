@@ -1,6 +1,7 @@
 #include "devicemainwindow.h"
 #include "pgnlogdialog.h"
 #include "pgndialog.h"
+#include "LumitecPoco.h"
 #include "NMEA2000_SocketCAN.h"
 #include <QDir>
 #include <QProcess>
@@ -18,6 +19,10 @@
 #include <QClipboard>
 #include <QIcon>
 #include <QPixmap>
+#include <QSlider>
+#include <QDialog>
+#include <QVBoxLayout>
+#include <QDateTime>
 
 tNMEA2000_SocketCAN* nmea2000;
 extern char can_interface[80];
@@ -128,7 +133,7 @@ void DeviceMainWindow::setupUI()
     m_deviceTable->horizontalHeader()->setStretchLastSection(true);
     m_deviceTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
     m_deviceTable->verticalHeader()->setVisible(false);
-    m_deviceTable->setSortingEnabled(true);
+    m_deviceTable->setSortingEnabled(false); // Disable sorting to maintain device order
     
     // Set smaller font for the table
     QFont tableFont = m_deviceTable->font();
@@ -265,8 +270,16 @@ void DeviceMainWindow::staticN2kMsgHandler(const tN2kMsg &msg) {
 }
 
 void DeviceMainWindow::handleN2kMsg(const tN2kMsg& msg) {
+    // Update device activity tracking
+    updateDeviceActivity(msg.Source);
+    
     // Track PGN instances for conflict detection
     trackPGNInstance(msg);
+
+    // Handle Lumitec Poco specific messages
+    if (msg.PGN == LUMITEC_PGN_61184) {
+        handleLumitecPocoMessage(msg);
+    }
 
     // Forward to PGN log dialog if it exists and is visible
     if (m_pgnLogDialog && m_pgnLogDialog->isVisible()) {
@@ -367,100 +380,62 @@ void DeviceMainWindow::updateDeviceList()
         return;
     }
     
+    // Check for device timeouts
+    checkDeviceTimeouts();
+    
     populateDeviceTable();
 }
 
 void DeviceMainWindow::populateDeviceTable()
 {
-    // Clear existing rows
-    m_deviceTable->setRowCount(0);
-    
     if (!m_deviceList) {
         m_statusLabel->setText("Device list not available");
         m_statusLabel->setStyleSheet("font-weight: bold; color: red; padding: 5px; background-color: #ffe6e6; border: 1px solid #ff9999; border-radius: 3px;");
         return;
     }
     
+    // Create a map to track existing devices and their table positions
+    QMap<uint8_t, int> existingDeviceRows;
+    
+    // If table is not empty, preserve existing devices
+    for (int row = 0; row < m_deviceTable->rowCount(); row++) {
+        QTableWidgetItem* nodeItem = m_deviceTable->item(row, 0);
+        if (nodeItem) {
+            bool ok;
+            uint8_t source = nodeItem->text().toUInt(&ok, 16);
+            if (ok) {
+                existingDeviceRows[source] = row;
+            }
+        }
+    }
+    
     int deviceCount = 0;
     
-    // Iterate through all possible source addresses (0-253)
+    // First pass: update existing devices and mark active ones
     for (uint8_t source = 0; source < N2kMaxBusDevices; source++) {
         const tNMEA2000::tDevice* device = m_deviceList->FindDeviceBySource(source);
         if (device) {
-            m_deviceTable->insertRow(deviceCount);
+            bool isActive = m_deviceActivity.contains(source) && m_deviceActivity[source].isActive;
             
-            // Node Address (Source) - in hex format like Maretron
-            QTableWidgetItem* nodeAddressItem = new QTableWidgetItem(QString("%1").arg(source, 2, 16, QChar('0')).toUpper());
-            nodeAddressItem->setTextAlignment(Qt::AlignCenter);
-            m_deviceTable->setItem(deviceCount, 0, nodeAddressItem);
-            
-            // Manufacturer - convert manufacturer code to name
-            uint16_t manufacturerCode = device->GetManufacturerCode();
-            QString manufacturerName = getManufacturerName(manufacturerCode);
-            m_deviceTable->setItem(deviceCount, 1, new QTableWidgetItem(manufacturerName));
-            
-            // Mfg Model ID - use virtual method
-            QString modelId = "Unknown";
-            const char* modelIdStr = device->GetModelID();
-            if (modelIdStr && strlen(modelIdStr) > 0) {
-                modelId = QString(modelIdStr);
+            if (existingDeviceRows.contains(source)) {
+                // Update existing device
+                int row = existingDeviceRows[source];
+                updateDeviceTableRow(row, source, device, isActive);
+                m_deviceActivity[source].tableRow = row;
+                deviceCount++;
+            } else {
+                // New device - add to end
+                int newRow = m_deviceTable->rowCount();
+                m_deviceTable->insertRow(newRow);
+                updateDeviceTableRow(newRow, source, device, isActive);
+                m_deviceActivity[source].tableRow = newRow;
+                deviceCount++;
             }
-            m_deviceTable->setItem(deviceCount, 2, new QTableWidgetItem(modelId));
-            
-            // Mfg Serial Number - use virtual method
-            QString serialNumber = "Unknown";
-            const char* serialStr = device->GetModelSerialCode();
-            if (serialStr && strlen(serialStr) > 0) {
-                serialNumber = QString(serialStr);
-            }
-            m_deviceTable->setItem(deviceCount, 3, new QTableWidgetItem(serialNumber));
-            
-            // Device Instance
-            uint8_t deviceInstance = device->GetDeviceInstance();
-            QTableWidgetItem* instanceItem = new QTableWidgetItem(QString::number(deviceInstance));
-            instanceItem->setTextAlignment(Qt::AlignCenter);
-            m_deviceTable->setItem(deviceCount, 4, instanceItem);
-            
-            // Type - create based on device function and class
-            QString type = getDeviceFunctionName(device->GetDeviceFunction());
-            if (type.startsWith("Unknown")) {
-                type = getDeviceClassName(device->GetDeviceClass());
-            }
-            if (type.startsWith("Unknown")) {
-                type = QString("Device %1").arg(source, 2, 16, QChar('0')).toUpper();
-            }
-            m_deviceTable->setItem(deviceCount, 5, new QTableWidgetItem(type));
-            
-            // Current Software - use virtual method
-            QString softwareVersion = "-";
-            const char* swCodeStr = device->GetSwCode();
-            if (swCodeStr && strlen(swCodeStr) > 0) {
-                softwareVersion = QString(swCodeStr);
-            }
-            m_deviceTable->setItem(deviceCount, 6, new QTableWidgetItem(softwareVersion));
-            
-            // Installation Description - combine InstallationDescription1 and InstallationDescription2 from PGN 126998
-            QString installDesc = "";
-            const char* installDesc1 = device->GetInstallationDescription1();
-            const char* installDesc2 = device->GetInstallationDescription2();
-            
-            if (installDesc1 && strlen(installDesc1) > 0) {
-                installDesc = QString(installDesc1);
-            }
-            if (installDesc2 && strlen(installDesc2) > 0) {
-                if (!installDesc.isEmpty()) {
-                    installDesc += " / ";
-                }
-                installDesc += QString(installDesc2);
-            }
-            if (installDesc.isEmpty()) {
-                installDesc = "-";
-            }
-            m_deviceTable->setItem(deviceCount, 7, new QTableWidgetItem(installDesc));
-            
-            deviceCount++;
         }
     }
+    
+    // Gray out inactive devices
+    grayOutInactiveDevices();
     
     // Update status
     if (deviceCount == 0) {
@@ -490,6 +465,11 @@ void DeviceMainWindow::populateDeviceTable()
 // Slot implementations
 void DeviceMainWindow::onRefreshClicked()
 {
+    // Clear the device table and activity tracking
+    m_deviceTable->setRowCount(0);
+    m_deviceActivity.clear();
+    
+    // Force update the device list
     updateDeviceList();
 }
 
@@ -571,6 +551,56 @@ void DeviceMainWindow::showDeviceContextMenu(const QPoint& position)
     connect(productInfoAction, &QAction::triggered, [this, sourceAddress]() {
         requestProductInformation(sourceAddress);
     });
+    
+    // Add Lumitec-specific menu items if this is a Lumitec device
+    if (manufacturer == "Lumitec") {
+        contextMenu->addSeparator();
+        
+        // Lumitec Control submenu
+        QMenu* lumitecMenu = contextMenu->addMenu("Lumitec Poco Control");
+        
+        // Light On/Off actions
+        QAction* lightOnAction = lumitecMenu->addAction("Turn Light On");
+        connect(lightOnAction, &QAction::triggered, [this, sourceAddress]() {
+            sendLumitecSimpleAction(sourceAddress, ACTION_ON, 1); // Switch ID 1
+        });
+        
+        QAction* lightOffAction = lumitecMenu->addAction("Turn Light Off");
+        connect(lightOffAction, &QAction::triggered, [this, sourceAddress]() {
+            sendLumitecSimpleAction(sourceAddress, ACTION_OFF, 1); // Switch ID 1
+        });
+        
+        lumitecMenu->addSeparator();
+        
+        // Color preset actions
+        QAction* whiteAction = lumitecMenu->addAction("Set White");
+        connect(whiteAction, &QAction::triggered, [this, sourceAddress]() {
+            sendLumitecSimpleAction(sourceAddress, ACTION_WHITE, 1); // Switch ID 1
+        });
+        
+        QAction* redAction = lumitecMenu->addAction("Set Red");
+        connect(redAction, &QAction::triggered, [this, sourceAddress]() {
+            sendLumitecSimpleAction(sourceAddress, ACTION_RED, 1); // Switch ID 1
+        });
+        
+        QAction* greenAction = lumitecMenu->addAction("Set Green");
+        connect(greenAction, &QAction::triggered, [this, sourceAddress]() {
+            sendLumitecSimpleAction(sourceAddress, ACTION_GREEN, 1); // Switch ID 1
+        });
+        
+        QAction* blueAction = lumitecMenu->addAction("Set Blue");
+        connect(blueAction, &QAction::triggered, [this, sourceAddress]() {
+            sendLumitecSimpleAction(sourceAddress, ACTION_BLUE, 1); // Switch ID 1
+        });
+        
+        lumitecMenu->addSeparator();
+        
+        // Advanced control action
+        QAction* customControlAction = lumitecMenu->addAction("Custom Color Control...");
+        connect(customControlAction, &QAction::triggered, [this, sourceAddress, nodeAddress]() {
+            showLumitecColorDialog(sourceAddress, nodeAddress);
+        });
+    }
     
     contextMenu->addSeparator();
     
@@ -998,6 +1028,378 @@ QString DeviceMainWindow::getPGNName(unsigned long pgn) {
         case 130312: return "Temperature";
         case 130314: return "Actual Pressure";
         case 130316: return "Temperature, Extended Range";
+        case 61184: return "Lumitec Poco Proprietary";
         default: return QString("PGN %1").arg(pgn);
     }
+}
+
+// Lumitec Poco Message Handling
+void DeviceMainWindow::handleLumitecPocoMessage(const tN2kMsg& msg) {
+    uint8_t proprietaryId;
+    if (!ParseLumitecPGN61184(msg, proprietaryId)) {
+        return; // Not a valid Lumitec message
+    }
+    
+    QString description;
+    
+    switch (proprietaryId) {
+        case PID_EXTSW_SIMPLE_ACTIONS: {
+            LumitecExtSwSimpleAction action;
+            if (ParseLumitecExtSwSimpleAction(msg, action)) {
+                description = QString("ExtSw Simple Action - Switch %1: %2")
+                             .arg(action.switchId)
+                             .arg(GetLumitecActionName(action.actionId));
+            }
+            break;
+        }
+        
+        case PID_EXTSW_STATE_INFO: {
+            LumitecExtSwStateInfo stateInfo;
+            if (ParseLumitecExtSwStateInfo(msg, stateInfo)) {
+                description = QString("ExtSw State - Switch %1: State=%2, Type=%3")
+                             .arg(stateInfo.extSwId)
+                             .arg(stateInfo.extSwState)
+                             .arg(GetLumitecExtSwTypeName(stateInfo.extSwType));
+            }
+            break;
+        }
+        
+        case PID_EXTSW_CUSTOM_HSB: {
+            LumitecExtSwCustomHSB customHSB;
+            if (ParseLumitecExtSwCustomHSB(msg, customHSB)) {
+                description = QString("ExtSw Custom HSB - Switch %1: %2 H=%3 S=%4 B=%5")
+                             .arg(customHSB.switchId)
+                             .arg(GetLumitecActionName(customHSB.actionId))
+                             .arg(customHSB.hue)
+                             .arg(customHSB.saturation)
+                             .arg(customHSB.brightness);
+            }
+            break;
+        }
+        
+        case PID_EXTSW_START_PATTERN: {
+            LumitecExtSwStartPattern startPattern;
+            if (ParseLumitecExtSwStartPattern(msg, startPattern)) {
+                description = QString("ExtSw Start Pattern - Switch %1: Pattern %2")
+                             .arg(startPattern.switchId)
+                             .arg(startPattern.patternId);
+            }
+            break;
+        }
+        
+        case PID_OUTPUT_CHANNEL_STATUS: {
+            LumitecOutputChannelStatus status;
+            if (ParseLumitecOutputChannelStatus(msg, status)) {
+                double voltage = status.inputVoltage * 0.2; // 200mV units
+                double current = status.current * 0.1;      // 100mA units
+                description = QString("Output Channel %1 Status - Mode: %2, Level: %3, %.1fV, %.1fA")
+                             .arg(status.channel)
+                             .arg(GetLumitecChannelModeName(status.channelMode))
+                             .arg(status.outputLevel)
+                             .arg(voltage)
+                             .arg(current);
+            }
+            break;
+        }
+        
+        case PID_OUTPUT_CHANNEL_BIN: {
+            LumitecOutputChannelBin binControl;
+            if (ParseLumitecOutputChannelBin(msg, binControl)) {
+                description = QString("Output Channel %1 Binary - %2")
+                             .arg(binControl.channel)
+                             .arg(binControl.state ? "ON" : "OFF");
+            }
+            break;
+        }
+        
+        case PID_OUTPUT_CHANNEL_PWM: {
+            LumitecOutputChannelPWM pwmControl;
+            if (ParseLumitecOutputChannelPWM(msg, pwmControl)) {
+                double duty = (pwmControl.duty / 255.0) * 100.0; // Convert to percentage
+                description = QString("Output Channel %1 PWM - Duty: %.1f%%, Transition: %2ms")
+                             .arg(pwmControl.channel)
+                             .arg(duty)
+                             .arg(pwmControl.transitionTime);
+            }
+            break;
+        }
+        
+        case PID_OUTPUT_CHANNEL_PLI: {
+            LumitecOutputChannelPLI pliControl;
+            if (ParseLumitecOutputChannelPLI(msg, pliControl)) {
+                description = QString("Output Channel %1 PLI - Message: 0x%2")
+                             .arg(pliControl.channel)
+                             .arg(pliControl.pliMessage, 8, 16, QChar('0'));
+            }
+            break;
+        }
+        
+        case PID_OUTPUT_CHANNEL_PLI_T2HSB: {
+            LumitecOutputChannelPLIT2HSB pliT2HSB;
+            if (ParseLumitecOutputChannelPLIT2HSB(msg, pliT2HSB)) {
+                description = QString("Output Channel %1 PLI T2HSB - Clan:%2 Trans:%3 H=%4 S=%5 B=%6")
+                             .arg(pliT2HSB.channel)
+                             .arg(pliT2HSB.pliClan)
+                             .arg(pliT2HSB.transition)
+                             .arg(pliT2HSB.hue)
+                             .arg(pliT2HSB.saturation)
+                             .arg(pliT2HSB.brightness);
+            }
+            break;
+        }
+        
+        default:
+            description = QString("Unknown Lumitec PID %1").arg(proprietaryId);
+            break;
+    }
+    
+    if (!description.isEmpty()) {
+        displayLumitecMessage(msg, description);
+    }
+}
+
+// Lumitec Poco Control Methods
+void DeviceMainWindow::sendLumitecSimpleAction(uint8_t targetAddress, uint8_t actionId, uint8_t switchId) {
+    if (!nmea2000) {
+        qDebug() << "NMEA2000 not initialized, cannot send Lumitec message";
+        return;
+    }
+    
+    tN2kMsg msg;
+    if (SetLumitecExtSwSimpleAction(msg, targetAddress, actionId, switchId)) {
+        if (nmea2000->SendMsg(msg)) {
+            qDebug() << "Sent Lumitec Simple Action - Target:" << QString("0x%1").arg(targetAddress, 2, 16, QChar('0'))
+                     << "Action:" << GetLumitecActionName(actionId) 
+                     << "Switch:" << switchId;
+        } else {
+            qDebug() << "Failed to send Lumitec Simple Action message";
+        }
+    } else {
+        qDebug() << "Failed to create Lumitec Simple Action message";
+    }
+}
+
+void DeviceMainWindow::showLumitecColorDialog(uint8_t targetAddress, const QString& nodeAddress) {
+    // Create a simple color dialog for HSB control
+    QDialog dialog(this);
+    dialog.setWindowTitle(QString("Lumitec Color Control - Device 0x%1").arg(nodeAddress));
+    dialog.setModal(true);
+    
+    QVBoxLayout* layout = new QVBoxLayout(&dialog);
+    
+    // Hue slider
+    layout->addWidget(new QLabel("Hue (0-255):"));
+    QSlider* hueSlider = new QSlider(Qt::Horizontal);
+    hueSlider->setRange(0, 255);
+    hueSlider->setValue(128);
+    QLabel* hueLabel = new QLabel("128");
+    connect(hueSlider, &QSlider::valueChanged, [hueLabel](int value) {
+        hueLabel->setText(QString::number(value));
+    });
+    QHBoxLayout* hueLayout = new QHBoxLayout();
+    hueLayout->addWidget(hueSlider);
+    hueLayout->addWidget(hueLabel);
+    layout->addLayout(hueLayout);
+    
+    // Saturation slider
+    layout->addWidget(new QLabel("Saturation (0-255):"));
+    QSlider* satSlider = new QSlider(Qt::Horizontal);
+    satSlider->setRange(0, 255);
+    satSlider->setValue(255);
+    QLabel* satLabel = new QLabel("255");
+    connect(satSlider, &QSlider::valueChanged, [satLabel](int value) {
+        satLabel->setText(QString::number(value));
+    });
+    QHBoxLayout* satLayout = new QHBoxLayout();
+    satLayout->addWidget(satSlider);
+    satLayout->addWidget(satLabel);
+    layout->addLayout(satLayout);
+    
+    // Brightness slider
+    layout->addWidget(new QLabel("Brightness (0-255):"));
+    QSlider* brightSlider = new QSlider(Qt::Horizontal);
+    brightSlider->setRange(0, 255);
+    brightSlider->setValue(255);
+    QLabel* brightLabel = new QLabel("255");
+    connect(brightSlider, &QSlider::valueChanged, [brightLabel](int value) {
+        brightLabel->setText(QString::number(value));
+    });
+    QHBoxLayout* brightLayout = new QHBoxLayout();
+    brightLayout->addWidget(brightSlider);
+    brightLayout->addWidget(brightLabel);
+    layout->addLayout(brightLayout);
+    
+    // Buttons
+    QHBoxLayout* buttonLayout = new QHBoxLayout();
+    QPushButton* sendButton = new QPushButton("Send Custom HSB");
+    QPushButton* cancelButton = new QPushButton("Cancel");
+    buttonLayout->addWidget(sendButton);
+    buttonLayout->addWidget(cancelButton);
+    layout->addLayout(buttonLayout);
+    
+    connect(sendButton, &QPushButton::clicked, [this, targetAddress, hueSlider, satSlider, brightSlider, &dialog]() {
+        sendLumitecCustomHSB(targetAddress, hueSlider->value(), satSlider->value(), brightSlider->value());
+        dialog.accept();
+    });
+    
+    connect(cancelButton, &QPushButton::clicked, &dialog, &QDialog::reject);
+    
+    dialog.exec();
+}
+
+void DeviceMainWindow::sendLumitecCustomHSB(uint8_t targetAddress, uint8_t hue, uint8_t saturation, uint8_t brightness) {
+    if (!nmea2000) {
+        qDebug() << "NMEA2000 not initialized, cannot send Lumitec message";
+        return;
+    }
+    
+    tN2kMsg msg;
+    if (SetLumitecExtSwCustomHSB(msg, targetAddress, ACTION_T2HSB, 1, hue, saturation, brightness)) {
+        if (nmea2000->SendMsg(msg)) {
+            qDebug() << "Sent Lumitec Custom HSB - Target:" << QString("0x%1").arg(targetAddress, 2, 16, QChar('0'))
+                     << "H:" << hue << "S:" << saturation << "B:" << brightness;
+        } else {
+            qDebug() << "Failed to send Lumitec Custom HSB message";
+        }
+    } else {
+        qDebug() << "Failed to create Lumitec Custom HSB message";
+    }
+}
+
+// Device Activity Tracking Methods
+void DeviceMainWindow::updateDeviceActivity(uint8_t sourceAddress) {
+    QDateTime now = QDateTime::currentDateTime();
+    
+    if (m_deviceActivity.contains(sourceAddress)) {
+        m_deviceActivity[sourceAddress].lastSeen = now;
+        m_deviceActivity[sourceAddress].isActive = true;
+    } else {
+        DeviceActivity activity;
+        activity.lastSeen = now;
+        activity.isActive = true;
+        activity.tableRow = -1; // Will be set when device is added to table
+        m_deviceActivity[sourceAddress] = activity;
+    }
+}
+
+void DeviceMainWindow::checkDeviceTimeouts() {
+    QDateTime now = QDateTime::currentDateTime();
+    
+    for (auto it = m_deviceActivity.begin(); it != m_deviceActivity.end(); ++it) {
+        qint64 msSinceLastSeen = it->lastSeen.msecsTo(now);
+        if (msSinceLastSeen > DEVICE_TIMEOUT_MS) {
+            it->isActive = false;
+        }
+    }
+}
+
+void DeviceMainWindow::grayOutInactiveDevices() {
+    for (auto it = m_deviceActivity.begin(); it != m_deviceActivity.end(); ++it) {
+        const DeviceActivity& activity = it.value();
+        
+        if (activity.tableRow >= 0 && activity.tableRow < m_deviceTable->rowCount()) {
+            QColor textColor = activity.isActive ? QColor(Qt::black) : QColor(Qt::gray);
+            
+            for (int col = 0; col < m_deviceTable->columnCount(); col++) {
+                QTableWidgetItem* item = m_deviceTable->item(activity.tableRow, col);
+                if (item) {
+                    item->setForeground(QBrush(textColor));
+                }
+            }
+        }
+    }
+}
+
+void DeviceMainWindow::updateDeviceTableRow(int row, uint8_t source, const tNMEA2000::tDevice* device, bool isActive) {
+    // Node Address (Source) - in hex format like Maretron
+    QTableWidgetItem* nodeAddressItem = new QTableWidgetItem(QString("%1").arg(source, 2, 16, QChar('0')).toUpper());
+    nodeAddressItem->setTextAlignment(Qt::AlignCenter);
+    m_deviceTable->setItem(row, 0, nodeAddressItem);
+    
+    // Manufacturer - convert manufacturer code to name
+    uint16_t manufacturerCode = device->GetManufacturerCode();
+    QString manufacturerName = getManufacturerName(manufacturerCode);
+    m_deviceTable->setItem(row, 1, new QTableWidgetItem(manufacturerName));
+    
+    // Mfg Model ID - use virtual method
+    QString modelId = "Unknown";
+    const char* modelIdStr = device->GetModelID();
+    if (modelIdStr && strlen(modelIdStr) > 0) {
+        modelId = QString(modelIdStr);
+    }
+    m_deviceTable->setItem(row, 2, new QTableWidgetItem(modelId));
+    
+    // Mfg Serial Number - use virtual method
+    QString serialNumber = "Unknown";
+    const char* serialStr = device->GetModelSerialCode();
+    if (serialStr && strlen(serialStr) > 0) {
+        serialNumber = QString(serialStr);
+    }
+    m_deviceTable->setItem(row, 3, new QTableWidgetItem(serialNumber));
+    
+    // Device Instance
+    uint8_t deviceInstance = device->GetDeviceInstance();
+    QTableWidgetItem* instanceItem = new QTableWidgetItem(QString::number(deviceInstance));
+    instanceItem->setTextAlignment(Qt::AlignCenter);
+    m_deviceTable->setItem(row, 4, instanceItem);
+    
+    // Type - create based on device function and class
+    QString type = getDeviceFunctionName(device->GetDeviceFunction());
+    if (type.startsWith("Unknown")) {
+        type = getDeviceClassName(device->GetDeviceClass());
+    }
+    if (type.startsWith("Unknown")) {
+        type = QString("Device %1").arg(source, 2, 16, QChar('0')).toUpper();
+    }
+    m_deviceTable->setItem(row, 5, new QTableWidgetItem(type));
+    
+    // Current Software - use virtual method
+    QString softwareVersion = "-";
+    const char* swCodeStr = device->GetSwCode();
+    if (swCodeStr && strlen(swCodeStr) > 0) {
+        softwareVersion = QString(swCodeStr);
+    }
+    m_deviceTable->setItem(row, 6, new QTableWidgetItem(softwareVersion));
+    
+    // Installation Description - combine InstallationDescription1 and InstallationDescription2 from PGN 126998
+    QString installDesc = "";
+    const char* installDesc1 = device->GetInstallationDescription1();
+    const char* installDesc2 = device->GetInstallationDescription2();
+    
+    if (installDesc1 && strlen(installDesc1) > 0) {
+        installDesc = QString(installDesc1);
+    }
+    if (installDesc2 && strlen(installDesc2) > 0) {
+        if (!installDesc.isEmpty()) {
+            installDesc += " / ";
+        }
+        installDesc += QString(installDesc2);
+    }
+    if (installDesc.isEmpty()) {
+        installDesc = "-";
+    }
+    m_deviceTable->setItem(row, 7, new QTableWidgetItem(installDesc));
+    
+    // Set text color based on activity status
+    QColor textColor = isActive ? QColor(Qt::black) : QColor(Qt::gray);
+    for (int col = 0; col < m_deviceTable->columnCount(); col++) {
+        QTableWidgetItem* item = m_deviceTable->item(row, col);
+        if (item) {
+            item->setForeground(QBrush(textColor));
+        }
+    }
+}
+
+void DeviceMainWindow::displayLumitecMessage(const tN2kMsg& msg, const QString& description) {
+    // Update status bar to show the latest Lumitec message
+    QString statusText = QString("Lumitec Poco (Src:%1): %2")
+                        .arg(msg.Source)
+                        .arg(description);
+    
+    if (m_statusLabel) {
+        m_statusLabel->setText(statusText);
+    }
+    
+    // Also log to debug output
+    qDebug() << "Lumitec Poco Message:" << statusText;
 }

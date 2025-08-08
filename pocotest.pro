@@ -1,6 +1,4 @@
-QT += core gui
-
-greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
+QT += core gui widgets
 
 CONFIG += c++11 console
 
@@ -25,6 +23,12 @@ INCLUDEPATH += \
 
 # Main application sources and headers
 SOURCES += \
+    src/main.cpp \
+    src/devicemainwindow.cpp \
+    src/pgnlogdialog.cpp \
+    src/pgndialog.cpp \
+    src/LumitecPoco.cpp \
+    src/n2k_linux_port.cpp \
     components/external/NMEA2000/src/NMEA2000.cpp \
     components/external/NMEA2000/src/N2kTimer.cpp \
     components/external/NMEA2000/src/N2kMsg.cpp \
@@ -33,22 +37,15 @@ SOURCES += \
     components/external/NMEA2000/src/N2kGroupFunction.cpp \
     components/external/NMEA2000/src/N2kGroupFunctionDefaultHandlers.cpp \
     components/external/NMEA2000/src/N2kDeviceList.cpp \
-    components/external/NMEA2000_socketCAN/NMEA2000_SocketCAN.cpp \
-    src/n2k_linux_port.cpp \
-    src/main.cpp \
-    src/devicemainwindow.cpp \
-    src/pgnlogdialog.cpp \
-    src/pgndialog.cpp
+    components/external/NMEA2000_socketCAN/NMEA2000_SocketCAN.cpp
 
 HEADERS += \
     src/devicemainwindow.h \
     src/pgnlogdialog.h \
-    src/pgndialog.h
+    src/pgndialog.h \
+    src/LumitecPoco.h \
+    src/n2k_linux_port.h
 
 # Resources
 RESOURCES += \
     resources/resources.qrc
-
-# Remove the old UI form since we're not using it anymore
-# FORMS += \
-#     ui/mainwindow.ui

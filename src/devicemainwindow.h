@@ -14,8 +14,10 @@
 #include <QSet>
 #include <QMenuBar>
 #include <QStatusBar>
+#include <QDateTime>
 #include <N2kMsg.h>
 #include <N2kDeviceList.h>
+#include "LumitecPoco.h"
 
 // Forward declarations
 class tN2kDeviceList;
@@ -90,12 +92,27 @@ private:
     void updateInstanceConflicts();
     bool isPGNWithInstance(unsigned long pgn);
     
+    // Device activity tracking methods
+    void updateDeviceActivity(uint8_t sourceAddress);
+    void checkDeviceTimeouts();
+    void grayOutInactiveDevices();
+    void updateDeviceTableRow(int row, uint8_t source, const tNMEA2000::tDevice* device, bool isActive);
+    
     // Context menu methods
     void showSendPGNToDevice(uint8_t targetAddress, const QString& nodeAddress);
     void showDeviceDetails(int row);
     void queryDeviceConfiguration(uint8_t targetAddress);
     void requestProductInformation(uint8_t targetAddress);
     void showPGNHistoryForDevice(uint8_t sourceAddress);
+    
+    // Lumitec Poco message handling
+    void handleLumitecPocoMessage(const tN2kMsg& msg);
+    void displayLumitecMessage(const tN2kMsg& msg, const QString& description);
+    
+    // Lumitec Poco control methods
+    void sendLumitecSimpleAction(uint8_t targetAddress, uint8_t actionId, uint8_t switchId);
+    void showLumitecColorDialog(uint8_t targetAddress, const QString& nodeAddress);
+    void sendLumitecCustomHSB(uint8_t targetAddress, uint8_t hue, uint8_t saturation, uint8_t brightness);
 
 private:
     // UI Components
@@ -118,6 +135,15 @@ private:
     QMap<QString, PGNInstanceData> m_pgnInstances; // key: "pgn_source" -> instance data
     QList<InstanceConflict> m_instanceConflicts;
     QSet<uint8_t> m_conflictingSources;
+    
+    // Device activity tracking
+    struct DeviceActivity {
+        QDateTime lastSeen;
+        bool isActive;
+        int tableRow; // Track table row to avoid reordering
+    };
+    QMap<uint8_t, DeviceActivity> m_deviceActivity; // key: source address
+    static const int DEVICE_TIMEOUT_MS = 30000; // 30 seconds
     
     // Secondary dialogs
     PGNLogDialog* m_pgnLogDialog;
