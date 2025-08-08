@@ -112,8 +112,8 @@ void DeviceMainWindow::setupUI()
     m_deviceTable->setColumnCount(8);
     
     QStringList headers;
-    headers << "Node Address" << "Manufacturer" << "Mfg Model ID" << "Mfg Serial Number" 
-            << "Device Instance" << "Type" << "Current Software" << "Installation Description";
+    headers << "Node Address" << "Manufacturer" << "Model ID" << "Serial Number" 
+            << "Instance" << "Type" << "Current Software" << "Installation Description";
     m_deviceTable->setHorizontalHeaderLabels(headers);
     
     // Configure table
@@ -183,10 +183,10 @@ void DeviceMainWindow::setupMenuBar()
     // Help menu
     QMenu* helpMenu = menuBar->addMenu("&Help");
     helpMenu->addAction("&About", this, []() {
-        QMessageBox::about(nullptr, "About NMEA2000 Network Analyzer", 
-                          "NMEA2000 Network Analyzer v1.0\\n\\n"
-                          "Professional NMEA2000 network diagnostic tool with\\n"
-                          "real-time PGN instance conflict detection.\\n\\n"
+        QMessageBox::about(nullptr, "About NMEA2000 Network Analyzer\n", 
+                          "NMEA2000 Network Analyzer v1.0\n\n"
+                          "Professional NMEA2000 network diagnostic tool with\n"
+                          "real-time PGN instance conflict detection.\n\n"
                           "Built with Qt and NMEA2000 library.");
     });
 }
