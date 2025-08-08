@@ -16,6 +16,8 @@
 #include <QMenuBar>
 #include <QStatusBar>
 #include <QClipboard>
+#include <QIcon>
+#include <QPixmap>
 
 tNMEA2000_SocketCAN* nmea2000;
 extern char can_interface[80];
@@ -58,6 +60,9 @@ DeviceMainWindow::DeviceMainWindow(QWidget *parent)
     
     // Initial population
     updateDeviceList();
+    
+    // Set window icon explicitly
+    setWindowIcon(QIcon(":/app_icon.svg"));
     
     setWindowTitle("NMEA2000 Network Analyzer");
     resize(1000, 700);
@@ -188,12 +193,24 @@ void DeviceMainWindow::setupMenuBar()
     
     // Help menu
     QMenu* helpMenu = menuBar->addMenu("&Help");
-    helpMenu->addAction("&About", this, []() {
-        QMessageBox::about(nullptr, "About NMEA2000 Network Analyzer\n", 
-                          "NMEA2000 Network Analyzer v1.0\n\n"
-                          "Professional NMEA2000 network diagnostic tool with\n"
-                          "real-time PGN instance conflict detection.\n\n"
-                          "Built with Qt and NMEA2000 library.");
+    helpMenu->addAction("&About", this, [this]() {
+        QMessageBox aboutBox(this);
+        aboutBox.setWindowTitle("About NMEA2000 Network Analyzer");
+        aboutBox.setIconPixmap(QPixmap(":/app_icon.svg").scaled(64, 64, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        aboutBox.setText("<h3>NMEA2000 Network Analyzer</h3>"
+                        "<p><b>Version 1.0</b></p>"
+                        "<p>Professional NMEA2000 network diagnostic tool with real-time PGN instance conflict detection.</p>");
+        aboutBox.setInformativeText("<p>Features:</p>"
+                                   "<ul>"
+                                   "<li>Real-time device discovery and monitoring</li>"
+                                   "<li>Instance conflict detection and highlighting</li>"
+                                   "<li>Cross-platform CAN interface support</li>"
+                                   "<li>Device-specific context menus and actions</li>"
+                                   "<li>Live PGN logging and analysis</li>"
+                                   "</ul>"
+                                   "<p>Built with Qt and NMEA2000 library.</p>");
+        aboutBox.setStandardButtons(QMessageBox::Ok);
+        aboutBox.exec();
     });
 }
 
@@ -666,8 +683,7 @@ void DeviceMainWindow::showDeviceDetails(int row)
     QMessageBox msgBox(this);
     msgBox.setWindowTitle(QString("Device Details - 0x%1").arg(nodeAddress));
     msgBox.setIcon(QMessageBox::Information);
-    msgBox.setText(QString("Detailed information for device 0x%1:").arg(nodeAddress));
-    msgBox.setDetailedText(detailsText);
+    msgBox.setText(detailsText);  // Show all details directly in the main text area
     msgBox.setStandardButtons(QMessageBox::Ok);
     msgBox.exec();
 }

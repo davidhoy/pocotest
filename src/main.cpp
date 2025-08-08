@@ -9,6 +9,7 @@
 
 #include <QApplication>
 #include <QDebug>
+#include <QIcon>
 #include "devicemainwindow.h"
 
 char can_interface[80] = "vcan0";  // Default CAN interface, can be overridden by command line argument
@@ -35,9 +36,27 @@ int main(int argc, char *argv[])
     // Initialize the Qt application
     QApplication app(argc, argv);
 
-    // Create and show the main window
-    QApplication::setApplicationName("NMEA2000 Network Analyzer");
+    // Set application properties BEFORE setting icons
+    QApplication::setApplicationName("NMEA 2000 Analyzer");  // Match desktop file exactly
     QApplication::setApplicationVersion("1.0");
+    QApplication::setApplicationDisplayName("NMEA 2000 Analyzer");
+    QApplication::setOrganizationName("Lumitec");
+    QApplication::setOrganizationDomain("lumitec.com");
+    
+    // Set the desktop file name for better integration
+    QApplication::setDesktopFileName("nmea2000-analyzer.desktop");
+    
+    // Set the application icon globally
+    QIcon appIcon;
+    appIcon.addFile(":/app_icon.png", QSize(), QIcon::Normal, QIcon::Off);
+    appIcon.addFile(":/app_icon.svg", QSize(), QIcon::Normal, QIcon::Off);
+    
+    if (appIcon.isNull()) {
+        qDebug() << "Warning: Application icon could not be loaded!";
+    } else {
+        qDebug() << "Application icon loaded successfully (PNG:" << !QIcon(":/app_icon.png").isNull() << "SVG:" << !QIcon(":/app_icon.svg").isNull() << ")";
+        QApplication::setWindowIcon(appIcon);
+    }
     
     qDebug() << "Creating DeviceMainWindow...";
     DeviceMainWindow w;

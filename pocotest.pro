@@ -45,6 +45,10 @@ HEADERS += \
     src/pgnlogdialog.h \
     src/pgndialog.h
 
+# Resources
+RESOURCES += \
+    resources/resources.qrc
+
 # Remove the old UI form since we're not using it anymore
 # FORMS += \
 #     ui/mainwindow.ui
