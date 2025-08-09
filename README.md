@@ -76,12 +76,68 @@ The application can be adapted for Windows CAN interfaces:
 
 ## Building the Project
 
-### Linux
+### Linux (Desktop)
 
 ```sh
 git clone https://github.com/davidhoy/pocotest.git
 cd pocotest
 make
+```
+
+### Raspberry Pi (Native Build - Recommended)
+
+Building directly on the Raspberry Pi is the **recommended approach** because:
+- ✅ **Perfect compatibility** - uses exact Pi libraries and ABI
+- ✅ **No cross-compilation complexity** - avoids toolchain issues  
+- ✅ **Optimal performance** - compiler optimizes for actual hardware
+- ✅ **Easy debugging** - native development tools available
+- ✅ **Reliable builds** - standard package management
+
+#### 1. Install Dependencies
+
+```sh
+sudo apt update
+sudo apt install -y build-essential cmake qtbase5-dev qt5-default libqt5widgets5 libqt5gui5 libqt5core5a can-utils git
+```
+
+#### 2. Clone and Build
+
+```sh
+git clone https://github.com/davidhoy/pocotest.git
+cd pocotest
+
+# Option A: Using CMake (recommended)
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
+
+# Option B: Using qmake
+# cd pocotest  # if using CMake, go back to project root
+qmake pocotest.pro
+make -j$(nproc)
+```
+
+#### 3. Setup CAN Interface
+
+```sh
+# If you have CAN hardware (e.g., MCP2515, CAN HAT), use can0 directly:
+sudo ip link set can0 up type can bitrate 250000
+
+# For testing without hardware, use virtual CAN:
+sudo modprobe vcan
+sudo ip link add dev vcan0 type vcan
+sudo ip link set up vcan0
+
+# For MCP2515 CAN controller, add to /boot/config.txt:
+# dtparam=spi=on
+# dtoverlay=mcp2515-can0,oscillator=16000000,interrupt=25
+# Then reboot and use the can0 command above
+```
+
+#### 4. Run
+
+```sh
+./pocotest  # or ./build/pocotest if using CMake
 ```
 
 ### Windows (Visual Studio)
