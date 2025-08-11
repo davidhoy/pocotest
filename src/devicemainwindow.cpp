@@ -8,6 +8,7 @@
 #include <QProcess>
 #include <QMessageBox>
 #include <QLabel>
+#include <QDebug>
 #include <QHBoxLayout>
 #include <QWidget>
 #include <QDebug>
@@ -620,10 +621,10 @@ void DeviceMainWindow::showDeviceContextMenu(const QPoint& position)
         QApplication::clipboard()->setText(nodeAddress);
     });
     
-    // Show PGN History for Device action
-    QAction* pgnHistoryAction = contextMenu->addAction("Show PGN History for Device");
-    connect(pgnHistoryAction, &QAction::triggered, [this, sourceAddress]() {
-        showPGNHistoryForDevice(sourceAddress);
+    // Show PGN Log for Device action
+    QAction* pgnLogAction = contextMenu->addAction("Show PGN Log for Device");
+    connect(pgnLogAction, &QAction::triggered, [this, sourceAddress]() {
+        showPGNLogForDevice(sourceAddress);
     });
     
     // Show context menu at the clicked position
@@ -638,6 +639,10 @@ void DeviceMainWindow::showPGNLog()
     if (!m_pgnLogDialog) {
         m_pgnLogDialog = new PGNLogDialog(this);
     }
+    
+    // Clear all filters for general PGN log view
+    m_pgnLogDialog->clearAllFilters();
+    
     m_pgnLogDialog->show();
     m_pgnLogDialog->raise();
     m_pgnLogDialog->activateWindow();
@@ -765,6 +770,11 @@ void DeviceMainWindow::requestProductInformation(uint8_t targetAddress)
         // Track that we've requested product info from this device
         m_pendingProductInfoRequests.insert(targetAddress);
         
+        // Log the sent message to PGN log if it's visible
+        if (m_pgnLogDialog && m_pgnLogDialog->isVisible()) {
+            m_pgnLogDialog->appendSentMessage(N2kMsg);
+        }
+        
         QMessageBox::information(this, "Request Sent", 
                                 QString("Product information request sent to device 0x%1\n\n"
                                        "Sent ISO Request (PGN 59904) requesting:\n"
@@ -779,7 +789,7 @@ void DeviceMainWindow::requestProductInformation(uint8_t targetAddress)
     }
 }
 
-void DeviceMainWindow::showPGNHistoryForDevice(uint8_t sourceAddress)
+void DeviceMainWindow::showPGNLogForDevice(uint8_t sourceAddress)
 {
     // Show PGN log dialog filtered for this specific device
     if (!m_pgnLogDialog) {
@@ -1277,6 +1287,11 @@ void DeviceMainWindow::sendLumitecSimpleAction(uint8_t targetAddress, uint8_t ac
     tN2kMsg msg;
     if (SetLumitecExtSwSimpleAction(msg, targetAddress, actionId, switchId)) {
         if (nmea2000->SendMsg(msg)) {
+            // Log the sent message to PGN log if it's visible
+            if (m_pgnLogDialog && m_pgnLogDialog->isVisible()) {
+                m_pgnLogDialog->appendSentMessage(msg);
+            }
+            
             qDebug() << "Sent Lumitec Simple Action - Target:" << QString("0x%1").arg(targetAddress, 2, 16, QChar('0'))
                      << "Action:" << GetLumitecActionName(actionId) 
                      << "Switch:" << switchId;
@@ -1365,6 +1380,11 @@ void DeviceMainWindow::sendLumitecCustomHSB(uint8_t targetAddress, uint8_t hue, 
     tN2kMsg msg;
     if (SetLumitecExtSwCustomHSB(msg, targetAddress, ACTION_T2HSB, 1, hue, saturation, brightness)) {
         if (nmea2000->SendMsg(msg)) {
+            // Log the sent message to PGN log if it's visible
+            if (m_pgnLogDialog && m_pgnLogDialog->isVisible()) {
+                m_pgnLogDialog->appendSentMessage(msg);
+            }
+            
             qDebug() << "Sent Lumitec Custom HSB - Target:" << QString("0x%1").arg(targetAddress, 2, 16, QChar('0'))
                      << "H:" << hue << "S:" << saturation << "B:" << brightness;
         } else {

@@ -103,7 +103,7 @@ private:
     void showDeviceDetails(int row);
     void queryDeviceConfiguration(uint8_t targetAddress);
     void requestProductInformation(uint8_t targetAddress);
-    void showPGNHistoryForDevice(uint8_t sourceAddress);
+    void showPGNLogForDevice(uint8_t sourceAddress);
     
     // Lumitec Poco message handling
     void handleLumitecPocoMessage(const tN2kMsg& msg);

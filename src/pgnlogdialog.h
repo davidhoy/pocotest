@@ -21,8 +21,11 @@ public:
     ~PGNLogDialog();
     
     void appendMessage(const tN2kMsg& msg);
+    void appendSentMessage(const tN2kMsg& msg); // For messages sent by this application
     void setSourceFilter(uint8_t sourceAddress);
+    void setDestinationFilter(uint8_t destinationAddress);
     void updateDeviceList(const QStringList& devices);
+    void clearAllFilters(); // Clear all filters and reset to default view
 
 private slots:
     void clearLog();
@@ -32,6 +35,7 @@ private slots:
     void onSourceFilterEnabled(bool enabled);
     void onDestinationFilterEnabled(bool enabled);
     void onClearFilters();
+    void onFilterLogicChanged();
 
 private:
     void setupUI();
@@ -51,12 +55,14 @@ private:
     QCheckBox* m_destinationFilterEnabled;
     QComboBox* m_sourceFilterCombo;
     QComboBox* m_destinationFilterCombo;
+    QComboBox* m_filterLogicCombo;  // AND/OR logic selector
     
     // Filter state
     uint8_t m_sourceFilter;      // 255 means no filter
-    uint8_t m_destinationFilter; // 255 means no filter
+    uint8_t m_destinationFilter; // Actual destination address to filter for
     bool m_sourceFilterActive;
     bool m_destinationFilterActive;
+    bool m_useAndLogic;          // true = AND, false = OR
 };
 
 #endif // PGNLOGDIALOG_H
