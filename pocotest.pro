@@ -43,8 +43,7 @@ HEADERS += \
     src/devicemainwindow.h \
     src/pgnlogdialog.h \
     src/pgndialog.h \
-    src/LumitecPoco.h \
-    src/n2k_linux_port.h
+    src/LumitecPoco.h
 
 # Resources
 RESOURCES += \
