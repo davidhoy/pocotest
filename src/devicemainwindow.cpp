@@ -70,7 +70,7 @@ DeviceMainWindow::DeviceMainWindow(QWidget *parent)
     // Set window icon explicitly
     setWindowIcon(QIcon(":/app_icon.svg"));
     
-    setWindowTitle("NMEA2000 Network Analyzer");
+    setWindowTitle("Lumitec Poco Tester");
     resize(1000, 700);
 }
 
@@ -201,11 +201,11 @@ void DeviceMainWindow::setupMenuBar()
     QMenu* helpMenu = menuBar->addMenu("&Help");
     helpMenu->addAction("&About", this, [this]() {
         QMessageBox aboutBox(this);
-        aboutBox.setWindowTitle("About NMEA2000 Network Analyzer");
+        aboutBox.setWindowTitle("About Lumitec Poco Tester");
         aboutBox.setIconPixmap(QPixmap(":/app_icon.svg").scaled(64, 64, Qt::KeepAspectRatio, Qt::SmoothTransformation));
-        aboutBox.setText("<h3>NMEA2000 Network Analyzer</h3>"
+        aboutBox.setText("<h3>Lumitec Poco Tester</h3>"
                         "<p><b>Version 1.0</b></p>"
-                        "<p>Professional NMEA2000 network diagnostic tool with real-time PGN instance conflict detection.</p>");
+                        "<p>Professional NMEA2000 network diagnostic tool with Lumitec Poco protocol support.</p>");
         aboutBox.setInformativeText("<p>Features:</p>"
                                    "<ul>"
                                    "<li>Real-time device discovery and monitoring</li>"
@@ -213,6 +213,7 @@ void DeviceMainWindow::setupMenuBar()
                                    "<li>Cross-platform CAN interface support</li>"
                                    "<li>Device-specific context menus and actions</li>"
                                    "<li>Live PGN logging and analysis</li>"
+                                   "<li>Lumitec Poco protocol support and control</li>"
                                    "</ul>"
                                    "<p>Built with Qt and NMEA2000 library.</p>");
         aboutBox.setStandardButtons(QMessageBox::Ok);

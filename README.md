@@ -1,6 +1,6 @@
-# NMEA2000 Network Analyzer
+# Lumitec Poco Tester
 
-A professional Qt-based NMEA2000 network diagnostic tool featuring real-time device discovery, PGN instance conflict detection, and comprehensive network analysis capabilities.
+A professional Qt-based NMEA2000 network diagnostic tool featuring real-time device discovery, PGN instance conflict detection, comprehensive network analysis capabilities, and specialized Lumitec Poco protocol support.
 
 ## Features
 

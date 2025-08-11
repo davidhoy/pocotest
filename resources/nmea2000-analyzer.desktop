@@ -1,13 +1,13 @@
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=NMEA 2000 Analyzer
-Comment=Professional NMEA 2000 network analyzer and diagnostic tool
+Name=Lumitec Poco Tester
+Comment=Professional NMEA2000 network analyzer with Lumitec Poco protocol support
 Exec=/opt/nmea2000-analyzer/nmea2000-analyzer.sh
 Icon=nmea2000-analyzer
 Terminal=false
 Categories=Network;Development;Utility;
-Keywords=NMEA2000;CAN;Marine;Network;Analyzer;Diagnostic;
+Keywords=NMEA2000;CAN;Marine;Network;Analyzer;Diagnostic;Lumitec;Poco;
 StartupNotify=true
-StartupWMClass=NMEA 2000 Analyzer
+StartupWMClass=Lumitec Poco Tester
 MimeType=application/x-nmea2000;
