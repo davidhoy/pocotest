@@ -79,8 +79,9 @@ The application can be adapted for Windows CAN interfaces:
 ### Linux (Desktop)
 
 ```sh
-git clone https://github.com/davidhoy/pocotest.git
+git clone --recurse-submodules https://github.com/davidhoy/pocotest.git
 cd pocotest
+qmake
 make
 ```
 
@@ -103,7 +104,7 @@ sudo apt install -y build-essential cmake qtbase5-dev qt5-default libqt5widgets5
 #### 2. Clone and Build
 
 ```sh
-git clone https://github.com/davidhoy/pocotest.git
+git clone --recurse-submodules https://github.com/davidhoy/pocotest.git
 cd pocotest
 
 # Option A: Using CMake (recommended)
