@@ -3,4 +3,5 @@
 	url = https://github.com/ttlappalainen/NMEA2000
 [submodule "components/external/NMEA2000_socketCAN"]
 	path = components/external/NMEA2000_socketCAN
-	url = https://github.com/ttlappalainen/NMEA2000_socketCAN
+	url = https://github.com/davidhoy/NMEA2000_socketCAN.git
+	branch = master
