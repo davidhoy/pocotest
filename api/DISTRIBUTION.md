@@ -4,7 +4,7 @@ This directory contains the complete Lumitec Poco CAN API library for integratio
 
 ## Package Contents
 
-```
+```c
 api/
 ├── lumitec_poco_api.h          # Main API header file
 ├── lumitec_poco_api.c          # API implementation
@@ -28,20 +28,23 @@ api/
 ## Quick Integration
 
 1. **Copy files** to your project:
+
    - `lumitec_poco_api.h`
    - `lumitec_poco_api.c`
 
 2. **Include in your code**:
-   ```c
-   #include "lumitec_poco_api.h"
-   ```
 
-3. **Use the API**:
-   ```c
-   lumitec_poco_can_frame_t frame;
-   lumitec_poco_create_simple_action(&frame, 0x0E, 0x10, POCO_ACTION_ON, 1);
-   // Send frame via your CAN interface
-   ```
+```c
+#include "lumitec_poco_api.h"
+```
+
+## **Use the API**
+
+```c
+lumitec_poco_can_frame_t frame;
+lumitec_poco_create_simple_action(&frame, 0x0E, 0x10, POCO_ACTION_ON, 1);
+// Send frame via your CAN interface
+```
 
 ## Supported CAN Stacks
 

@@ -14,11 +14,13 @@ A Python implementation of the Lumitec Poco lighting system CAN protocol. This l
 ## Installation
 
 ### From PyPI (when available)
+
 ```bash
 pip install lumitec-poco
 ```
 
 ### From Source
+
 ```bash
 git clone https://github.com/lumitec/poco-api.git
 cd poco-api/python
@@ -26,6 +28,7 @@ pip install -e .
 ```
 
 ### Development Installation
+
 ```bash
 pip install -e ".[dev]"
 ```
@@ -55,7 +58,9 @@ if frame.is_valid_poco_frame():
 ## Supported Message Types
 
 ### Simple Actions
+
 Control basic lighting functions:
+
 ```python
 from lumitec_poco import create_simple_action, PocoActionID
 
@@ -73,7 +78,9 @@ frame = create_simple_action(0x0E, 0x10, PocoActionID.WHITE, switch_id=1)
 ```
 
 ### Custom HSB (Hue, Saturation, Brightness)
+
 Precise color control:
+
 ```python
 from lumitec_poco import create_custom_hsb, PocoActionID
 
@@ -91,7 +98,9 @@ frame = create_custom_hsb(0x0E, 0x10, PocoActionID.T2HSB, 1,
 ```
 
 ### Switch State Information
+
 Report switch status:
+
 ```python
 from lumitec_poco import create_state_info, PocoSwitchState, PocoSwitchType
 
@@ -104,7 +113,9 @@ frame = create_state_info(
 ```
 
 ### Pattern Control
+
 Start lighting patterns:
+
 ```python
 from lumitec_poco import create_start_pattern
 
@@ -119,6 +130,7 @@ frame = create_start_pattern(
 ## CAN Integration Examples
 
 ### With python-can library
+
 ```python
 import can
 from lumitec_poco import create_simple_action, PocoActionID
@@ -139,6 +151,7 @@ bus.send(can_msg)
 ```
 
 ### With SocketCAN (Linux)
+
 ```python
 import socket
 import struct
@@ -162,6 +175,7 @@ sock.close()
 ## Message Parsing
 
 ### Automatic parsing
+
 ```python
 from lumitec_poco import parse_poco_frame, is_valid_poco_frame
 
@@ -177,6 +191,7 @@ if is_valid_poco_frame(received_frame):
 ```
 
 ### Manual parsing
+
 ```python
 from lumitec_poco import LumitecPocoAPI, PocoProprietaryID
 
@@ -193,6 +208,7 @@ elif prop_id == PocoProprietaryID.EXTSW_CUSTOM_HSB:
 ## Advanced Usage
 
 ### Batch Processing
+
 ```python
 from lumitec_poco import create_simple_action, PocoActionID
 
@@ -209,6 +225,7 @@ for frame in messages:
 ```
 
 ### Message Filtering
+
 ```python
 from lumitec_poco import is_valid_poco_frame, parse_poco_frame
 
@@ -234,6 +251,7 @@ def process_can_messages(can_messages):
 ## API Reference
 
 ### Core Functions
+
 - `create_simple_action()` - Create simple on/off/dim commands
 - `create_custom_hsb()` - Create HSB color commands  
 - `create_state_info()` - Create switch state messages
@@ -242,12 +260,14 @@ def process_can_messages(can_messages):
 - `parse_poco_frame()` - Auto-parse any Poco message
 
 ### Enums
+
 - `PocoActionID` - Available actions (ON, OFF, DIM_UP, etc.)
 - `PocoSwitchState` - Switch states (PRESSED, RELEASED, HELD)
 - `PocoSwitchType` - Switch types (MOMENTARY, LATCHING)
 - `PocoProprietaryID` - Message types
 
 ### Data Classes
+
 - `PocoCANFrame` - CAN frame representation
 - `PocoSimpleAction` - Parsed simple action data
 - `PocoCustomHSB` - Parsed HSB data
@@ -257,11 +277,13 @@ def process_can_messages(can_messages):
 ## Testing
 
 Run the test suite:
+
 ```bash
 python -m pytest test_poco_api.py -v
 ```
 
 Or run the built-in test:
+
 ```bash
 python test_poco_api.py
 ```
@@ -269,6 +291,7 @@ python test_poco_api.py
 ## Examples
 
 See the `examples/` directory for complete working examples:
+
 - `example_usage.py` - Basic usage examples
 - `integration_examples.py` - CAN library integration
 - `test_poco_api.py` - Comprehensive test suite
@@ -279,6 +302,7 @@ See the `examples/` directory for complete working examples:
 - No required dependencies (uses only Python standard library)
 
 ### Optional Dependencies
+
 - `python-can` - For CAN bus communication
 - `pypcan` - For PEAK CAN interfaces
 - `pytest` - For running tests
@@ -290,9 +314,10 @@ This library is provided by Lumitec for use with Lumitec Poco lighting systems.
 ## Support
 
 For technical support or questions about the Poco protocol:
-- Email: support@lumitec.com
-- Documentation: https://lumitec.com/poco-api-docs
-- Issues: https://github.com/lumitec/poco-api/issues
+
+- Email: <support@lumitec.com>
+- Documentation: <https://lumitec.com/poco-api-docs>
+- Issues: <https://github.com/lumitec/poco-api/issues>
 
 ## Version History
 

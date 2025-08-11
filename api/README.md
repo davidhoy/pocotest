@@ -29,6 +29,7 @@ make all
 ```
 
 This creates:
+
 - `liblumitec_poco.a` - Static library
 - `liblumitec_poco.so` - Shared library  
 - `example_usage` - Example program
@@ -151,6 +152,7 @@ The Lumitec Poco protocol uses NMEA2000 PGN 61184 with the following format:
 ### CAN ID Format
 
 The 29-bit CAN ID follows NMEA2000 format:
+
 - Bits 28-26: Priority (typically 6)
 - Bits 25-8: PGN (61184 = 0xEF00)
 - Bits 7-0: Source address
