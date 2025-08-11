@@ -147,8 +147,8 @@ sudo ip link set up vcan0
 
 ### Windows (Visual Studio)
 
-```cmd
-git clone https://github.com/davidhoy/pocotest.git
+```sh
+git clone --recurse-submodules https://github.com/davidhoy/pocotest.git
 cd pocotest
 # Open pocotest.pro in Qt Creator or use qmake
 qmake
@@ -158,7 +158,7 @@ nmake  # or use Visual Studio
 ### Windows (MinGW)
 
 ```sh
-git clone https://github.com/davidhoy/pocotest.git
+git clone --recurse-submodules https://github.com/davidhoy/pocotest.git
 cd pocotest
 qmake
 mingw32-make
