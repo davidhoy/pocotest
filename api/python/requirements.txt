@@ -1,0 +1,14 @@
+# Core requirements (none - uses only Python stdlib)
+
+# Optional CAN interface libraries
+# Uncomment the ones you need:
+
+# python-can>=4.0.0        # For general CAN bus support
+# pypcan                    # For PEAK CAN interfaces
+# cantools                  # For DBC file support (if needed)
+
+# Development dependencies
+# pytest>=6.0.0            # For running tests
+# pytest-cov               # For coverage reports
+# black                     # For code formatting
+# flake8                    # For linting
