@@ -67,7 +67,7 @@ bool SetLumitecExtSwCustomHSB(tN2kMsg &N2kMsg, uint8_t destination, uint8_t acti
     N2kMsg.SetPGN(LUMITEC_PGN_61184);
     N2kMsg.Priority = 6;
     N2kMsg.Destination = destination;
-    N2kMsg.DataLen = 9;
+    N2kMsg.DataLen = 8;
     
     int Index = 0;
     uint16_t mfgCode = LUMITEC_MANUFACTURER_CODE | (MARINE_INDUSTRY_CODE << 13);
@@ -104,7 +104,7 @@ bool SetLumitecOutputChannelStatus(tN2kMsg &N2kMsg, uint8_t channel, uint8_t cha
     N2kMsg.SetPGN(LUMITEC_PGN_61184);
     N2kMsg.Priority = 6;
     N2kMsg.Destination = 255; // Broadcast status
-    N2kMsg.DataLen = 9;
+    N2kMsg.DataLen = 8;
     
     int Index = 0;
     uint16_t mfgCode = LUMITEC_MANUFACTURER_CODE | (MARINE_INDUSTRY_CODE << 13);
