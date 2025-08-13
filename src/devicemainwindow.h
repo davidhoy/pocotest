@@ -23,6 +23,7 @@
 class tN2kDeviceList;
 class tNMEA2000_SocketCAN;
 class PGNLogDialog;
+class PocoDeviceDialog;
 
 // Structure to track PGN instance data
 struct PGNInstanceData {
@@ -113,7 +114,15 @@ private:
     // Lumitec Poco control methods
     void sendLumitecSimpleAction(uint8_t targetAddress, uint8_t actionId, uint8_t switchId);
     void showLumitecColorDialog(uint8_t targetAddress, const QString& nodeAddress);
+    void showLumitecSwitchActionDialog(uint8_t targetAddress, const QString& nodeAddress);
     void sendLumitecCustomHSB(uint8_t targetAddress, uint8_t hue, uint8_t saturation, uint8_t brightness);
+    void showPocoDeviceDialog(uint8_t targetAddress, const QString& nodeAddress);
+
+private slots:
+    // Poco device dialog slots
+    void onPocoSwitchActionRequested(uint8_t deviceAddress, uint8_t switchId, uint8_t actionId);
+    void onPocoColorControlRequested(uint8_t deviceAddress);
+    void onPocoDeviceInfoRequested(uint8_t deviceAddress);
 
 private:
     // UI Components

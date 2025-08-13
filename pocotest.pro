@@ -27,6 +27,7 @@ SOURCES += \
     src/devicemainwindow.cpp \
     src/pgnlogdialog.cpp \
     src/pgndialog.cpp \
+    src/pocodevicedialog.cpp \
     src/LumitecPoco.cpp \
     src/n2k_linux_port.cpp \
     components/external/NMEA2000/src/NMEA2000.cpp \
@@ -43,6 +44,7 @@ HEADERS += \
     src/devicemainwindow.h \
     src/pgnlogdialog.h \
     src/pgndialog.h \
+    src/pocodevicedialog.h \
     src/LumitecPoco.h
 
 # Resources

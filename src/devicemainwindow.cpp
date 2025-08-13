@@ -1,6 +1,7 @@
 #include "devicemainwindow.h"
 #include "pgnlogdialog.h"
 #include "pgndialog.h"
+#include "pocodevicedialog.h"
 #include "LumitecPoco.h"
 #include "NMEA2000_SocketCAN.h"
 #include <NMEA2000.h>
@@ -570,68 +571,89 @@ void DeviceMainWindow::showDeviceContextMenu(const QPoint& position)
         // Lumitec Control submenu
         QMenu* lumitecMenu = contextMenu->addMenu("Lumitec Poco Control");
         
-        // Light On/Off actions
-        QAction* lightOnAction = lumitecMenu->addAction("Turn Light On");
-        connect(lightOnAction, &QAction::triggered, [this, sourceAddress]() {
-            sendLumitecSimpleAction(sourceAddress, ACTION_ON, 1); // Switch ID 1
-        });
-        
-        QAction* lightOffAction = lumitecMenu->addAction("Turn Light Off");
-        connect(lightOffAction, &QAction::triggered, [this, sourceAddress]() {
-            sendLumitecSimpleAction(sourceAddress, ACTION_OFF, 1); // Switch ID 1
+        // New Poco Device Dialog
+        QAction* pocoDialogAction = lumitecMenu->addAction("Poco Device Control...");
+        connect(pocoDialogAction, &QAction::triggered, [this, sourceAddress, nodeAddress]() {
+            showPocoDeviceDialog(sourceAddress, nodeAddress);
         });
         
         lumitecMenu->addSeparator();
         
-        // Color preset actions
-        QAction* whiteAction = lumitecMenu->addAction("Set White");
-        connect(whiteAction, &QAction::triggered, [this, sourceAddress]() {
-            sendLumitecSimpleAction(sourceAddress, ACTION_WHITE, 1); // Switch ID 1
+        QAction* switchAction = lumitecMenu->addAction("Switch Action...");
+        connect(switchAction, &QAction::triggered, [this, sourceAddress, nodeAddress]() {
+            showLumitecSwitchActionDialog(sourceAddress, nodeAddress);
         });
-        
-        QAction* redAction = lumitecMenu->addAction("Set Red");
-        connect(redAction, &QAction::triggered, [this, sourceAddress]() {
-            sendLumitecSimpleAction(sourceAddress, ACTION_RED, 1); // Switch ID 1
-        });
-        
-        QAction* greenAction = lumitecMenu->addAction("Set Green");
-        connect(greenAction, &QAction::triggered, [this, sourceAddress]() {
-            sendLumitecSimpleAction(sourceAddress, ACTION_GREEN, 1); // Switch ID 1
-        });
-        
-        QAction* blueAction = lumitecMenu->addAction("Set Blue");
-        connect(blueAction, &QAction::triggered, [this, sourceAddress]() {
-            sendLumitecSimpleAction(sourceAddress, ACTION_BLUE, 1); // Switch ID 1
-        });
-        
         lumitecMenu->addSeparator();
-        
-        // Advanced control action
         QAction* customControlAction = lumitecMenu->addAction("Custom Color Control...");
         connect(customControlAction, &QAction::triggered, [this, sourceAddress, nodeAddress]() {
             showLumitecColorDialog(sourceAddress, nodeAddress);
         });
     }
-    
+
     contextMenu->addSeparator();
-    
+
     // Copy Node Address action
     QAction* copyAddressAction = contextMenu->addAction("Copy Node Address");
     connect(copyAddressAction, &QAction::triggered, [nodeAddress]() {
         QApplication::clipboard()->setText(nodeAddress);
     });
-    
+
     // Show PGN Log for Device action
     QAction* pgnLogAction = contextMenu->addAction("Show PGN Log for Device");
     connect(pgnLogAction, &QAction::triggered, [this, sourceAddress]() {
         showPGNLogForDevice(sourceAddress);
     });
-    
+
     // Show context menu at the clicked position
     contextMenu->exec(m_deviceTable->mapToGlobal(position));
-    
+
     // Clean up
     delete contextMenuBar;
+}
+
+// Dialog for selecting switch ID and action for Lumitec Poco
+void DeviceMainWindow::showLumitecSwitchActionDialog(uint8_t targetAddress, const QString& nodeAddress) {
+    QDialog dialog(this);
+    dialog.setWindowTitle(QString("Lumitec Switch Action - Device 0x%1").arg(nodeAddress));
+    dialog.setModal(true);
+
+    QVBoxLayout* layout = new QVBoxLayout(&dialog);
+
+    // Switch ID selector
+    QHBoxLayout* switchLayout = new QHBoxLayout();
+    QLabel* switchLabel = new QLabel("Switch ID:");
+    QSpinBox* switchSpin = new QSpinBox();
+    switchSpin->setRange(1, 16); // Adjust max as needed
+    switchSpin->setValue(1);
+    switchLayout->addWidget(switchLabel);
+    switchLayout->addWidget(switchSpin);
+    layout->addLayout(switchLayout);
+
+    // Action selector
+    QHBoxLayout* actionLayout = new QHBoxLayout();
+    QLabel* actionLabel = new QLabel("Action:");
+    QComboBox* actionCombo = new QComboBox();
+    actionCombo->addItem("Turn Light On", QVariant(ACTION_ON));
+    actionCombo->addItem("Turn Light Off", QVariant(ACTION_OFF));
+    actionCombo->addItem("Set White", QVariant(ACTION_WHITE));
+    actionCombo->addItem("Set Red", QVariant(ACTION_RED));
+    actionCombo->addItem("Set Green", QVariant(ACTION_GREEN));
+    actionCombo->addItem("Set Blue", QVariant(ACTION_BLUE));
+    actionLayout->addWidget(actionLabel);
+    actionLayout->addWidget(actionCombo);
+    layout->addLayout(actionLayout);
+
+    // Dialog buttons
+    QDialogButtonBox* buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    layout->addWidget(buttonBox);
+    connect(buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+    if (dialog.exec() == QDialog::Accepted) {
+        int switchId = switchSpin->value();
+        int actionId = actionCombo->currentData().toInt();
+        sendLumitecSimpleAction(targetAddress, actionId, switchId);
+    }
 }
 
 void DeviceMainWindow::showPGNLog()
@@ -1393,6 +1415,40 @@ void DeviceMainWindow::sendLumitecCustomHSB(uint8_t targetAddress, uint8_t hue, 
     } else {
         qDebug() << "Failed to create Lumitec Custom HSB message";
     }
+}
+
+void DeviceMainWindow::showPocoDeviceDialog(uint8_t targetAddress, const QString& nodeAddress) {
+    PocoDeviceDialog* dialog = new PocoDeviceDialog(targetAddress, nodeAddress, this);
+    
+    // Connect signals from the dialog to our slots
+    connect(dialog, &PocoDeviceDialog::switchActionRequested,
+            this, &DeviceMainWindow::onPocoSwitchActionRequested);
+    connect(dialog, &PocoDeviceDialog::colorControlRequested,
+            this, &DeviceMainWindow::onPocoColorControlRequested);
+    connect(dialog, &PocoDeviceDialog::deviceInfoRequested,
+            this, &DeviceMainWindow::onPocoDeviceInfoRequested);
+    
+    // Show the dialog modally
+    dialog->exec();
+    
+    // Clean up
+    dialog->deleteLater();
+}
+
+void DeviceMainWindow::onPocoSwitchActionRequested(uint8_t deviceAddress, uint8_t switchId, uint8_t actionId) {
+    sendLumitecSimpleAction(deviceAddress, actionId, switchId);
+}
+
+void DeviceMainWindow::onPocoColorControlRequested(uint8_t deviceAddress) {
+    // For now, delegate to the existing color dialog
+    QString nodeAddress = QString("0x%1").arg(deviceAddress, 2, 16, QChar('0'));
+    showLumitecColorDialog(deviceAddress, nodeAddress);
+}
+
+void DeviceMainWindow::onPocoDeviceInfoRequested(uint8_t deviceAddress) {
+    // Request product information and device configuration
+    requestProductInformation(deviceAddress);
+    queryDeviceConfiguration(deviceAddress);
 }
 
 // Device Activity Tracking Methods
