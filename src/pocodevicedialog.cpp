@@ -6,7 +6,6 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QSpinBox>
-#include <QComboBox>
 #include <QGroupBox>
 #include <QDialogButtonBox>
 #include <QMessageBox>
@@ -18,8 +17,12 @@ PocoDeviceDialog::PocoDeviceDialog(uint8_t deviceAddress, const QString& deviceN
     , m_tabWidget(nullptr)
     , m_switchControlTab(nullptr)
     , m_switchIdSpinBox(nullptr)
-    , m_actionComboBox(nullptr)
-    , m_sendActionButton(nullptr)
+    , m_onButton(nullptr)
+    , m_offButton(nullptr)
+    , m_whiteButton(nullptr)
+    , m_redButton(nullptr)
+    , m_greenButton(nullptr)
+    , m_blueButton(nullptr)
     , m_colorControlTab(nullptr)
     , m_colorControlButton(nullptr)
     , m_deviceInfoTab(nullptr)
@@ -80,27 +83,51 @@ void PocoDeviceDialog::setupSwitchControlTab()
     
     layout->addWidget(switchGroup);
     
-    // Action selection
-    QGroupBox* actionGroup = new QGroupBox("Action Selection");
+    // Action buttons
+    QGroupBox* actionGroup = new QGroupBox("Actions");
     QVBoxLayout* actionLayout = new QVBoxLayout(actionGroup);
     
-    QHBoxLayout* comboLayout = new QHBoxLayout();
-    comboLayout->addWidget(new QLabel("Action:"));
-    m_actionComboBox = new QComboBox();
-    m_actionComboBox->addItem("Turn Light On", ACTION_ON);
-    m_actionComboBox->addItem("Turn Light Off", ACTION_OFF);
-    m_actionComboBox->addItem("Set White", ACTION_WHITE);
-    m_actionComboBox->addItem("Set Red", ACTION_RED);
-    m_actionComboBox->addItem("Set Green", ACTION_GREEN);
-    m_actionComboBox->addItem("Set Blue", ACTION_BLUE);
-    comboLayout->addWidget(m_actionComboBox);
-    comboLayout->addStretch();
+    // First row of buttons: On/Off
+    QHBoxLayout* row1Layout = new QHBoxLayout();
+    m_onButton = new QPushButton("On");
+    m_onButton->setProperty("actionId", ACTION_ON);
+    connect(m_onButton, &QPushButton::clicked, this, &PocoDeviceDialog::onActionButtonClicked);
+    row1Layout->addWidget(m_onButton);
     
-    actionLayout->addLayout(comboLayout);
+    m_offButton = new QPushButton("Off");
+    m_offButton->setProperty("actionId", ACTION_OFF);
+    connect(m_offButton, &QPushButton::clicked, this, &PocoDeviceDialog::onActionButtonClicked);
+    row1Layout->addWidget(m_offButton);
     
-    m_sendActionButton = new QPushButton("Send Action");
-    connect(m_sendActionButton, &QPushButton::clicked, this, &PocoDeviceDialog::onSwitchActionTriggered);
-    actionLayout->addWidget(m_sendActionButton);
+    actionLayout->addLayout(row1Layout);
+    
+    // Second row of buttons: Colors
+    QHBoxLayout* row2Layout = new QHBoxLayout();
+    m_whiteButton = new QPushButton("White");
+    m_whiteButton->setProperty("actionId", ACTION_WHITE);
+    connect(m_whiteButton, &QPushButton::clicked, this, &PocoDeviceDialog::onActionButtonClicked);
+    row2Layout->addWidget(m_whiteButton);
+    
+    m_redButton = new QPushButton("Red");
+    m_redButton->setProperty("actionId", ACTION_RED);
+    connect(m_redButton, &QPushButton::clicked, this, &PocoDeviceDialog::onActionButtonClicked);
+    row2Layout->addWidget(m_redButton);
+    
+    actionLayout->addLayout(row2Layout);
+    
+    // Third row of buttons: More colors
+    QHBoxLayout* row3Layout = new QHBoxLayout();
+    m_greenButton = new QPushButton("Green");
+    m_greenButton->setProperty("actionId", ACTION_GREEN);
+    connect(m_greenButton, &QPushButton::clicked, this, &PocoDeviceDialog::onActionButtonClicked);
+    row3Layout->addWidget(m_greenButton);
+    
+    m_blueButton = new QPushButton("Blue");
+    m_blueButton->setProperty("actionId", ACTION_BLUE);
+    connect(m_blueButton, &QPushButton::clicked, this, &PocoDeviceDialog::onActionButtonClicked);
+    row3Layout->addWidget(m_blueButton);
+    
+    actionLayout->addLayout(row3Layout);
     
     layout->addWidget(actionGroup);
     layout->addStretch();
@@ -153,20 +180,17 @@ void PocoDeviceDialog::setupDeviceInfoTab()
     layout->addStretch();
 }
 
-void PocoDeviceDialog::onSwitchActionTriggered()
+void PocoDeviceDialog::onActionButtonClicked()
 {
+    QPushButton* button = qobject_cast<QPushButton*>(sender());
+    if (!button) {
+        return;
+    }
+    
     uint8_t switchId = static_cast<uint8_t>(m_switchIdSpinBox->value());
-    uint8_t actionId = static_cast<uint8_t>(m_actionComboBox->currentData().toInt());
+    uint8_t actionId = static_cast<uint8_t>(button->property("actionId").toInt());
     
     emit switchActionRequested(m_deviceAddress, switchId, actionId);
-    
-    // Show confirmation
-    QString actionName = m_actionComboBox->currentText();
-    QMessageBox::information(this, "Action Sent", 
-                           QString("Sent action '%1' to switch %2 on device 0x%3")
-                           .arg(actionName)
-                           .arg(switchId)
-                           .arg(m_deviceAddress, 2, 16, QChar('0')));
 }
 
 void PocoDeviceDialog::onColorControlTriggered()

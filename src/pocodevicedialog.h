@@ -7,7 +7,6 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QSpinBox>
-#include <QComboBox>
 #include <QGroupBox>
 #include <QTabWidget>
 #include <QDialogButtonBox>
@@ -21,7 +20,7 @@ public:
     ~PocoDeviceDialog();
 
 private slots:
-    void onSwitchActionTriggered();
+    void onActionButtonClicked();
     void onColorControlTriggered();
     void onDeviceInfoRequested();
 
@@ -41,8 +40,12 @@ private:
     // Switch Control Tab
     QWidget* m_switchControlTab;
     QSpinBox* m_switchIdSpinBox;
-    QComboBox* m_actionComboBox;
-    QPushButton* m_sendActionButton;
+    QPushButton* m_onButton;
+    QPushButton* m_offButton;
+    QPushButton* m_whiteButton;
+    QPushButton* m_redButton;
+    QPushButton* m_greenButton;
+    QPushButton* m_blueButton;
     
     // Color Control Tab
     QWidget* m_colorControlTab;
