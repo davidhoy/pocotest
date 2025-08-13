@@ -168,8 +168,8 @@ void PGNLogDialog::appendSentMessage(const tN2kMsg& msg)
     if (!messagePassesFilter(msg)) {
         return; // Skip this message
     }
-    
-    QString pgnInfo = QString("SENT: PGN: %1, Priority: %2, Source: 0x%3, Destination: %4")
+
+    QString pgnInfo = QString("Sent: PGN: %1, Pri %2, Src 0x%3, Dst %4")
                           .arg(msg.PGN)
                           .arg(msg.Priority)
                           .arg(msg.Source, 2, 16, QChar('0')).toUpper()
@@ -324,37 +324,37 @@ void PGNLogDialog::onSourceFilterChanged()
 void PGNLogDialog::onDestinationFilterChanged()
 {
     QString text = m_destinationFilterCombo->currentText();
-    qDebug() << "onDestinationFilterChanged called with text:" << text;
+    //qDebug() << "onDestinationFilterChanged called with text:" << text;
     
     if (text == "Any") {
         m_destinationFilterActive = false; // Disable filtering when "Any" is selected
-        qDebug() << "Set destination filter to inactive (Any selected)";
+        //qDebug() << "Set destination filter to inactive (Any selected)";
     } else if (text.contains("Broadcast")) {
         m_destinationFilter = 255; // Actual broadcast address
         m_destinationFilterActive = true;
-        qDebug() << "Set destination filter to broadcast (255)";
+        //qDebug() << "Set destination filter to broadcast (255)";
     } else {
         // Extract address from text (format: "0xXX (nnn)" or "Device Name (0xXX)")
         QRegExp regex("0[xX]([0-9A-F]{2})", Qt::CaseInsensitive);
         if (regex.indexIn(text) >= 0) {
             bool ok;
             uint8_t newFilter = regex.cap(1).toUInt(&ok, 16);
-            qDebug() << "Extracted address from combo:" << QString("0x%1").arg(newFilter, 2, 16, QChar('0')).toUpper() << "ok:" << ok;
+            //qDebug() << "Extracted address from combo:" << QString("0x%1").arg(newFilter, 2, 16, QChar('0')).toUpper() << "ok:" << ok;
             if (ok) {
                 m_destinationFilter = newFilter;
                 m_destinationFilterActive = true;
-                qDebug() << "Set destination filter to:" << m_destinationFilter << "active:" << m_destinationFilterActive;
+                //qDebug() << "Set destination filter to:" << m_destinationFilter << "active:" << m_destinationFilterActive;
             } else {
                 m_destinationFilterActive = false;
-                qDebug() << "Failed to parse address - disabling destination filter";
+                //qDebug() << "Failed to parse address - disabling destination filter";
             }
         } else {
             m_destinationFilterActive = false;
-            qDebug() << "No address found in combo text - disabling destination filter";
+            //qDebug() << "No address found in combo text - disabling destination filter";
         }
     }
-    
-    qDebug() << "Final destination filter state - Active:" << m_destinationFilterActive << "Filter:" << m_destinationFilter;
+
+    //qDebug() << "Final destination filter state - Active:" << m_destinationFilterActive << "Filter:" << m_destinationFilter;
     updateStatusLabel();
 }
 
@@ -428,7 +428,7 @@ void PGNLogDialog::clearAllFilters()
 void PGNLogDialog::onFilterLogicChanged()
 {
     m_useAndLogic = (m_filterLogicCombo->currentIndex() == 0); // 0 = AND, 1 = OR
-    qDebug() << "Filter logic changed to:" << (m_useAndLogic ? "AND" : "OR");
+    //qDebug() << "Filter logic changed to:" << (m_useAndLogic ? "AND" : "OR");
     updateStatusLabel();
 }
 
@@ -466,17 +466,17 @@ bool PGNLogDialog::messagePassesFilter(const tN2kMsg& msg)
     // Check source filter
     if (m_sourceFilterActive) {
         sourceMatch = (msg.Source == m_sourceFilter);
-        qDebug() << "Source filter active - msg source:" << msg.Source << "filter:" << m_sourceFilter << "match:" << sourceMatch;
+        //qDebug() << "Source filter active - msg source:" << msg.Source << "filter:" << m_sourceFilter << "match:" << sourceMatch;
     } else {
-        qDebug() << "Source filter inactive";
+        //qDebug() << "Source filter inactive";
     }
     
     // Check destination filter
     if (m_destinationFilterActive) {
         destMatch = (msg.Destination == m_destinationFilter);
-        qDebug() << "Dest filter active - msg dest:" << msg.Destination << "filter:" << m_destinationFilter << "match:" << destMatch;
+        //qDebug() << "Dest filter active - msg dest:" << msg.Destination << "filter:" << m_destinationFilter << "match:" << destMatch;
     } else {
-        qDebug() << "Destination filter inactive";
+        //qDebug() << "Destination filter inactive";
     }
     
     // Apply logic
@@ -492,7 +492,7 @@ bool PGNLogDialog::messagePassesFilter(const tN2kMsg& msg)
         } else {
             result = true; // No filters active
         }
-        qDebug() << "AND logic result:" << result;
+        //qDebug() << "AND logic result:" << result;
     } else {
         // OR logic: at least one filter must pass (if any are active)
         if (m_sourceFilterActive && m_destinationFilterActive) {
@@ -504,7 +504,7 @@ bool PGNLogDialog::messagePassesFilter(const tN2kMsg& msg)
         } else {
             result = true; // No filters active
         }
-        qDebug() << "OR logic result:" << result;
+        //qDebug() << "OR logic result:" << result;
     }
     
     return result;
