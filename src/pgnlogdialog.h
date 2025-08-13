@@ -39,6 +39,10 @@ private slots:
     void onClearFilters();
     void onFilterLogicChanged();
     void onToggleDecoding(bool enabled);
+    void onTableItemClicked(int row, int column);
+    void onPauseClicked();
+    void onStartClicked();
+    void onStopClicked();
 
 private:
     void setupUI();
@@ -50,6 +54,9 @@ private:
     QPushButton* m_clearButton;
     QPushButton* m_closeButton;
     QPushButton* m_clearFiltersButton;
+    QPushButton* m_pauseButton;
+    QPushButton* m_startButton;
+    QPushButton* m_stopButton;
     QLabel* m_statusLabel;
     
     // Filter controls
@@ -67,6 +74,10 @@ private:
     bool m_sourceFilterActive;
     bool m_destinationFilterActive;
     bool m_useAndLogic;          // true = AND, false = OR
+    
+    // Log control state
+    bool m_logPaused;
+    bool m_logStopped;
     
     // DBC Decoder
     DBCDecoder* m_dbcDecoder;

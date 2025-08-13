@@ -9,6 +9,9 @@ PGNLogDialog::PGNLogDialog(QWidget *parent)
     , m_clearButton(nullptr)
     , m_closeButton(nullptr)
     , m_clearFiltersButton(nullptr)
+    , m_pauseButton(nullptr)
+    , m_startButton(nullptr)
+    , m_stopButton(nullptr)
     , m_statusLabel(nullptr)
     , m_filterGroup(nullptr)
     , m_sourceFilterEnabled(nullptr)
@@ -22,6 +25,8 @@ PGNLogDialog::PGNLogDialog(QWidget *parent)
     , m_sourceFilterActive(false)
     , m_destinationFilterActive(false)
     , m_useAndLogic(true)        // Default to AND logic
+    , m_logPaused(false)
+    , m_logStopped(false)
     , m_dbcDecoder(new DBCDecoder(this))
 {
     setupUI();
@@ -147,17 +152,35 @@ void PGNLogDialog::setupUI()
     QFont tableFont("Consolas, Monaco, monospace", 9);
     m_logTable->setFont(tableFont);
     
+    // Connect table click signal
+    connect(m_logTable, &QTableWidget::cellClicked, this, &PGNLogDialog::onTableItemClicked);
+    
     mainLayout->addWidget(m_logTable);
     
     // Buttons
     QHBoxLayout* buttonLayout = new QHBoxLayout();
     
+    // Control buttons
+    m_startButton = new QPushButton("Start");
+    m_pauseButton = new QPushButton("Pause");
+    m_stopButton = new QPushButton("Stop");
     m_clearButton = new QPushButton("Clear Log");
     m_closeButton = new QPushButton("Close");
     
+    // Set button states
+    m_startButton->setEnabled(false); // Start disabled initially
+    m_pauseButton->setEnabled(true);  // Pause enabled initially
+    m_stopButton->setEnabled(true);   // Stop enabled initially
+    
+    connect(m_startButton, &QPushButton::clicked, this, &PGNLogDialog::onStartClicked);
+    connect(m_pauseButton, &QPushButton::clicked, this, &PGNLogDialog::onPauseClicked);
+    connect(m_stopButton, &QPushButton::clicked, this, &PGNLogDialog::onStopClicked);
     connect(m_clearButton, &QPushButton::clicked, this, &PGNLogDialog::clearLog);
     connect(m_closeButton, &QPushButton::clicked, this, &PGNLogDialog::onCloseClicked);
     
+    buttonLayout->addWidget(m_startButton);
+    buttonLayout->addWidget(m_pauseButton);
+    buttonLayout->addWidget(m_stopButton);
     buttonLayout->addWidget(m_clearButton);
     buttonLayout->addStretch();
     buttonLayout->addWidget(m_closeButton);
@@ -167,6 +190,11 @@ void PGNLogDialog::setupUI()
 
 void PGNLogDialog::appendMessage(const tN2kMsg& msg)
 {
+    // Check if logging is stopped or paused
+    if (m_logStopped || m_logPaused) {
+        return; // Don't add new messages
+    }
+    
     // Apply filters
     if (!messagePassesFilter(msg)) {
         return; // Skip this message
@@ -239,6 +267,11 @@ void PGNLogDialog::appendMessage(const tN2kMsg& msg)
 
 void PGNLogDialog::appendSentMessage(const tN2kMsg& msg)
 {
+    // Check if logging is stopped or paused
+    if (m_logStopped || m_logPaused) {
+        return; // Don't add new messages
+    }
+    
     // Apply filters (sent messages should also be filtered)
     if (!messagePassesFilter(msg)) {
         return; // Skip this message
@@ -321,6 +354,19 @@ void PGNLogDialog::appendSentMessage(const tN2kMsg& msg)
 void PGNLogDialog::clearLog()
 {
     m_logTable->setRowCount(0);
+    
+    // Reset to running state when clearing
+    m_logPaused = false;
+    m_logStopped = false;
+    
+    // Update button states
+    m_startButton->setEnabled(false);
+    m_pauseButton->setEnabled(true);
+    m_stopButton->setEnabled(true);
+    
+    // Update status
+    m_statusLabel->setText("Live NMEA2000 PGN message log - Real-time updates");
+    m_statusLabel->setStyleSheet("font-weight: bold; color: #333; padding: 5px;");
 }
 
 void PGNLogDialog::onCloseClicked()
@@ -640,4 +686,60 @@ void PGNLogDialog::onToggleDecoding(bool enabled)
     // This slot is called when the decoding checkbox is toggled
     // No immediate action needed - the appendMessage functions will check the checkbox state
     Q_UNUSED(enabled);
+}
+
+void PGNLogDialog::onTableItemClicked(int row, int column)
+{
+    Q_UNUSED(column);
+    Q_UNUSED(row);
+    
+    // When user clicks on a table row, pause the logging to allow review
+    if (!m_logPaused && !m_logStopped) {
+        onPauseClicked();
+    }
+}
+
+void PGNLogDialog::onPauseClicked()
+{
+    m_logPaused = true;
+    m_logStopped = false;
+    
+    // Update button states
+    m_startButton->setEnabled(true);
+    m_pauseButton->setEnabled(false);
+    m_stopButton->setEnabled(true);
+    
+    // Update status
+    m_statusLabel->setText("PAUSED - Click Start to resume logging");
+    m_statusLabel->setStyleSheet("font-weight: bold; color: #ff6600; padding: 5px;");
+}
+
+void PGNLogDialog::onStartClicked()
+{
+    m_logPaused = false;
+    m_logStopped = false;
+    
+    // Update button states
+    m_startButton->setEnabled(false);
+    m_pauseButton->setEnabled(true);
+    m_stopButton->setEnabled(true);
+    
+    // Update status
+    m_statusLabel->setText("Live NMEA2000 PGN message log - Real-time updates");
+    m_statusLabel->setStyleSheet("font-weight: bold; color: #333; padding: 5px;");
+}
+
+void PGNLogDialog::onStopClicked()
+{
+    m_logPaused = false;
+    m_logStopped = true;
+    
+    // Update button states
+    m_startButton->setEnabled(true);
+    m_pauseButton->setEnabled(false);
+    m_stopButton->setEnabled(false);
+    
+    // Update status
+    m_statusLabel->setText("STOPPED - Click Start to resume logging or Clear to empty log");
+    m_statusLabel->setStyleSheet("font-weight: bold; color: #cc0000; padding: 5px;");
 }
