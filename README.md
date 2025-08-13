@@ -88,6 +88,28 @@ qmake
 make
 ```
 
+## ⚠️ Note for VS Code Users
+
+If you are using **VS Code** on Linux, **do not** use the Snap build of VS Code to build or run this project.  
+The Snap version injects Snap base library paths (e.g., `/snap/core20/...`) into the integrated terminal environment,  
+which can cause the app to link against the wrong version of `glibc`/`libpthread` and fail at runtime with errors like:
+
+### How to Avoid the Issue
+
+- **Recommended:** Install the official `.deb` package from Microsoft’s repository instead of the Snap:
+
+  ```bash
+  sudo snap remove code
+  wget -qO- https://packages.microsoft.com/keys/microsoft.asc \
+    | gpg --dearmor \
+    | sudo tee /usr/share/keyrings/ms_vscode.gpg >/dev/null
+  echo "deb [arch=amd64,arm64 signed-by=/usr/share/keyrings/ms_vscode.gpg] \
+    https://packages.microsoft.com/repos/code stable main" \
+    | sudo tee /etc/apt/sources.list.d/vscode.list
+  sudo apt update
+  sudo apt install code
+
+
 ### Raspberry Pi (Native Build - Recommended)
 
 Building directly on the Raspberry Pi is the **recommended approach** because:
