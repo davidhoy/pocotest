@@ -64,12 +64,15 @@ public:
     // Helper functions
     bool canDecode(unsigned long pgn) const;
     QString getMessageName(unsigned long pgn) const;
+    QString getCleanMessageName(unsigned long pgn) const;  // Enhanced message name formatting
     QString getFormattedDecoded(const tN2kMsg& msg);
     QString formatSignalValue(const DecodedSignal& signal);
     
     // Status functions
     int getLoadedMessageCount() const;
     QStringList getAvailablePGNs() const;
+    bool isInitialized() const;  // Status check for compatibility
+    QString getDecoderInfo() const;  // Enhanced decoder status info
 
 private:
     void initializeStandardNMEA2000();

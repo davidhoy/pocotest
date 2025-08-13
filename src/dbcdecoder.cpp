@@ -368,6 +368,42 @@ QString DBCDecoder::getMessageName(unsigned long pgn) const
     return QString("PGN %1").arg(pgn);
 }
 
+QString DBCDecoder::getCleanMessageName(unsigned long pgn) const
+{
+    QString name = getMessageName(pgn);
+    
+    // Enhanced formatting inspired by cantools experience
+    
+    // Remove redundant "PGN" prefix if present
+    if (name.startsWith("PGN ")) {
+        name = name.mid(4);
+    }
+    
+    // Clean up common prefixes/suffixes
+    if (name.startsWith("NMEA2000_")) {
+        name = name.mid(9);
+    }
+    
+    // Convert underscores to spaces for better readability  
+    name = name.replace('_', ' ');
+    
+    // Capitalize first letter of each word
+    QStringList words = name.split(' ', Qt::SkipEmptyParts);
+    for (int i = 0; i < words.length(); i++) {
+        if (!words[i].isEmpty()) {
+            words[i][0] = words[i][0].toUpper();
+        }
+    }
+    name = words.join(' ');
+    
+    // Add PGN number for unknown messages in a cleaner format
+    if (name.startsWith("PGN ") || name.contains("Unknown") || name.contains("Proprietary")) {
+        name = QString("%1 (PGN %2)").arg(name).arg(pgn);
+    }
+    
+    return name;
+}
+
 QString DBCDecoder::getFormattedDecoded(const tN2kMsg& msg)
 {
     DecodedMessage decoded = decodeMessage(msg);
@@ -396,6 +432,30 @@ QString DBCDecoder::getFormattedDecoded(const tN2kMsg& msg)
     }
     
     return parts.join(", ");
+}
+
+bool DBCDecoder::isInitialized() const
+{
+    // Decoder is considered initialized if we have message definitions loaded
+    return m_messages.count() > 0;
+}
+
+QString DBCDecoder::getDecoderInfo() const
+{
+    QString info = QString("DBC Decoder Status:\n");
+    info += QString("- Messages loaded: %1\n").arg(m_messages.count());
+    info += QString("- Decoder type: Original/Fast C++\n");
+    
+    if (m_messages.count() > 0) {
+        QStringList samplePGNs;
+        auto it = m_messages.constBegin();
+        for (int i = 0; i < qMin(5, m_messages.count()) && it != m_messages.constEnd(); ++it, ++i) {
+            samplePGNs.append(QString("%1 (%2)").arg(it.value().name).arg(it.key()));
+        }
+        info += QString("- Sample messages: %1\n").arg(samplePGNs.join(", "));
+    }
+    
+    return info;
 }
 
 QString DBCDecoder::formatSignalValue(const DecodedSignal& signal)

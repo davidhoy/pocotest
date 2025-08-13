@@ -10,7 +10,6 @@ PGNLogDialog::PGNLogDialog(QWidget *parent)
     , m_closeButton(nullptr)
     , m_clearFiltersButton(nullptr)
     , m_pauseButton(nullptr)
-    , m_startButton(nullptr)
     , m_stopButton(nullptr)
     , m_statusLabel(nullptr)
     , m_filterGroup(nullptr)
@@ -27,13 +26,30 @@ PGNLogDialog::PGNLogDialog(QWidget *parent)
     , m_useAndLogic(true)        // Default to AND logic
     , m_logPaused(false)
     , m_logStopped(false)
-    , m_dbcDecoder(new DBCDecoder(this))
+    , m_dbcDecoder(nullptr)      // Will be initialized in constructor body
 {
+    qDebug() << "PGNLogDialog constructor: Starting...";
+    
+    qDebug() << "PGNLogDialog constructor: About to call setupUI()";
     setupUI();
+    qDebug() << "PGNLogDialog constructor: setupUI() completed";
+    
+    // Initialize the original DBC decoder - proven stable and fast
+    qDebug() << "Initializing DBC Decoder...";
+    
+    m_dbcDecoder = new DBCDecoder(this);
+    if (m_dbcDecoder && m_dbcDecoder->isInitialized()) {
+        qDebug() << "DBC Decoder initialized successfully";
+        qDebug() << m_dbcDecoder->getDecoderInfo();
+    } else {
+        qWarning() << "Failed to create or initialize DBC Decoder";
+    }
     
     setWindowTitle("NMEA2000 PGN Message Log");
     setModal(false);
     resize(900, 700);
+    
+    qDebug() << "PGNLogDialog constructor: Completed successfully";
 }
 
 PGNLogDialog::~PGNLogDialog()
@@ -42,16 +58,24 @@ PGNLogDialog::~PGNLogDialog()
 
 void PGNLogDialog::setupUI()
 {
+    qDebug() << "setupUI: Starting...";
+    
     QVBoxLayout* mainLayout = new QVBoxLayout(this);
+    
+    qDebug() << "setupUI: Created main layout";
     
     // Status label
     m_statusLabel = new QLabel("Live NMEA2000 PGN message log - Real-time updates");
     m_statusLabel->setStyleSheet("font-weight: bold; color: #333; padding: 5px;");
     mainLayout->addWidget(m_statusLabel);
     
+    qDebug() << "setupUI: Created status label";
+    
     // Filter group box
     m_filterGroup = new QGroupBox("Message Filters");
     QVBoxLayout* filterLayout = new QVBoxLayout(m_filterGroup);
+    
+    qDebug() << "setupUI: Created filter group";
     
     // Source filter row
     QHBoxLayout* sourceLayout = new QHBoxLayout();
@@ -64,6 +88,8 @@ void PGNLogDialog::setupUI()
     sourceLayout->addStretch();
     filterLayout->addLayout(sourceLayout);
     
+    qDebug() << "setupUI: Created source filter";
+    
     // Destination filter row
     QHBoxLayout* destLayout = new QHBoxLayout();
     m_destinationFilterEnabled = new QCheckBox("Filter by Destination:");
@@ -74,6 +100,8 @@ void PGNLogDialog::setupUI()
     destLayout->addWidget(m_destinationFilterCombo);
     destLayout->addStretch();
     filterLayout->addLayout(destLayout);
+    
+    qDebug() << "setupUI: Created destination filter";
     
     // Filter logic row
     QHBoxLayout* logicLayout = new QHBoxLayout();
@@ -210,13 +238,21 @@ void PGNLogDialog::appendMessage(const tN2kMsg& msg)
         hexData = "(no data)";
     }
 
-    // Get decoded message name and data
-    QString messageName = m_dbcDecoder->getMessageName(msg.PGN);
+    // Get decoded message name and data using original decoder with enhancements
+    // Original decoder works with PGN directly, not CAN ID
+    
+    QString messageName;
+    if (m_dbcDecoder && m_dbcDecoder->canDecode(msg.PGN)) {
+        messageName = m_dbcDecoder->getCleanMessageName(msg.PGN);  // Use enhanced formatting
+    } else {
+        messageName = QString("PGN %1").arg(msg.PGN);
+    }
+    
     QString displayData = hexData;
     
-    if (m_decodingEnabled->isChecked() && m_dbcDecoder->canDecode(msg.PGN)) {
+    if (m_decodingEnabled->isChecked() && m_dbcDecoder && m_dbcDecoder->canDecode(msg.PGN)) {
         QString decodedData = m_dbcDecoder->getFormattedDecoded(msg);
-        if (!decodedData.isEmpty() && decodedData != "Raw data") {
+        if (!decodedData.isEmpty() && decodedData != "Raw data" && !decodedData.startsWith("PGN")) {
             displayData = decodedData + " [" + hexData + "]";
         }
     }
@@ -287,13 +323,20 @@ void PGNLogDialog::appendSentMessage(const tN2kMsg& msg)
         hexData = "(no data)";
     }
 
-    // Get decoded message name and data
-    QString messageName = m_dbcDecoder->getMessageName(msg.PGN);
+    // Get decoded message name and data using original decoder with enhancements (sent messages)
+    
+    QString messageName;
+    if (m_dbcDecoder && m_dbcDecoder->canDecode(msg.PGN)) {
+        messageName = m_dbcDecoder->getCleanMessageName(msg.PGN);  // Use enhanced formatting
+    } else {
+        messageName = QString("PGN %1").arg(msg.PGN);
+    }
+    
     QString displayData = hexData;
     
-    if (m_decodingEnabled->isChecked() && m_dbcDecoder->canDecode(msg.PGN)) {
+    if (m_decodingEnabled->isChecked() && m_dbcDecoder && m_dbcDecoder->canDecode(msg.PGN)) {
         QString decodedData = m_dbcDecoder->getFormattedDecoded(msg);
-        if (!decodedData.isEmpty() && decodedData != "Raw data") {
+        if (!decodedData.isEmpty() && decodedData != "Raw data" && !decodedData.startsWith("PGN")) {
             displayData = decodedData + " [" + hexData + "]";
         }
     }

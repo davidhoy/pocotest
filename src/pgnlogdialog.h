@@ -80,7 +80,7 @@ private:
     bool m_logPaused;
     bool m_logStopped;
     
-    // DBC Decoder
+    // Original DBC Decoder - stable and fast
     DBCDecoder* m_dbcDecoder;
 };
 

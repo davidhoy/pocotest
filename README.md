@@ -7,7 +7,9 @@ A professional Qt-based NMEA2000 network diagnostic tool featuring real-time dev
 - **Device-Centric Interface**: Main window focused on discovered NMEA2000 devices
 - **Real-Time PGN Instance Tracking**: Monitor and detect instance conflicts across the network
 - **Professional Device List**: Manufacturer mapping, installation descriptions, and conflict highlighting
-- **Live PGN Log**: Secondary window for detailed message analysis
+- **Live PGN Log**: Secondary window for detailed message analysis with pause/stop/start controls
+- **Advanced Signal Extraction**: Proper scaling, offsets, enumerated values, and unit conversion
+- **Intelligent Message Naming**: Clean PGN names with proprietary message detection
 - **Cross-Platform Support**: Linux, Windows, and macOS compatibility
 - **Multiple CAN Interface Support**: SocketCAN (Linux), Peak CAN, Vector, and other Windows drivers
 
@@ -290,8 +292,14 @@ This project currently implements:
 - ✅ Real-time NMEA2000 device discovery
 - ✅ PGN instance conflict detection
 - ✅ Professional device management UI
+- ✅ Professional signal extraction and unit conversion
+- ✅ Interactive PGN log with filtering and pause controls
 - 🔄 Windows CAN interface support (planned)
 - 🔄 macOS CAN interface support (planned)
+
+### DBC File Support
+
+The application includes a comprehensive NMEA2000 DBC file with 255+ message definitions sourced from the canboat project, providing professional-grade marine protocol support.
 
 ## Contributing
 

@@ -658,16 +658,30 @@ void DeviceMainWindow::showLumitecSwitchActionDialog(uint8_t targetAddress, cons
 
 void DeviceMainWindow::showPGNLog()
 {
+    qDebug() << "showPGNLog: Starting...";
+    
     if (!m_pgnLogDialog) {
+        qDebug() << "showPGNLog: Creating new PGNLogDialog...";
         m_pgnLogDialog = new PGNLogDialog(this);
+        qDebug() << "showPGNLog: PGNLogDialog created successfully";
     }
     
+    qDebug() << "showPGNLog: About to clear all filters...";
     // Clear all filters for general PGN log view
     m_pgnLogDialog->clearAllFilters();
+    qDebug() << "showPGNLog: Filters cleared";
     
+    qDebug() << "showPGNLog: About to show dialog...";
     m_pgnLogDialog->show();
+    qDebug() << "showPGNLog: Dialog shown";
+    
+    qDebug() << "showPGNLog: About to raise dialog...";
     m_pgnLogDialog->raise();
+    qDebug() << "showPGNLog: Dialog raised";
+    
+    qDebug() << "showPGNLog: About to activate window...";
     m_pgnLogDialog->activateWindow();
+    qDebug() << "showPGNLog: Window activated - completed successfully";
 }
 
 void DeviceMainWindow::showSendPGNDialog()
