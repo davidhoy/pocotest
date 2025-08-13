@@ -3,5 +3,5 @@ build/
 *.moc
 moc*.*
 *.stash
-Makefile
+/Makefile
 pocotest

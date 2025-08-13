@@ -33,7 +33,7 @@ sudo apt install qtbase5-dev cmake g++ can-utils
 sudo dnf install qt5-qtbase-devel cmake gcc-c++ can-utils
 ```
 
-### Windows
+### Windows CAN Interfaces
 
 #### Option 1: Using vcpkg (Recommended)
 
@@ -62,11 +62,14 @@ brew install qt cmake
 ## CAN Interface Support
 
 ### Linux
+
 - **SocketCAN**: Native Linux CAN support (included)
 - **Virtual CAN**: For testing and development
 
 ### Windows
+
 The application can be adapted for Windows CAN interfaces:
+
 - **Peak PCAN**: Popular USB-CAN adapters
 - **Vector**: Professional CAN interfaces  
 - **Kvaser**: Industrial CAN solutions
@@ -85,9 +88,32 @@ qmake
 make
 ```
 
+## ⚠️ Note for VS Code Users
+
+If you are using **VS Code** on Linux, **do not** use the Snap build of VS Code to build or run this project.  
+The Snap version injects Snap base library paths (e.g., `/snap/core20/...`) into the integrated terminal environment,  
+which can cause the app to link against the wrong version of `glibc`/`libpthread` and fail at runtime with errors like:
+
+### How to Avoid the Issue
+
+- **Recommended:** Install the official `.deb` package from Microsoft’s repository instead of the Snap:
+
+  ```bash
+  sudo snap remove code
+  wget -qO- https://packages.microsoft.com/keys/microsoft.asc \
+    | gpg --dearmor \
+    | sudo tee /usr/share/keyrings/ms_vscode.gpg >/dev/null
+  echo "deb [arch=amd64,arm64 signed-by=/usr/share/keyrings/ms_vscode.gpg] \
+    https://packages.microsoft.com/repos/code stable main" \
+    | sudo tee /etc/apt/sources.list.d/vscode.list
+  sudo apt update
+  sudo apt install code
+
+
 ### Raspberry Pi (Native Build - Recommended)
 
 Building directly on the Raspberry Pi is the **recommended approach** because:
+
 - ✅ **Perfect compatibility** - uses exact Pi libraries and ABI
 - ✅ **No cross-compilation complexity** - avoids toolchain issues  
 - ✅ **Optimal performance** - compiler optimizes for actual hardware
@@ -143,8 +169,8 @@ sudo ip link set up vcan0
 
 ### Windows (Visual Studio)
 
-```cmd
-git clone https://github.com/davidhoy/pocotest.git
+```sh
+git clone --recurse-submodules https://github.com/davidhoy/pocotest.git
 cd pocotest
 # Open pocotest.pro in Qt Creator or use qmake
 qmake
@@ -154,7 +180,7 @@ nmake  # or use Visual Studio
 ### Windows (MinGW)
 
 ```sh
-git clone https://github.com/davidhoy/pocotest.git
+git clone --recurse-submodules https://github.com/davidhoy/pocotest.git
 cd pocotest
 qmake
 mingw32-make
@@ -181,6 +207,7 @@ class tNMEA2000_PCAN : public tNMEA2000 {
 ```
 
 Popular Windows CAN APIs:
+
 - **Peak PCAN-Basic API**: Simple USB-CAN integration
 - **Vector XL Driver Library**: Professional CAN/LIN/FlexRay
 - **Kvaser CANlib**: Wide hardware support
@@ -221,12 +248,14 @@ Now, CAN traffic from the remote device's `can0` will be available on your local
 
 After building, run the application:
 
-### Linux
+### Linux (Running)
+
 ```sh
 ./pocotest
 ```
 
-### Windows  
+### Windows (Running)
+
 ```cmd
 pocotest.exe
 ```
@@ -235,17 +264,20 @@ The application will auto-detect available CAN interfaces and display them in th
 
 ## Platform-Specific Notes
 
-### Linux
+### Linux (Notes)
+
 - Uses SocketCAN for native CAN support
 - Requires `can-utils` for CAN interface management
 - Supports virtual CAN interfaces for development/testing
 
-### Windows
+### Windows (Notes)
+
 - Requires CAN driver installation (Peak, Vector, Kvaser, etc.)
 - May need administrator privileges for CAN access
 - USB-CAN adapters are plug-and-play with proper drivers
 
 ### macOS
+
 - Limited native CAN support
 - USB-CAN adapters recommended
 - May require third-party CAN libraries
@@ -253,6 +285,7 @@ The application will auto-detect available CAN interfaces and display them in th
 ## Development Status
 
 This project currently implements:
+
 - ✅ Linux SocketCAN support
 - ✅ Real-time NMEA2000 device discovery
 - ✅ PGN instance conflict detection
