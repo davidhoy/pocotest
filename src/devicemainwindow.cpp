@@ -818,9 +818,13 @@ void DeviceMainWindow::showPGNLogForDevice(uint8_t sourceAddress)
         m_pgnLogDialog = new PGNLogDialog(this);
     }
     
-    // Set filter for the specific source address
+    // Set filters for both source and destination addresses to capture all traffic
+    // involving this device (messages from it OR messages to it)
     m_pgnLogDialog->setSourceFilter(sourceAddress);
-    m_pgnLogDialog->setWindowTitle(QString("PGN History - Device 0x%1")
+    m_pgnLogDialog->setDestinationFilter(sourceAddress);
+    m_pgnLogDialog->setFilterLogic(true); // Use OR logic - show messages FROM device OR TO device
+    
+    m_pgnLogDialog->setWindowTitle(QString("PGN History - Device 0x%1 (Source OR Destination)")
                                    .arg(sourceAddress, 2, 16, QChar('0')).toUpper());
     
     m_pgnLogDialog->show();

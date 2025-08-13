@@ -26,6 +26,7 @@ public:
     void appendSentMessage(const tN2kMsg& msg); // For messages sent by this application
     void setSourceFilter(uint8_t sourceAddress);
     void setDestinationFilter(uint8_t destinationAddress);
+    void setFilterLogic(bool useOrLogic); // true for OR, false for AND
     void updateDeviceList(const QStringList& devices);
     void clearAllFilters(); // Clear all filters and reset to default view
 

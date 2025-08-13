@@ -424,6 +424,16 @@ void PGNLogDialog::setDestinationFilter(uint8_t destinationAddress)
     clearLog();
 }
 
+void PGNLogDialog::setFilterLogic(bool useOrLogic)
+{
+    m_useAndLogic = !useOrLogic; // Store as AND logic, so invert
+    
+    // Update UI combo box
+    m_filterLogicCombo->setCurrentIndex(useOrLogic ? 1 : 0); // 0=AND, 1=OR
+    
+    updateStatusLabel();
+}
+
 void PGNLogDialog::updateDeviceList(const QStringList& devices)
 {
     // Store current selections
