@@ -1,4 +1,4 @@
-QT += core gui widgets
+QT += core gui widgets network
 
 CONFIG += c++11 console
 
@@ -30,6 +30,7 @@ SOURCES += \
     src/pocodevicedialog.cpp \
     src/LumitecPoco.cpp \
     src/n2k_linux_port.cpp \
+    src/dbcdecoder.cpp \
     components/external/NMEA2000/src/NMEA2000.cpp \
     components/external/NMEA2000/src/N2kTimer.cpp \
     components/external/NMEA2000/src/N2kMsg.cpp \
@@ -45,7 +46,8 @@ HEADERS += \
     src/pgnlogdialog.h \
     src/pgndialog.h \
     src/pocodevicedialog.h \
-    src/LumitecPoco.h
+    src/LumitecPoco.h \
+    src/dbcdecoder.h
 
 # Resources
 RESOURCES += \

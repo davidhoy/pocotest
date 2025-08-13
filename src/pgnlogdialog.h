@@ -12,6 +12,7 @@
 #include <QCheckBox>
 #include <QGroupBox>
 #include <N2kMsg.h>
+#include "dbcdecoder.h"
 
 class PGNLogDialog : public QDialog
 {
@@ -37,6 +38,7 @@ private slots:
     void onDestinationFilterEnabled(bool enabled);
     void onClearFilters();
     void onFilterLogicChanged();
+    void onToggleDecoding(bool enabled);
 
 private:
     void setupUI();
@@ -57,6 +59,7 @@ private:
     QComboBox* m_sourceFilterCombo;
     QComboBox* m_destinationFilterCombo;
     QComboBox* m_filterLogicCombo;  // AND/OR logic selector
+    QCheckBox* m_decodingEnabled;   // Toggle for DBC decoding
     
     // Filter state
     uint8_t m_sourceFilter;      // 255 means no filter
@@ -64,6 +67,9 @@ private:
     bool m_sourceFilterActive;
     bool m_destinationFilterActive;
     bool m_useAndLogic;          // true = AND, false = OR
+    
+    // DBC Decoder
+    DBCDecoder* m_dbcDecoder;
 };
 
 #endif // PGNLOGDIALOG_H

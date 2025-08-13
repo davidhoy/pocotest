@@ -16,11 +16,13 @@ PGNLogDialog::PGNLogDialog(QWidget *parent)
     , m_sourceFilterCombo(nullptr)
     , m_destinationFilterCombo(nullptr)
     , m_filterLogicCombo(nullptr)
+    , m_decodingEnabled(nullptr)
     , m_sourceFilter(255)        // No filter initially
     , m_destinationFilter(255)   // No filter initially
     , m_sourceFilterActive(false)
     , m_destinationFilterActive(false)
     , m_useAndLogic(true)        // Default to AND logic
+    , m_dbcDecoder(new DBCDecoder(this))
 {
     setupUI();
     
@@ -80,6 +82,15 @@ void PGNLogDialog::setupUI()
     logicLayout->addStretch();
     filterLayout->addLayout(logicLayout);
     
+    // DBC Decoding option
+    QHBoxLayout* decodingLayout = new QHBoxLayout();
+    m_decodingEnabled = new QCheckBox("Enable DBC Decoding");
+    m_decodingEnabled->setChecked(true); // Default to enabled
+    m_decodingEnabled->setToolTip("Decode known NMEA2000 messages using DBC definitions");
+    decodingLayout->addWidget(m_decodingEnabled);
+    decodingLayout->addStretch();
+    filterLayout->addLayout(decodingLayout);
+    
     // Clear filters button
     QHBoxLayout* filterButtonLayout = new QHBoxLayout();
     m_clearFiltersButton = new QPushButton("Clear All Filters");
@@ -109,24 +120,26 @@ void PGNLogDialog::setupUI()
     connect(m_filterLogicCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &PGNLogDialog::onFilterLogicChanged);
     connect(m_clearFiltersButton, &QPushButton::clicked, this, &PGNLogDialog::onClearFilters);
+    connect(m_decodingEnabled, &QCheckBox::toggled, this, &PGNLogDialog::onToggleDecoding);
     
     // Log table
     m_logTable = new QTableWidget();
-    m_logTable->setColumnCount(6);
+    m_logTable->setColumnCount(7);
     
     QStringList headers;
-    headers << "PGN" << "Pri" << "Source" << "Destination" << "Len" << "Data";
+    headers << "PGN" << "Message Name" << "Pri" << "Src" << "Dst" << "Len" << "Data";
     m_logTable->setHorizontalHeaderLabels(headers);
     
     // Configure table
     m_logTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_logTable->setAlternatingRowColors(true);
     m_logTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents); // PGN
-    m_logTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents); // Priority
-    m_logTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents); // Source
-    m_logTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents); // Destination
-    m_logTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents); // Length
-    m_logTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::Stretch); // Data - stretch to fill
+    m_logTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Interactive); // Message Name
+    m_logTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents); // Priority
+    m_logTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents); // Source
+    m_logTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents); // Destination
+    m_logTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::ResizeToContents); // Length
+    m_logTable->horizontalHeader()->setSectionResizeMode(6, QHeaderView::Stretch); // Data - stretch to fill
     m_logTable->verticalHeader()->setVisible(false);
     m_logTable->setSortingEnabled(false);
     
@@ -169,6 +182,17 @@ void PGNLogDialog::appendMessage(const tN2kMsg& msg)
         hexData = "(no data)";
     }
 
+    // Get decoded message name and data
+    QString messageName = m_dbcDecoder->getMessageName(msg.PGN);
+    QString displayData = hexData;
+    
+    if (m_decodingEnabled->isChecked() && m_dbcDecoder->canDecode(msg.PGN)) {
+        QString decodedData = m_dbcDecoder->getFormattedDecoded(msg);
+        if (!decodedData.isEmpty() && decodedData != "Raw data") {
+            displayData = decodedData + " [" + hexData + "]";
+        }
+    }
+
     // Add new row to table
     int row = m_logTable->rowCount();
     m_logTable->insertRow(row);
@@ -178,31 +202,36 @@ void PGNLogDialog::appendMessage(const tN2kMsg& msg)
     pgnItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
     m_logTable->setItem(row, 0, pgnItem);
     
-    // Column 1: Priority
+    // Column 1: Message Name
+    QTableWidgetItem* nameItem = new QTableWidgetItem(messageName);
+    nameItem->setTextAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    m_logTable->setItem(row, 1, nameItem);
+    
+    // Column 2: Priority
     QTableWidgetItem* priItem = new QTableWidgetItem(QString::number(msg.Priority));
     priItem->setTextAlignment(Qt::AlignCenter);
-    m_logTable->setItem(row, 1, priItem);
+    m_logTable->setItem(row, 2, priItem);
     
-    // Column 2: Source
+    // Column 3: Source
     QTableWidgetItem* srcItem = new QTableWidgetItem(QString("0x%1").arg(msg.Source, 2, 16, QChar('0')).toUpper());
     srcItem->setTextAlignment(Qt::AlignCenter);
-    m_logTable->setItem(row, 2, srcItem);
+    m_logTable->setItem(row, 3, srcItem);
     
-    // Column 3: Destination
-    QString destText = msg.Destination == 255 ? "Broadcast" : QString("0x%1").arg(msg.Destination, 2, 16, QChar('0')).toUpper();
+    // Column 4: Destination
+    QString destText = QString("0x%1").arg(msg.Destination, 2, 16, QChar('0')).toUpper();
     QTableWidgetItem* destItem = new QTableWidgetItem(destText);
     destItem->setTextAlignment(Qt::AlignCenter);
-    m_logTable->setItem(row, 3, destItem);
+    m_logTable->setItem(row, 4, destItem);
     
-    // Column 4: Length
+    // Column 5: Length
     QTableWidgetItem* lenItem = new QTableWidgetItem(QString::number(msg.DataLen));
     lenItem->setTextAlignment(Qt::AlignCenter);
-    m_logTable->setItem(row, 4, lenItem);
+    m_logTable->setItem(row, 5, lenItem);
     
-    // Column 5: Data
-    QTableWidgetItem* dataItem = new QTableWidgetItem(hexData);
+    // Column 6: Data (decoded or raw)
+    QTableWidgetItem* dataItem = new QTableWidgetItem(displayData);
     dataItem->setFont(QFont("Consolas, Monaco, monospace", 9));
-    m_logTable->setItem(row, 5, dataItem);
+    m_logTable->setItem(row, 6, dataItem);
     
     // Auto-scroll to bottom
     m_logTable->scrollToBottom();
@@ -225,6 +254,17 @@ void PGNLogDialog::appendSentMessage(const tN2kMsg& msg)
         hexData = "(no data)";
     }
 
+    // Get decoded message name and data
+    QString messageName = m_dbcDecoder->getMessageName(msg.PGN);
+    QString displayData = hexData;
+    
+    if (m_decodingEnabled->isChecked() && m_dbcDecoder->canDecode(msg.PGN)) {
+        QString decodedData = m_dbcDecoder->getFormattedDecoded(msg);
+        if (!decodedData.isEmpty() && decodedData != "Raw data") {
+            displayData = decodedData + " [" + hexData + "]";
+        }
+    }
+
     // Add new row to table
     int row = m_logTable->rowCount();
     m_logTable->insertRow(row);
@@ -237,36 +277,42 @@ void PGNLogDialog::appendSentMessage(const tN2kMsg& msg)
     pgnItem->setForeground(QBrush(blueColor));
     m_logTable->setItem(row, 0, pgnItem);
     
-    // Column 1: Priority
+    // Column 1: Message Name
+    QTableWidgetItem* nameItem = new QTableWidgetItem(messageName);
+    nameItem->setTextAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    nameItem->setForeground(QBrush(blueColor));
+    m_logTable->setItem(row, 1, nameItem);
+    
+    // Column 2: Priority
     QTableWidgetItem* priItem = new QTableWidgetItem(QString::number(msg.Priority));
     priItem->setTextAlignment(Qt::AlignCenter);
     priItem->setForeground(QBrush(blueColor));
-    m_logTable->setItem(row, 1, priItem);
+    m_logTable->setItem(row, 2, priItem);
     
-    // Column 2: Source
+    // Column 3: Source
     QTableWidgetItem* srcItem = new QTableWidgetItem(QString("0x%1").arg(msg.Source, 2, 16, QChar('0')).toUpper());
     srcItem->setTextAlignment(Qt::AlignCenter);
     srcItem->setForeground(QBrush(blueColor));
-    m_logTable->setItem(row, 2, srcItem);
+    m_logTable->setItem(row, 3, srcItem);
     
-    // Column 3: Destination
+    // Column 4: Destination
     QString destText = msg.Destination == 255 ? "Broadcast" : QString("0x%1").arg(msg.Destination, 2, 16, QChar('0')).toUpper();
     QTableWidgetItem* destItem = new QTableWidgetItem(destText);
     destItem->setTextAlignment(Qt::AlignCenter);
     destItem->setForeground(QBrush(blueColor));
-    m_logTable->setItem(row, 3, destItem);
+    m_logTable->setItem(row, 4, destItem);
     
-    // Column 4: Length
+    // Column 5: Length
     QTableWidgetItem* lenItem = new QTableWidgetItem(QString::number(msg.DataLen));
     lenItem->setTextAlignment(Qt::AlignCenter);
     lenItem->setForeground(QBrush(blueColor));
-    m_logTable->setItem(row, 4, lenItem);
+    m_logTable->setItem(row, 5, lenItem);
     
-    // Column 5: Data
-    QTableWidgetItem* dataItem = new QTableWidgetItem(hexData);
+    // Column 6: Data (decoded or raw)
+    QTableWidgetItem* dataItem = new QTableWidgetItem(displayData);
     dataItem->setFont(QFont("Consolas, Monaco, monospace", 9));
     dataItem->setForeground(QBrush(blueColor));
-    m_logTable->setItem(row, 5, dataItem);
+    m_logTable->setItem(row, 6, dataItem);
     
     // Auto-scroll to bottom
     m_logTable->scrollToBottom();
@@ -587,4 +633,11 @@ bool PGNLogDialog::messagePassesFilter(const tN2kMsg& msg)
     }
     
     return result;
+}
+
+void PGNLogDialog::onToggleDecoding(bool enabled)
+{
+    // This slot is called when the decoding checkbox is toggled
+    // No immediate action needed - the appendMessage functions will check the checkbox state
+    Q_UNUSED(enabled);
 }

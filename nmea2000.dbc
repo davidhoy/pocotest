@@ -1,0 +1,114 @@
+VERSION ""
+
+
+NS_ : 
+	NS_DESC_
+	CM_
+	BA_DEF_
+	BA_
+	VAL_
+	CAT_DEF_
+	CAT_
+	FILTER
+	BA_DEF_DEF_
+	EV_DATA_
+	ENVVAR_DATA_
+	SGTYPE_
+	SGTYPE_VAL_
+	BA_DEF_SGTYPE_
+	BA_SGTYPE_
+	SIG_VALTYPE_
+	SIGTYPE_VALTYPE_
+	BO_TX_BU_
+	BA_DEF_REL_
+	BA_REL_
+	BA_DEF_DEF_REL_
+	BU_SG_REL_
+	BU_EV_REL_
+	BU_BO_REL_
+	SG_MUL_VAL_
+
+BS_:
+
+BU_:
+
+
+BO_ 127488 Engine_Parameters_Rapid_Update: 8 Vector__XXX
+ SG_ Engine_Instance : 0|8@1+ (1,0) [0|251] "" Vector__XXX
+ SG_ Engine_Speed : 8|16@1+ (0.25,0) [0|16383.75] "rpm" Vector__XXX
+ SG_ Engine_Boost_Pressure : 24|16@1+ (100,0) [0|6553500] "Pa" Vector__XXX
+ SG_ Engine_Tilt_Trim : 40|8@1- (0.005,0) [-0.635|0.635] "rad" Vector__XXX
+
+BO_ 130306 Wind_Data: 8 Vector__XXX
+ SG_ Wind_Reference : 0|3@1+ (1,0) [0|7] "" Vector__XXX
+ SG_ Wind_Speed : 8|16@1+ (0.01,0) [0|655.34] "m/s" Vector__XXX
+ SG_ Wind_Angle : 24|16@1+ (0.0001,0) [0|6.2831] "rad" Vector__XXX
+
+BO_ 130312 Temperature: 8 Vector__XXX
+ SG_ Instance : 0|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ Source : 8|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ Actual_Temperature : 16|16@1+ (0.01,273.15) [0|1373.15] "K" Vector__XXX
+ SG_ Set_Temperature : 32|16@1+ (0.01,273.15) [0|1373.15] "K" Vector__XXX
+
+BO_ 127508 Battery_Status: 8 Vector__XXX
+ SG_ Battery_Instance : 0|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ Voltage : 8|16@1+ (0.01,0) [0|655.35] "V" Vector__XXX
+ SG_ Current : 24|32@1- (0.001,0) [-2147483.648|2147483.647] "A" Vector__XXX
+
+BO_ 129025 Position_Rapid_Update: 8 Vector__XXX
+ SG_ Latitude : 0|32@1- (0.0000001,0) [-214.7483648|214.7483647] "deg" Vector__XXX
+ SG_ Longitude : 32|32@1- (0.0000001,0) [-214.7483648|214.7483647] "deg" Vector__XXX
+
+BO_ 129026 COG_SOG_Rapid_Update: 8 Vector__XXX
+ SG_ COG_Reference : 0|2@1+ (1,0) [0|3] "" Vector__XXX
+ SG_ COG : 16|16@1+ (0.0001,0) [0|6.2831] "rad" Vector__XXX
+ SG_ SOG : 32|16@1+ (0.01,0) [0|655.34] "m/s" Vector__XXX
+
+BO_ 129029 GNSS_Position_Data: 43 Vector__XXX
+ SG_ Date : 0|16@1+ (1,0) [0|65535] "days" Vector__XXX
+ SG_ Time : 16|32@1+ (0.0001,0) [0|429496.7295] "s" Vector__XXX
+ SG_ Latitude : 48|64@1- (1e-16,0) [-1.84467440737|1.84467440737] "deg" Vector__XXX
+ SG_ Longitude : 112|64@1- (1e-16,0) [-1.84467440737|1.84467440737] "deg" Vector__XXX
+ SG_ Altitude : 176|64@1- (1e-06,0) [-9.22337203685|9.22337203685] "m" Vector__XXX
+
+BO_ 130311 Environmental_Parameters: 8 Vector__XXX
+ SG_ Temperature_Instance : 0|6@1+ (1,0) [0|63] "" Vector__XXX
+ SG_ Humidity_Instance : 6|6@1+ (1,0) [0|63] "" Vector__XXX
+ SG_ Temperature : 16|16@1+ (0.01,273.15) [0|1373.15] "K" Vector__XXX
+ SG_ Humidity : 32|16@1- (0.004,0) [-131.072|131.068] "%" Vector__XXX
+ SG_ Atmospheric_Pressure : 48|16@1+ (100,0) [0|6553500] "Pa" Vector__XXX
+
+BO_ 130313 Humidity: 8 Vector__XXX
+ SG_ Instance : 0|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ Source : 8|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ Actual_Humidity : 16|16@1- (0.004,0) [-131.072|131.068] "%" Vector__XXX
+ SG_ Set_Humidity : 32|16@1- (0.004,0) [-131.072|131.068] "%" Vector__XXX
+
+BO_ 130314 Actual_Pressure: 8 Vector__XXX
+ SG_ Instance : 0|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ Source : 8|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ Pressure : 16|32@1+ (0.1,0) [0|429496729.5] "Pa" Vector__XXX
+
+BO_ 127501 Binary_Switch_Bank_Status: 8 Vector__XXX
+ SG_ Instance : 0|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ Switch_Bank_Indicator : 8|2@1+ (1,0) [0|3] "" Vector__XXX
+ SG_ Switch1 : 16|2@1+ (1,0) [0|3] "" Vector__XXX
+ SG_ Switch2 : 18|2@1+ (1,0) [0|3] "" Vector__XXX
+ SG_ Switch3 : 20|2@1+ (1,0) [0|3] "" Vector__XXX
+ SG_ Switch4 : 22|2@1+ (1,0) [0|3] "" Vector__XXX
+ SG_ Switch5 : 24|2@1+ (1,0) [0|3] "" Vector__XXX
+ SG_ Switch6 : 26|2@1+ (1,0) [0|3] "" Vector__XXX
+ SG_ Switch7 : 28|2@1+ (1,0) [0|3] "" Vector__XXX
+ SG_ Switch8 : 30|2@1+ (1,0) [0|3] "" Vector__XXX
+
+BO_ 127502 Switch_Bank_Control: 8 Vector__XXX
+ SG_ Instance : 0|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ Switch_Bank_Indicator : 8|2@1+ (1,0) [0|3] "" Vector__XXX
+ SG_ Switch1 : 16|2@1+ (1,0) [0|3] "" Vector__XXX
+ SG_ Switch2 : 18|2@1+ (1,0) [0|3] "" Vector__XXX
+ SG_ Switch3 : 20|2@1+ (1,0) [0|3] "" Vector__XXX
+ SG_ Switch4 : 22|2@1+ (1,0) [0|3] "" Vector__XXX
+ SG_ Switch5 : 24|2@1+ (1,0) [0|3] "" Vector__XXX
+ SG_ Switch6 : 26|2@1+ (1,0) [0|3] "" Vector__XXX
+ SG_ Switch7 : 28|2@1+ (1,0) [0|3] "" Vector__XXX
+ SG_ Switch8 : 30|2@1+ (1,0) [0|3] "" Vector__XXX
