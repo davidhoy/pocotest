@@ -3,9 +3,6 @@
 	url = https://github.com/davidhoy/NMEA2000.git
 	branch = master
 [submodule "components/external/NMEA2000_socketCAN"]
-	path = components/external/NMEA2000_socketCAN
-	url = https://github.com/davidhoy/NMEA2000_socketCAN.git
-	branch = master
-[submodule "components/external/cantools"]
-	path = components/external/cantools
-	url = https://github.com/cantools/cantools.git
+        path = components/external/NMEA2000_socketCAN
+        url = https://github.com/davidhoy/NMEA2000_socketCAN.git
+        branch = master
