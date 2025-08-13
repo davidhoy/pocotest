@@ -1446,11 +1446,11 @@ void DeviceMainWindow::showPocoDeviceDialog(uint8_t targetAddress, const QString
     connect(dialog, &PocoDeviceDialog::deviceInfoRequested,
             this, &DeviceMainWindow::onPocoDeviceInfoRequested);
     
-    // Show the dialog modally
-    dialog->exec();
+    // Show the dialog non-modally
+    dialog->show();
     
-    // Clean up
-    dialog->deleteLater();
+    // Set up automatic cleanup when dialog is closed
+    connect(dialog, &QDialog::finished, dialog, &QObject::deleteLater);
 }
 
 void DeviceMainWindow::onPocoSwitchActionRequested(uint8_t deviceAddress, uint8_t switchId, uint8_t actionId) {

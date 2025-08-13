@@ -32,7 +32,7 @@ PocoDeviceDialog::PocoDeviceDialog(uint8_t deviceAddress, const QString& deviceN
     , m_buttonBox(nullptr)
 {
     setupUI();
-    setModal(true);
+    setModal(false);  // Make dialog non-modal to allow interaction with other dialogs
     setWindowTitle(QString("Poco Device Control - %1 (0x%2)")
                    .arg(m_deviceName)
                    .arg(m_deviceAddress, 2, 16, QChar('0')));
