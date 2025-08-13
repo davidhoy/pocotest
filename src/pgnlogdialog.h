@@ -2,7 +2,8 @@
 #define PGNLOGDIALOG_H
 
 #include <QDialog>
-#include <QTextEdit>
+#include <QTableWidget>
+#include <QHeaderView>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QPushButton>
@@ -43,7 +44,7 @@ private:
     bool messagePassesFilter(const tN2kMsg& msg);
 
 private:
-    QTextEdit* m_logTextEdit;
+    QTableWidget* m_logTable;
     QPushButton* m_clearButton;
     QPushButton* m_closeButton;
     QPushButton* m_clearFiltersButton;

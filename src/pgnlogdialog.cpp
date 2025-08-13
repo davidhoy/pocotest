@@ -5,7 +5,7 @@
 
 PGNLogDialog::PGNLogDialog(QWidget *parent)
     : QDialog(parent)
-    , m_logTextEdit(nullptr)
+    , m_logTable(nullptr)
     , m_clearButton(nullptr)
     , m_closeButton(nullptr)
     , m_clearFiltersButton(nullptr)
@@ -110,19 +110,31 @@ void PGNLogDialog::setupUI()
             this, &PGNLogDialog::onFilterLogicChanged);
     connect(m_clearFiltersButton, &QPushButton::clicked, this, &PGNLogDialog::onClearFilters);
     
-    // Log text edit
-    m_logTextEdit = new QTextEdit();
-    m_logTextEdit->setLineWrapMode(QTextEdit::WidgetWidth);
-    m_logTextEdit->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    m_logTextEdit->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    m_logTextEdit->setFont(QFont("Consolas, Monaco, monospace", 9));
+    // Log table
+    m_logTable = new QTableWidget();
+    m_logTable->setColumnCount(6);
     
-    // Add some initial content
-    m_logTextEdit->append("NMEA2000 PGN Message Log");
-    m_logTextEdit->append("Ready to receive and display CAN messages");
-    m_logTextEdit->append("===========================================");
+    QStringList headers;
+    headers << "PGN" << "Pri" << "Source" << "Destination" << "Len" << "Data";
+    m_logTable->setHorizontalHeaderLabels(headers);
     
-    mainLayout->addWidget(m_logTextEdit);
+    // Configure table
+    m_logTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_logTable->setAlternatingRowColors(true);
+    m_logTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents); // PGN
+    m_logTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents); // Priority
+    m_logTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents); // Source
+    m_logTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents); // Destination
+    m_logTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents); // Length
+    m_logTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::Stretch); // Data - stretch to fill
+    m_logTable->verticalHeader()->setVisible(false);
+    m_logTable->setSortingEnabled(false);
+    
+    // Set smaller font for the table
+    QFont tableFont("Consolas, Monaco, monospace", 9);
+    m_logTable->setFont(tableFont);
+    
+    mainLayout->addWidget(m_logTable);
     
     // Buttons
     QHBoxLayout* buttonLayout = new QHBoxLayout();
@@ -147,19 +159,53 @@ void PGNLogDialog::appendMessage(const tN2kMsg& msg)
         return; // Skip this message
     }
     
-    QString pgnInfo = QString("PGN: %1, Priority: %2, Source: 0x%3, Destination: %4")
-                          .arg(msg.PGN)
-                          .arg(msg.Priority)
-                          .arg(msg.Source, 2, 16, QChar('0')).toUpper()
-                          .arg(msg.Destination == 255 ? "Broadcast" : QString("0x%1").arg(msg.Destination, 2, 16, QChar('0')).toUpper());
+    // Format hex data payload
+    QString hexData = "";
+    for (int i = 0; i < msg.DataLen; i++) {
+        if (i > 0) hexData += " ";
+        hexData += QString("%1").arg(msg.Data[i], 2, 16, QChar('0')).toUpper();
+    }
+    if (hexData.isEmpty()) {
+        hexData = "(no data)";
+    }
 
-    // Append to the scrolling text box
-    m_logTextEdit->append(pgnInfo);
+    // Add new row to table
+    int row = m_logTable->rowCount();
+    m_logTable->insertRow(row);
+    
+    // Column 0: PGN
+    QTableWidgetItem* pgnItem = new QTableWidgetItem(QString::number(msg.PGN));
+    pgnItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    m_logTable->setItem(row, 0, pgnItem);
+    
+    // Column 1: Priority
+    QTableWidgetItem* priItem = new QTableWidgetItem(QString::number(msg.Priority));
+    priItem->setTextAlignment(Qt::AlignCenter);
+    m_logTable->setItem(row, 1, priItem);
+    
+    // Column 2: Source
+    QTableWidgetItem* srcItem = new QTableWidgetItem(QString("0x%1").arg(msg.Source, 2, 16, QChar('0')).toUpper());
+    srcItem->setTextAlignment(Qt::AlignCenter);
+    m_logTable->setItem(row, 2, srcItem);
+    
+    // Column 3: Destination
+    QString destText = msg.Destination == 255 ? "Broadcast" : QString("0x%1").arg(msg.Destination, 2, 16, QChar('0')).toUpper();
+    QTableWidgetItem* destItem = new QTableWidgetItem(destText);
+    destItem->setTextAlignment(Qt::AlignCenter);
+    m_logTable->setItem(row, 3, destItem);
+    
+    // Column 4: Length
+    QTableWidgetItem* lenItem = new QTableWidgetItem(QString::number(msg.DataLen));
+    lenItem->setTextAlignment(Qt::AlignCenter);
+    m_logTable->setItem(row, 4, lenItem);
+    
+    // Column 5: Data
+    QTableWidgetItem* dataItem = new QTableWidgetItem(hexData);
+    dataItem->setFont(QFont("Consolas, Monaco, monospace", 9));
+    m_logTable->setItem(row, 5, dataItem);
     
     // Auto-scroll to bottom
-    QTextCursor cursor = m_logTextEdit->textCursor();
-    cursor.movePosition(QTextCursor::End);
-    m_logTextEdit->setTextCursor(cursor);
+    m_logTable->scrollToBottom();
 }
 
 void PGNLogDialog::appendSentMessage(const tN2kMsg& msg)
@@ -169,27 +215,66 @@ void PGNLogDialog::appendSentMessage(const tN2kMsg& msg)
         return; // Skip this message
     }
 
-    QString pgnInfo = QString("Sent: PGN: %1, Pri %2, Src 0x%3, Dst %4")
-                          .arg(msg.PGN)
-                          .arg(msg.Priority)
-                          .arg(msg.Source, 2, 16, QChar('0')).toUpper()
-                          .arg(msg.Destination == 255 ? "Broadcast" : QString("0x%1").arg(msg.Destination, 2, 16, QChar('0')).toUpper());
+    // Format hex data payload
+    QString hexData = "";
+    for (int i = 0; i < msg.DataLen; i++) {
+        if (i > 0) hexData += " ";
+        hexData += QString("%1").arg(msg.Data[i], 2, 16, QChar('0')).toUpper();
+    }
+    if (hexData.isEmpty()) {
+        hexData = "(no data)";
+    }
 
-    // Append to the scrolling text box with a different style for sent messages
-    m_logTextEdit->append(QString("<font color='blue'>%1</font>").arg(pgnInfo));
+    // Add new row to table
+    int row = m_logTable->rowCount();
+    m_logTable->insertRow(row);
+    
+    QColor blueColor(0, 0, 255);
+    
+    // Column 0: PGN (with "Sent:" prefix for sent messages)
+    QTableWidgetItem* pgnItem = new QTableWidgetItem(QString("Sent: %1").arg(msg.PGN));
+    pgnItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    pgnItem->setForeground(QBrush(blueColor));
+    m_logTable->setItem(row, 0, pgnItem);
+    
+    // Column 1: Priority
+    QTableWidgetItem* priItem = new QTableWidgetItem(QString::number(msg.Priority));
+    priItem->setTextAlignment(Qt::AlignCenter);
+    priItem->setForeground(QBrush(blueColor));
+    m_logTable->setItem(row, 1, priItem);
+    
+    // Column 2: Source
+    QTableWidgetItem* srcItem = new QTableWidgetItem(QString("0x%1").arg(msg.Source, 2, 16, QChar('0')).toUpper());
+    srcItem->setTextAlignment(Qt::AlignCenter);
+    srcItem->setForeground(QBrush(blueColor));
+    m_logTable->setItem(row, 2, srcItem);
+    
+    // Column 3: Destination
+    QString destText = msg.Destination == 255 ? "Broadcast" : QString("0x%1").arg(msg.Destination, 2, 16, QChar('0')).toUpper();
+    QTableWidgetItem* destItem = new QTableWidgetItem(destText);
+    destItem->setTextAlignment(Qt::AlignCenter);
+    destItem->setForeground(QBrush(blueColor));
+    m_logTable->setItem(row, 3, destItem);
+    
+    // Column 4: Length
+    QTableWidgetItem* lenItem = new QTableWidgetItem(QString::number(msg.DataLen));
+    lenItem->setTextAlignment(Qt::AlignCenter);
+    lenItem->setForeground(QBrush(blueColor));
+    m_logTable->setItem(row, 4, lenItem);
+    
+    // Column 5: Data
+    QTableWidgetItem* dataItem = new QTableWidgetItem(hexData);
+    dataItem->setFont(QFont("Consolas, Monaco, monospace", 9));
+    dataItem->setForeground(QBrush(blueColor));
+    m_logTable->setItem(row, 5, dataItem);
     
     // Auto-scroll to bottom
-    QTextCursor cursor = m_logTextEdit->textCursor();
-    cursor.movePosition(QTextCursor::End);
-    m_logTextEdit->setTextCursor(cursor);
+    m_logTable->scrollToBottom();
 }
 
 void PGNLogDialog::clearLog()
 {
-    m_logTextEdit->clear();
-    m_logTextEdit->append("NMEA2000 PGN Message Log - Log cleared");
-    m_logTextEdit->append("Ready to receive and display CAN messages");
-    m_logTextEdit->append("===========================================");
+    m_logTable->setRowCount(0);
 }
 
 void PGNLogDialog::onCloseClicked()
@@ -218,11 +303,8 @@ void PGNLogDialog::setSourceFilter(uint8_t sourceAddress)
     
     updateStatusLabel();
     
-    // Clear existing log and add new header
+    // Clear existing log
     clearLog();
-    m_logTextEdit->append(QString("Filtering messages from device 0x%1")
-                         .arg(sourceAddress, 2, 16, QChar('0')).toUpper());
-    m_logTextEdit->append("===========================================");
 }
 
 void PGNLogDialog::setDestinationFilter(uint8_t destinationAddress)
@@ -246,11 +328,8 @@ void PGNLogDialog::setDestinationFilter(uint8_t destinationAddress)
     
     updateStatusLabel();
     
-    // Clear existing log and add new header
+    // Clear existing log
     clearLog();
-    m_logTextEdit->append(QString("Filtering messages to device 0x%1")
-                         .arg(destinationAddress, 2, 16, QChar('0')).toUpper());
-    m_logTextEdit->append("===========================================");
 }
 
 void PGNLogDialog::updateDeviceList(const QStringList& devices)
