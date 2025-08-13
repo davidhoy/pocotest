@@ -14,16 +14,23 @@
 DBCDecoder::DBCDecoder(QObject *parent)
     : QObject(parent)
 {
-    // First try to load from a local NMEA2000 DBC file
     bool dbcLoaded = false;
     
-    // Try to load from local file first
+    // First try to load from a local NMEA2000 DBC file
     if (QFile::exists("nmea2000.dbc")) {
         dbcLoaded = loadDBCFile("nmea2000.dbc");
         qDebug() << "Loaded local DBC file:" << dbcLoaded;
     }
     
-    // If no local file, use fallback hardcoded definitions
+    // If no local file, try to download from canboat repository
+    if (!dbcLoaded) {
+        QString dbcUrl = "https://raw.githubusercontent.com/canboat/canboat/refs/heads/master/dbc-exporter/pgns.dbc";
+        qDebug() << "Attempting to download DBC file from:" << dbcUrl;
+        dbcLoaded = loadDBCFromUrl(dbcUrl);
+        qDebug() << "Downloaded DBC file:" << dbcLoaded;
+    }
+    
+    // If download failed, use fallback hardcoded definitions
     if (!dbcLoaded) {
         qDebug() << "Using fallback hardcoded NMEA2000 definitions";
         initializeStandardNMEA2000();
@@ -99,15 +106,45 @@ bool DBCDecoder::parseDBCFile(const QString& content)
             QRegularExpressionMatch match = msgRegex.match(line);
             
             if (match.hasMatch()) {
-                unsigned long pgn = match.captured(1).toULong();
+                unsigned long canId = match.captured(1).toULong();
                 QString name = match.captured(2);
                 int dlc = match.captured(3).toInt();
                 
+                // Extract PGN from CAN ID for NMEA 2000
+                unsigned long pgn = (canId >> 8) & 0x1FFFF;
+                
+                // Clean up message name by removing PGN_XXXXX_ prefix
+                QString cleanName = name;
+                QRegularExpression pgnPrefixRegex(R"(^PGN_\d+_)");
+                cleanName.remove(pgnPrefixRegex);
+                
+                // Check if this is a proprietary PGN
+                QString displayName;
+                if ((pgn >= 65280 && pgn <= 65535) ||          // 0xFF00-0xFFFF: Single-frame proprietary
+                    (pgn >= 126720 && pgn <= 126975) ||        // 0x1EF00-0x1EFFF: Multi-frame proprietary
+                    (pgn >= 127744 && pgn <= 128511)) {         // 0x1F300-0x1F5FF: Additional proprietary
+                    // Proprietary PGN - use special format
+                    displayName = QString("Proprietary %1").arg(pgn);
+                } else {
+                    // Standard PGN - convert camelCase to Title Case for better readability
+                    displayName = cleanName;
+                    if (!displayName.isEmpty()) {
+                        // Insert spaces before capital letters (except the first one)
+                        for (int i = displayName.length() - 1; i > 0; i--) {
+                            if (displayName[i].isUpper() && displayName[i-1].isLower()) {
+                                displayName.insert(i, " ");
+                            }
+                        }
+                        // Capitalize first letter
+                        displayName[0] = displayName[0].toUpper();
+                    }
+                }
+                
                 DBCMessage message;
                 message.pgn = pgn;
-                message.name = name;
+                message.name = displayName;
                 message.dlc = dlc;
-                message.description = name; // Use name as description for now
+                message.description = displayName;
                 
                 // Parse signals for this message
                 i++; // Move to next line
@@ -166,363 +203,40 @@ DBCSignal DBCDecoder::parseDBCSignal(const QString& signalLine)
 
 void DBCDecoder::initializeStandardNMEA2000()
 {
-    // Initialize standard NMEA2000 message definitions
-    defineEngineParametersRapid();
-    defineEngineParametersDynamic();
-    definePositionRapidUpdate();
-    defineCOGSOGRapidUpdate();
-    defineGNSSPositionData();
-    defineWindData();
-    defineTemperature();
-    defineFluidLevel();
-    defineBatteryStatus();
-    defineProductInformation();
-    defineConfigurationInformation();
-    defineBinarySwitch();
-    defineActualPressure();
-}
-
-void DBCDecoder::defineEngineParametersRapid()
-{
+    // Minimal fallback - just add a few basic message stubs for when DBC file is unavailable
+    // In practice, this should rarely be used since we download the comprehensive canboat DBC file
+    
+    qDebug() << "Using minimal fallback NMEA2000 definitions (DBC file unavailable)";
+    
+    // Add just a few basic message types as emergency fallback
     DBCMessage msg;
+    
+    // Engine Parameters Rapid (127488)
     msg.pgn = 127488;
     msg.name = "Engine Parameters, Rapid Update";
-    msg.description = "High frequency engine data";
+    msg.description = "Basic engine data (fallback)";
     msg.dlc = 8;
-    
-    DBCSignal signal;
-    
-    // Engine Instance
-    signal.name = "Engine Instance";
-    signal.startBit = 0;
-    signal.bitLength = 8;
-    signal.isSigned = false;
-    signal.scale = 1.0;
-    signal.offset = 0.0;
-    signal.minimum = 0;
-    signal.maximum = 251;
-    signal.unit = "";
-    signal.description = "Engine instance";
-    msg.signalList.append(signal);
-    
-    // Engine Speed
-    signal.name = "Engine Speed";
-    signal.startBit = 8;
-    signal.bitLength = 16;
-    signal.isSigned = false;
-    signal.scale = 0.25;
-    signal.offset = 0.0;
-    signal.minimum = 0;
-    signal.maximum = 16383.75;
-    signal.unit = "rpm";
-    signal.description = "Engine rotational speed";
-    msg.signalList.append(signal);
-    
-    // Engine Boost Pressure
-    signal.name = "Engine Boost Pressure";
-    signal.startBit = 24;
-    signal.bitLength = 16;
-    signal.isSigned = false;
-    signal.scale = 100.0;
-    signal.offset = 0.0;
-    signal.minimum = 0;
-    signal.maximum = 6553500;
-    signal.unit = "Pa";
-    signal.description = "Engine boost (inlet manifold) pressure";
-    msg.signalList.append(signal);
-    
-    // Engine Tilt/Trim
-    signal.name = "Engine Tilt/Trim";
-    signal.startBit = 40;
-    signal.bitLength = 8;
-    signal.isSigned = true;
-    signal.scale = 1.0;
-    signal.offset = 0.0;
-    signal.minimum = -125;
-    signal.maximum = 125;
-    signal.unit = "%";
-    signal.description = "Current engine tilt/trim";
-    msg.signalList.append(signal);
-    
+    msg.signalList.clear();
     addMessage(msg);
-}
-
-void DBCDecoder::defineWindData()
-{
-    DBCMessage msg;
+    
+    // Wind Data (130306)
     msg.pgn = 130306;
     msg.name = "Wind Data";
-    msg.description = "Wind speed and direction";
-    msg.dlc = 6;
-    
-    DBCSignal signal;
-    
-    // SID
-    signal.name = "SID";
-    signal.startBit = 0;
-    signal.bitLength = 8;
-    signal.isSigned = false;
-    signal.scale = 1.0;
-    signal.offset = 0.0;
-    signal.minimum = 0;
-    signal.maximum = 252;
-    signal.unit = "";
-    signal.description = "Sequence identifier";
-    msg.signalList.append(signal);
-    
-    // Wind Speed
-    signal.name = "Wind Speed";
-    signal.startBit = 8;
-    signal.bitLength = 16;
-    signal.isSigned = false;
-    signal.scale = 0.01;
-    signal.offset = 0.0;
-    signal.minimum = 0;
-    signal.maximum = 655.34;
-    signal.unit = "m/s";
-    signal.description = "Wind speed";
-    msg.signalList.append(signal);
-    
-    // Wind Direction
-    signal.name = "Wind Direction";
-    signal.startBit = 24;
-    signal.bitLength = 16;
-    signal.isSigned = false;
-    signal.scale = 0.0001;
-    signal.offset = 0.0;
-    signal.minimum = 0;
-    signal.maximum = 6.2831;
-    signal.unit = "rad";
-    signal.description = "Wind direction relative to vessel";
-    msg.signalList.append(signal);
-    
-    // Wind Reference
-    signal.name = "Wind Reference";
-    signal.startBit = 40;
-    signal.bitLength = 3;
-    signal.isSigned = false;
-    signal.scale = 1.0;
-    signal.offset = 0.0;
-    signal.minimum = 0;
-    signal.maximum = 7;
-    signal.unit = "";
-    signal.description = "Wind reference";
-    signal.valueDescriptions[0] = "True (ground referenced to North)";
-    signal.valueDescriptions[1] = "Magnetic (ground referenced to Magnetic North)";
-    signal.valueDescriptions[2] = "Apparent";
-    signal.valueDescriptions[3] = "True (boat referenced)";
-    signal.valueDescriptions[4] = "True (water referenced)";
-    msg.signalList.append(signal);
-    
+    msg.description = "Wind speed and direction (fallback)";
+    msg.dlc = 8;
+    msg.signalList.clear();
     addMessage(msg);
-}
-
-void DBCDecoder::defineTemperature()
-{
-    DBCMessage msg;
+    
+    // Temperature (130312)
     msg.pgn = 130312;
     msg.name = "Temperature";
-    msg.description = "Temperature measurement";
+    msg.description = "Temperature data (fallback)";
     msg.dlc = 8;
-    
-    DBCSignal signal;
-    
-    // SID
-    signal.name = "SID";
-    signal.startBit = 0;
-    signal.bitLength = 8;
-    signal.isSigned = false;
-    signal.scale = 1.0;
-    signal.offset = 0.0;
-    signal.minimum = 0;
-    signal.maximum = 252;
-    signal.unit = "";
-    signal.description = "Sequence identifier";
-    msg.signalList.append(signal);
-    
-    // Temperature Instance
-    signal.name = "Temperature Instance";
-    signal.startBit = 8;
-    signal.bitLength = 8;
-    signal.isSigned = false;
-    signal.scale = 1.0;
-    signal.offset = 0.0;
-    signal.minimum = 0;
-    signal.maximum = 252;
-    signal.unit = "";
-    signal.description = "Temperature instance";
-    msg.signalList.append(signal);
-    
-    // Temperature Source
-    signal.name = "Temperature Source";
-    signal.startBit = 16;
-    signal.bitLength = 8;
-    signal.isSigned = false;
-    signal.scale = 1.0;
-    signal.offset = 0.0;
-    signal.minimum = 0;
-    signal.maximum = 252;
-    signal.unit = "";
-    signal.description = "Temperature source";
-    signal.valueDescriptions[0] = "Sea Temperature";
-    signal.valueDescriptions[1] = "Outside Temperature";
-    signal.valueDescriptions[2] = "Inside Temperature";
-    signal.valueDescriptions[3] = "Engine Room Temperature";
-    signal.valueDescriptions[4] = "Main Cabin Temperature";
-    signal.valueDescriptions[5] = "Live Well Temperature";
-    signal.valueDescriptions[6] = "Bait Well Temperature";
-    signal.valueDescriptions[7] = "Refrigeration Temperature";
-    signal.valueDescriptions[8] = "Heating System Temperature";
-    signal.valueDescriptions[9] = "Dewpoint Temperature";
-    signal.valueDescriptions[10] = "Apparent Wind Chill Temperature";
-    signal.valueDescriptions[11] = "Theoretical Wind Chill Temperature";
-    signal.valueDescriptions[12] = "Heat Index Temperature";
-    signal.valueDescriptions[13] = "Freezer Temperature";
-    signal.valueDescriptions[14] = "Exhaust Gas Temperature";
-    msg.signalList.append(signal);
-    
-    // Actual Temperature
-    signal.name = "Actual Temperature";
-    signal.startBit = 24;
-    signal.bitLength = 16;
-    signal.isSigned = false;
-    signal.scale = 0.01;
-    signal.offset = -273.15;
-    signal.minimum = -273.15;
-    signal.maximum = 381.85;
-    signal.unit = "K";
-    signal.description = "Actual temperature";
-    msg.signalList.append(signal);
-    
-    // Set Temperature
-    signal.name = "Set Temperature";
-    signal.startBit = 40;
-    signal.bitLength = 16;
-    signal.isSigned = false;
-    signal.scale = 0.01;
-    signal.offset = -273.15;
-    signal.minimum = -273.15;
-    signal.maximum = 381.85;
-    signal.unit = "K";
-    signal.description = "Set temperature";
-    msg.signalList.append(signal);
-    
+    msg.signalList.clear();
     addMessage(msg);
+    
+    qDebug() << "Initialized" << m_messages.size() << "fallback message definitions";
 }
-
-void DBCDecoder::defineBatteryStatus()
-{
-    DBCMessage msg;
-    msg.pgn = 127508;
-    msg.name = "Battery Status";
-    msg.description = "DC battery status information";
-    msg.dlc = 8;
-    
-    DBCSignal signal;
-    
-    // Battery Instance
-    signal.name = "Battery Instance";
-    signal.startBit = 0;
-    signal.bitLength = 8;
-    signal.isSigned = false;
-    signal.scale = 1.0;
-    signal.offset = 0.0;
-    signal.minimum = 0;
-    signal.maximum = 252;
-    signal.unit = "";
-    signal.description = "Battery instance";
-    msg.signalList.append(signal);
-    
-    // Battery Voltage
-    signal.name = "Battery Voltage";
-    signal.startBit = 8;
-    signal.bitLength = 16;
-    signal.isSigned = false;
-    signal.scale = 0.01;
-    signal.offset = 0.0;
-    signal.minimum = 0;
-    signal.maximum = 655.34;
-    signal.unit = "V";
-    signal.description = "Battery terminal voltage";
-    msg.signalList.append(signal);
-    
-    // Battery Current
-    signal.name = "Battery Current";
-    signal.startBit = 24;
-    signal.bitLength = 16;
-    signal.isSigned = true;
-    signal.scale = 0.1;
-    signal.offset = 0.0;
-    signal.minimum = -3276.7;
-    signal.maximum = 3276.6;
-    signal.unit = "A";
-    signal.description = "Battery current (+ve = charging, -ve = discharging)";
-    msg.signalList.append(signal);
-    
-    // Battery Temperature
-    signal.name = "Battery Temperature";
-    signal.startBit = 40;
-    signal.bitLength = 16;
-    signal.isSigned = false;
-    signal.scale = 0.01;
-    signal.offset = -273.15;
-    signal.minimum = -273.15;
-    signal.maximum = 381.85;
-    signal.unit = "K";
-    signal.description = "Battery temperature";
-    msg.signalList.append(signal);
-    
-    addMessage(msg);
-}
-
-void DBCDecoder::definePositionRapidUpdate()
-{
-    DBCMessage msg;
-    msg.pgn = 129025;
-    msg.name = "Position, Rapid Update";
-    msg.description = "GPS position data at high frequency";
-    msg.dlc = 8;
-    
-    DBCSignal signal;
-    
-    // Latitude
-    signal.name = "Latitude";
-    signal.startBit = 0;
-    signal.bitLength = 32;
-    signal.isSigned = true;
-    signal.scale = 1e-7;
-    signal.offset = 0.0;
-    signal.minimum = -214.7483647;
-    signal.maximum = 214.7483646;
-    signal.unit = "deg";
-    signal.description = "Vessel latitude";
-    msg.signalList.append(signal);
-    
-    // Longitude
-    signal.name = "Longitude";
-    signal.startBit = 32;
-    signal.bitLength = 32;
-    signal.isSigned = true;
-    signal.scale = 1e-7;
-    signal.offset = 0.0;
-    signal.minimum = -214.7483647;
-    signal.maximum = 214.7483646;
-    signal.unit = "deg";
-    signal.description = "Vessel longitude";
-    msg.signalList.append(signal);
-    
-    addMessage(msg);
-}
-
-// Placeholder implementations for other messages
-void DBCDecoder::defineEngineParametersDynamic() { /* TODO */ }
-void DBCDecoder::defineCOGSOGRapidUpdate() { /* TODO */ }
-void DBCDecoder::defineGNSSPositionData() { /* TODO */ }
-void DBCDecoder::defineFluidLevel() { /* TODO */ }
-void DBCDecoder::defineProductInformation() { /* TODO */ }
-void DBCDecoder::defineConfigurationInformation() { /* TODO */ }
-void DBCDecoder::defineBinarySwitch() { /* TODO */ }
-void DBCDecoder::defineActualPressure() { /* TODO */ }
 
 void DBCDecoder::addMessage(const DBCMessage& message)
 {
@@ -556,6 +270,12 @@ DecodedMessage DBCDecoder::decodeMessage(const tN2kMsg& msg)
         if (decodedSignal.isValid) {
             double scaledValue = rawValue * signal.scale + signal.offset;
             
+            // Special handling for temperature (convert from Kelvin to Celsius)
+            if (signal.unit == "°C" && scaledValue > 100) {
+                // Assume raw value is in 0.01K units, convert to Celsius
+                scaledValue = (rawValue * 0.01) - 273.15;
+            }
+            
             // Check for enumerated values
             if (!signal.valueDescriptions.isEmpty() && signal.valueDescriptions.contains((int)rawValue)) {
                 decodedSignal.value = signal.valueDescriptions[(int)rawValue];
@@ -575,25 +295,42 @@ DecodedMessage DBCDecoder::decodeMessage(const tN2kMsg& msg)
 double DBCDecoder::extractSignalValue(const uint8_t* data, const DBCSignal& signal)
 {
     uint64_t rawValue = 0;
-    int startByte = signal.startBit / 8;
-    int startBitInByte = signal.startBit % 8;
-    int remainingBits = signal.bitLength;
     
-    for (int i = startByte; i < 8 && remainingBits > 0; i++) {
-        int bitsToRead = qMin(8 - (i == startByte ? startBitInByte : 0), remainingBits);
-        int shift = i == startByte ? startBitInByte : 0;
-        uint8_t mask = ((1 << bitsToRead) - 1) << shift;
-        uint8_t maskedByte = (data[i] & mask) >> shift;
+    // Simple byte-aligned extraction for most NMEA2000 signals
+    if (signal.startBit % 8 == 0 && signal.bitLength % 8 == 0) {
+        // Byte-aligned signal
+        int startByte = signal.startBit / 8;
+        int numBytes = signal.bitLength / 8;
         
-        rawValue |= ((uint64_t)maskedByte) << ((i - startByte) * 8 - (i == startByte ? 0 : startBitInByte));
-        remainingBits -= bitsToRead;
+        for (int i = 0; i < numBytes && (startByte + i) < 8; i++) {
+            rawValue |= ((uint64_t)data[startByte + i]) << (i * 8);
+        }
+    } else {
+        // Bit-level extraction for non-byte-aligned signals
+        int startByte = signal.startBit / 8;
+        int startBitInByte = signal.startBit % 8;
+        int remainingBits = signal.bitLength;
+        int bitPosition = 0;
+        
+        for (int i = startByte; i < 8 && remainingBits > 0; i++) {
+            int bitsToRead = qMin(8 - (i == startByte ? startBitInByte : 0), remainingBits);
+            int shift = i == startByte ? startBitInByte : 0;
+            uint8_t mask = ((1 << bitsToRead) - 1);
+            uint8_t maskedByte = (data[i] >> shift) & mask;
+            
+            rawValue |= ((uint64_t)maskedByte) << bitPosition;
+            bitPosition += bitsToRead;
+            remainingBits -= bitsToRead;
+        }
     }
     
     // Handle signed values
     if (signal.isSigned && signal.bitLength < 64) {
         uint64_t signBit = 1ULL << (signal.bitLength - 1);
         if (rawValue & signBit) {
-            rawValue |= ~((1ULL << signal.bitLength) - 1);
+            // Sign extend
+            uint64_t mask = ~((1ULL << signal.bitLength) - 1);
+            rawValue |= mask;
         }
     }
     
@@ -620,6 +357,14 @@ QString DBCDecoder::getMessageName(unsigned long pgn) const
     if (m_messages.contains(pgn)) {
         return m_messages[pgn].name;
     }
+    
+    // Check if this is a proprietary PGN
+    if ((pgn >= 65280 && pgn <= 65535) ||          // 0xFF00-0xFFFF: Single-frame proprietary
+        (pgn >= 126720 && pgn <= 126975) ||        // 0x1EF00-0x1EFFF: Multi-frame proprietary
+        (pgn >= 127744 && pgn <= 128511)) {         // 0x1F300-0x1F5FF: Additional proprietary
+        return QString("Proprietary %1").arg(pgn);
+    }
+    
     return QString("PGN %1").arg(pgn);
 }
 
@@ -637,9 +382,9 @@ QString DBCDecoder::getFormattedDecoded(const tN2kMsg& msg)
             QString part = QString("%1: %2").arg(signal.name);
             
             if (signal.value.type() == QVariant::Double) {
-                part += QString("%1").arg(signal.value.toDouble(), 0, 'f', 2);
+                part = part.arg(signal.value.toDouble(), 0, 'f', 2);
             } else {
-                part += signal.value.toString();
+                part = part.arg(signal.value.toString());
             }
             
             if (!signal.unit.isEmpty()) {

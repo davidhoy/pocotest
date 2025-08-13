@@ -241,12 +241,12 @@ void PGNLogDialog::appendMessage(const tN2kMsg& msg)
     m_logTable->setItem(row, 2, priItem);
     
     // Column 3: Source
-    QTableWidgetItem* srcItem = new QTableWidgetItem(QString("0x%1").arg(msg.Source, 2, 16, QChar('0')).toUpper());
+    QTableWidgetItem* srcItem = new QTableWidgetItem(QString("%1").arg(msg.Source, 2, 16, QChar('0')).toUpper());
     srcItem->setTextAlignment(Qt::AlignCenter);
     m_logTable->setItem(row, 3, srcItem);
     
     // Column 4: Destination
-    QString destText = QString("0x%1").arg(msg.Destination, 2, 16, QChar('0')).toUpper();
+    QString destText = QString("%1").arg(msg.Destination, 2, 16, QChar('0')).toUpper();
     QTableWidgetItem* destItem = new QTableWidgetItem(destText);
     destItem->setTextAlignment(Qt::AlignCenter);
     m_logTable->setItem(row, 4, destItem);
@@ -323,13 +323,13 @@ void PGNLogDialog::appendSentMessage(const tN2kMsg& msg)
     m_logTable->setItem(row, 2, priItem);
     
     // Column 3: Source
-    QTableWidgetItem* srcItem = new QTableWidgetItem(QString("0x%1").arg(msg.Source, 2, 16, QChar('0')).toUpper());
+    QTableWidgetItem* srcItem = new QTableWidgetItem(QString("%1").arg(msg.Source, 2, 16, QChar('0')).toUpper());
     srcItem->setTextAlignment(Qt::AlignCenter);
     srcItem->setForeground(QBrush(blueColor));
     m_logTable->setItem(row, 3, srcItem);
     
     // Column 4: Destination
-    QString destText = msg.Destination == 255 ? "Broadcast" : QString("0x%1").arg(msg.Destination, 2, 16, QChar('0')).toUpper();
+    QString destText = QString("%1").arg(msg.Destination, 2, 16, QChar('0')).toUpper();
     QTableWidgetItem* destItem = new QTableWidgetItem(destText);
     destItem->setTextAlignment(Qt::AlignCenter);
     destItem->setForeground(QBrush(blueColor));

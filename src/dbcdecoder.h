@@ -81,21 +81,6 @@ private:
     DBCSignal parseDBCSignal(const QString& signalLine);
     void parseValueTable(const QString& line, DBCSignal& signal);
     
-    // Standard NMEA2000 message definitions (fallback)
-    void defineEngineParametersRapid();
-    void defineEngineParametersDynamic();
-    void definePositionRapidUpdate();
-    void defineCOGSOGRapidUpdate();
-    void defineGNSSPositionData();
-    void defineWindData();
-    void defineTemperature();
-    void defineFluidLevel();
-    void defineBatteryStatus();
-    void defineProductInformation();
-    void defineConfigurationInformation();
-    void defineBinarySwitch();
-    void defineActualPressure();
-    
     // Signal extraction and validation
     double extractSignalValue(const uint8_t* data, const DBCSignal& signal);
     bool isSignalValid(double rawValue, const DBCSignal& signal);
