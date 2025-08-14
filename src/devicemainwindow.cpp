@@ -123,11 +123,11 @@ void DeviceMainWindow::setupUI()
     
     // Device table
     m_deviceTable = new QTableWidget();
-    m_deviceTable->setColumnCount(8);
+    m_deviceTable->setColumnCount(9);
     
     QStringList headers;
     headers << "Node Address" << "Manufacturer" << "Model ID" << "Serial Number" 
-            << "Instance" << "Type" << "Current Software" << "Installation Description";
+            << "Instance" << "Type" << "Current Software" << "Installation 1" << "Installation 2";
     m_deviceTable->setHorizontalHeaderLabels(headers);
     
     // Configure table
@@ -717,7 +717,8 @@ void DeviceMainWindow::showDeviceDetails(int row)
     QString instance = m_deviceTable->item(row, 4) ? m_deviceTable->item(row, 4)->text() : "Unknown";
     QString type = m_deviceTable->item(row, 5) ? m_deviceTable->item(row, 5)->text() : "Unknown";
     QString software = m_deviceTable->item(row, 6) ? m_deviceTable->item(row, 6)->text() : "Unknown";
-    QString installDesc = m_deviceTable->item(row, 7) ? m_deviceTable->item(row, 7)->text() : "Unknown";
+    QString installDesc1 = m_deviceTable->item(row, 7) ? m_deviceTable->item(row, 7)->text() : "Unknown";
+    QString installDesc2 = m_deviceTable->item(row, 8) ? m_deviceTable->item(row, 8)->text() : "Unknown";
     
     // Get additional device details from the device list
     bool ok;
@@ -757,9 +758,10 @@ void DeviceMainWindow::showDeviceDetails(int row)
         "Device Instance: %5\n"
         "Type: %6\n"
         "Software Version: %7\n"
-        "Installation Description: %8\n\n"
-        "Additional Information:\n%9"
-    ).arg(nodeAddress, manufacturer, modelId, serialNumber, instance, type, software, installDesc, additionalInfo);
+        "Installation 1: %8\n"
+        "Installation 2: %9\n\n"
+        "Additional Info:\n%10"
+    ).arg(nodeAddress, manufacturer, modelId, serialNumber, instance, type, software, installDesc1, installDesc2, additionalInfo);
     
     QMessageBox msgBox(this);
     msgBox.setWindowTitle(QString("Device Details - 0x%1").arg(nodeAddress));
@@ -1564,24 +1566,21 @@ void DeviceMainWindow::updateDeviceTableRow(int row, uint8_t source, const tNMEA
     }
     m_deviceTable->setItem(row, 6, new QTableWidgetItem(softwareVersion));
     
-    // Installation Description - combine InstallationDescription1 and InstallationDescription2 from PGN 126998
-    QString installDesc = "";
-    const char* installDesc1 = device->GetInstallationDescription1();
-    const char* installDesc2 = device->GetInstallationDescription2();
+    // Installation Description 1 and 2 - separate columns for PGN 126998 fields
+    QString installDesc1 = "-";
+    QString installDesc2 = "-";
+    const char* installDesc1Ptr = device->GetInstallationDescription1();
+    const char* installDesc2Ptr = device->GetInstallationDescription2();
     
-    if (installDesc1 && strlen(installDesc1) > 0) {
-        installDesc = QString(installDesc1);
+    if (installDesc1Ptr && strlen(installDesc1Ptr) > 0) {
+        installDesc1 = QString(installDesc1Ptr);
     }
-    if (installDesc2 && strlen(installDesc2) > 0) {
-        if (!installDesc.isEmpty()) {
-            installDesc += " / ";
-        }
-        installDesc += QString(installDesc2);
+    if (installDesc2Ptr && strlen(installDesc2Ptr) > 0) {
+        installDesc2 = QString(installDesc2Ptr);
     }
-    if (installDesc.isEmpty()) {
-        installDesc = "-";
-    }
-    m_deviceTable->setItem(row, 7, new QTableWidgetItem(installDesc));
+    
+    m_deviceTable->setItem(row, 7, new QTableWidgetItem(installDesc1));
+    m_deviceTable->setItem(row, 8, new QTableWidgetItem(installDesc2));
     
     // Set text color based on activity status
     QColor textColor = isActive ? QColor(Qt::black) : QColor(Qt::gray);
