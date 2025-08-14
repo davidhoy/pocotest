@@ -66,6 +66,11 @@ private slots:
     void onCanInterfaceChanged(const QString &interface);
     void clearConflictHistory();
     void showDeviceContextMenu(const QPoint& position);
+    
+    // Broadcast device discovery
+    void performBroadcastDeviceDiscovery();
+    void requestAllDeviceInformation();
+    void handleAddressClaimResponse(uint8_t source, const tN2kMsg& msg);
 
 private:
     void setupUI();
@@ -106,6 +111,9 @@ private:
     void requestProductInformation(uint8_t targetAddress);
     void showPGNLogForDevice(uint8_t sourceAddress);
     
+    // Device configuration methods
+    bool sendInstanceChangeCommand(uint8_t deviceAddress, uint8_t newInstance);
+    
     // Lumitec Poco message handling
     void handleLumitecPocoMessage(const tN2kMsg& msg);
     void handleProductInformationResponse(const tN2kMsg& msg);
@@ -123,6 +131,11 @@ private slots:
     void onPocoSwitchActionRequested(uint8_t deviceAddress, uint8_t switchId, uint8_t actionId);
     void onPocoColorControlRequested(uint8_t deviceAddress);
     void onPocoDeviceInfoRequested(uint8_t deviceAddress);
+    
+    // Table editing slots
+    void onTableItemChanged(QTableWidgetItem* item);
+    void onCellEditStarted(int row, int column);
+    void onCellEditFinished();
 
 private:
     // UI Components
@@ -157,6 +170,31 @@ private:
     
     // Product information request tracking
     QSet<uint8_t> m_pendingProductInfoRequests; // Track which devices we've requested info from
+    
+    // Device discovery state
+    struct DiscoveredDevice {
+        uint8_t source;
+        QString name;
+        QString model;
+        QString serial;
+        uint32_t uniqueNumber;
+        uint16_t manufacturerCode;
+        uint8_t deviceFunction;
+        uint8_t deviceClass;
+        uint8_t deviceInstance;
+        QDateTime discoveredTime;
+        bool isActive;
+    };
+    
+    QList<DiscoveredDevice> m_discoveredDevices; // Stable list of discovered devices
+    QTimer* m_discoveryTimer; // Timer for periodic discovery
+    bool m_discoveryInProgress; // Flag to prevent overlapping discoveries
+    
+    // Instance change state
+    bool m_handlingInstanceChange; // Flag to prevent table updates during instance changes
+    QPair<int, int> m_editingCell; // Track which cell is being edited (row, column), (-1,-1) = none
+    QSet<QPair<int, int>> m_protectedCells; // Set of cells currently protected from updates
+    qint64 m_lastEditTimestamp; // Timestamp of last edit to prevent rapid overwrites
     
     // Helper methods
     void updatePGNDialogDeviceList();

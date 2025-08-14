@@ -12,7 +12,7 @@
 #include <QDebug>
 #include <QHBoxLayout>
 #include <QWidget>
-#include <QDebug>
+#include <QTimer>
 #include <QRegExp>
 #include <QToolBar>
 #include <QDateTime>
@@ -46,6 +46,11 @@ DeviceMainWindow::DeviceMainWindow(QWidget *parent)
     , m_updateTimer(nullptr)
     , m_canInterfaceCombo(nullptr)
     , m_deviceList(nullptr)
+    , m_discoveryTimer(nullptr)
+    , m_discoveryInProgress(false)
+    , m_handlingInstanceChange(false)
+    , m_editingCell(-1, -1)
+    , m_lastEditTimestamp(0)
     , m_pgnLogDialog(nullptr)
 {
     DeviceMainWindow::instance = this;  // Capture 'this' for static callback
@@ -64,7 +69,15 @@ DeviceMainWindow::DeviceMainWindow(QWidget *parent)
     connect(m_updateTimer, &QTimer::timeout, this, &DeviceMainWindow::updateDeviceList);
     m_updateTimer->start(2000);
     
+    // Set up device discovery timer (broadcast discovery every 10 seconds)
+    m_discoveryTimer = new QTimer(this);
+    connect(m_discoveryTimer, &QTimer::timeout, this, &DeviceMainWindow::performBroadcastDeviceDiscovery);
+    m_discoveryTimer->start(10000);
+
     initNMEA2000();
+    
+    // Perform initial device discovery
+    QTimer::singleShot(1000, this, &DeviceMainWindow::performBroadcastDeviceDiscovery);
     
     // Initial population
     updateDeviceList();
@@ -146,6 +159,18 @@ void DeviceMainWindow::setupUI()
     // Connect row selection signal for conflict highlighting
     connect(m_deviceTable->selectionModel(), &QItemSelectionModel::currentRowChanged,
             this, &DeviceMainWindow::onRowSelectionChanged);
+    
+    // Connect item change signal for handling editable fields
+    connect(m_deviceTable, &QTableWidget::itemChanged,
+            this, &DeviceMainWindow::onTableItemChanged);
+    
+    // Connect editing signals to track when user is actively editing
+    connect(m_deviceTable, &QTableWidget::cellDoubleClicked,
+            this, &DeviceMainWindow::onCellEditStarted);
+    connect(m_deviceTable, &QTableWidget::itemChanged,
+            this, &DeviceMainWindow::onCellEditFinished);
+    connect(m_deviceTable, &QTableWidget::currentCellChanged,
+            this, &DeviceMainWindow::onCellEditFinished);
     
     // Enable context menu for the device table
     m_deviceTable->setContextMenuPolicy(Qt::CustomContextMenu);
@@ -280,14 +305,19 @@ void DeviceMainWindow::handleN2kMsg(const tN2kMsg& msg) {
     // Track PGN instances for conflict detection
     trackPGNInstance(msg);
 
-    // Handle Lumitec Poco specific messages
-    if (msg.PGN == LUMITEC_PGN_61184) {
-        handleLumitecPocoMessage(msg);
+    // Handle ISO Address Claim responses for device discovery
+    if (msg.PGN == N2kPGNIsoAddressClaim) {
+        handleAddressClaimResponse(msg.Source, msg);
     }
     
     // Handle Product Information responses (PGN 126996)
     if (msg.PGN == N2kPGNProductInformation) {
         handleProductInformationResponse(msg);
+    }
+
+    // Handle Lumitec Poco specific messages
+    if (msg.PGN == LUMITEC_PGN_61184) {
+        handleLumitecPocoMessage(msg);
     }
 
     // Forward to PGN log dialog if it exists and is visible
@@ -403,42 +433,53 @@ void DeviceMainWindow::populateDeviceTable()
         return;
     }
     
-    // Create a map to track existing devices and their table positions
-    QMap<uint8_t, int> existingDeviceRows;
+    // Use discovered devices list for stable ordering
+    int deviceCount = 0;
     
-    // If table is not empty, preserve existing devices
+    // Track which sources exist in the current table
+    QSet<uint8_t> existingSources;
     for (int row = 0; row < m_deviceTable->rowCount(); row++) {
         QTableWidgetItem* nodeItem = m_deviceTable->item(row, 0);
         if (nodeItem) {
             bool ok;
             uint8_t source = nodeItem->text().toUInt(&ok, 16);
             if (ok) {
-                existingDeviceRows[source] = row;
+                existingSources.insert(source);
             }
         }
     }
     
-    int deviceCount = 0;
+    // Update existing devices in place - never reorder
+    for (int row = 0; row < m_deviceTable->rowCount(); row++) {
+        QTableWidgetItem* nodeItem = m_deviceTable->item(row, 0);
+        if (nodeItem) {
+            bool ok;
+            uint8_t source = nodeItem->text().toUInt(&ok, 16);
+            if (ok) {
+                const tNMEA2000::tDevice* device = m_deviceList->FindDeviceBySource(source);
+                if (device) {
+                    bool isActive = m_deviceActivity.contains(source) && m_deviceActivity[source].isActive;
+                    updateDeviceTableRow(row, source, device, isActive);
+                    m_deviceActivity[source].tableRow = row;
+                    deviceCount++;
+                }
+            }
+        }
+    }
     
-    // First pass: update existing devices and mark active ones
-    for (uint8_t source = 0; source < N2kMaxBusDevices; source++) {
-        const tNMEA2000::tDevice* device = m_deviceList->FindDeviceBySource(source);
-        if (device) {
-            bool isActive = m_deviceActivity.contains(source) && m_deviceActivity[source].isActive;
-            
-            if (existingDeviceRows.contains(source)) {
-                // Update existing device
-                int row = existingDeviceRows[source];
-                updateDeviceTableRow(row, source, device, isActive);
-                m_deviceActivity[source].tableRow = row;
-                deviceCount++;
-            } else {
-                // New device - add to end
+    // Add new discovered devices to the bottom only
+    for (const auto& discoveredDevice : m_discoveredDevices) {
+        if (!existingSources.contains(discoveredDevice.source)) {
+            const tNMEA2000::tDevice* device = m_deviceList->FindDeviceBySource(discoveredDevice.source);
+            if (device) {
                 int newRow = m_deviceTable->rowCount();
                 m_deviceTable->insertRow(newRow);
-                updateDeviceTableRow(newRow, source, device, isActive);
-                m_deviceActivity[source].tableRow = newRow;
+                updateDeviceTableRow(newRow, discoveredDevice.source, device, discoveredDevice.isActive);
+                m_deviceActivity[discoveredDevice.source].tableRow = newRow;
                 deviceCount++;
+                qDebug() << "Added new discovered device at source" 
+                         << QString("0x%1").arg(discoveredDevice.source, 2, 16, QChar('0')) 
+                         << "to bottom at row" << newRow;
             }
         }
     }
@@ -1515,7 +1556,82 @@ void DeviceMainWindow::grayOutInactiveDevices() {
     }
 }
 
+// Broadcast Device Discovery Methods
+void DeviceMainWindow::performBroadcastDeviceDiscovery() {
+    if (!nmea2000 || !nmea2000->IsOpen() || m_discoveryInProgress) {
+        return;
+    }
+    
+    qDebug() << "Starting broadcast device discovery...";
+    m_discoveryInProgress = true;
+    
+    // Clear old discoveries (devices not seen in last 30 seconds)
+    QDateTime cutoff = QDateTime::currentDateTime().addSecs(-30);
+    for (int i = m_discoveredDevices.size() - 1; i >= 0; i--) {
+        if (m_discoveredDevices[i].discoveredTime < cutoff) {
+            qDebug() << "Removing stale discovered device at source" 
+                     << QString("0x%1").arg(m_discoveredDevices[i].source, 2, 16, QChar('0'));
+            m_discoveredDevices.removeAt(i);
+        }
+    }
+    
+    // Send ISO Address Claim request (PGN 59904) - forces all devices to respond with their info
+    requestAllDeviceInformation();
+    
+    // Set a timer to mark discovery as complete and update the table
+    QTimer::singleShot(3000, this, [this]() {
+        qDebug() << "Broadcast discovery complete - found" << m_discoveredDevices.size() << "devices";
+        m_discoveryInProgress = false;
+        updateDeviceList();
+    });
+}
+
+void DeviceMainWindow::requestAllDeviceInformation() {
+    if (!nmea2000 || !nmea2000->IsOpen()) {
+        return;
+    }
+    
+    try {
+        // Send ISO Address Claim request (PGN 59904)
+        // This forces all devices on the network to respond with their address claim info
+        tN2kMsg N2kMsg;
+        N2kMsg.SetPGN(59904L); // ISO Address Claim
+        N2kMsg.Priority = 6;
+        N2kMsg.Destination = 255; // Broadcast to all devices
+        
+        // ISO Address Claim is typically sent with empty data as a request
+        // Devices respond with their own address claim containing device info
+        
+        bool result = nmea2000->SendMsg(N2kMsg);
+        if (result) {
+            qDebug() << "Sent ISO Address Claim broadcast request (PGN 59904)";
+        } else {
+            qWarning() << "Failed to send ISO Address Claim broadcast request";
+        }
+        
+        // Also send Product Information request (PGN 126996) to get detailed device info
+        N2kMsg.SetPGN(126996L); // Product Information
+        N2kMsg.Priority = 6;
+        N2kMsg.Destination = 255; // Broadcast
+        
+        result = nmea2000->SendMsg(N2kMsg);
+        if (result) {
+            qDebug() << "Sent Product Information broadcast request (PGN 126996)";
+        } else {
+            qWarning() << "Failed to send Product Information broadcast request";
+        }
+        
+    } catch (const std::exception& e) {
+        qWarning() << "Exception in requestAllDeviceInformation:" << e.what();
+    }
+}
+
 void DeviceMainWindow::updateDeviceTableRow(int row, uint8_t source, const tNMEA2000::tDevice* device, bool isActive) {
+    // Skip updates if we're currently handling an instance change to prevent conflicts
+    if (m_handlingInstanceChange) {
+        return;
+    }
+    
     // Node Address (Source) - in hex format like Maretron
     QTableWidgetItem* nodeAddressItem = new QTableWidgetItem(QString("%1").arg(source, 2, 16, QChar('0')).toUpper());
     nodeAddressItem->setTextAlignment(Qt::AlignCenter);
@@ -1544,9 +1660,58 @@ void DeviceMainWindow::updateDeviceTableRow(int row, uint8_t source, const tNMEA
     
     // Device Instance
     uint8_t deviceInstance = device->GetDeviceInstance();
-    QTableWidgetItem* instanceItem = new QTableWidgetItem(QString::number(deviceInstance));
-    instanceItem->setTextAlignment(Qt::AlignCenter);
-    m_deviceTable->setItem(row, 4, instanceItem);
+    
+    // Check if this specific cell is currently protected
+    bool isProtected = m_protectedCells.contains(qMakePair(row, 4));
+    
+    // Also check if we're too close to a recent edit (within 2 seconds)
+    qint64 timeSinceEdit = QDateTime::currentMSecsSinceEpoch() - m_lastEditTimestamp;
+    bool tooCloseToEdit = (timeSinceEdit < 2000) && (m_lastEditTimestamp > 0);
+    
+    if (!isProtected && !tooCloseToEdit) {
+        // Check if the device instance actually changed from what we have in the table
+        QTableWidgetItem* existingItem = m_deviceTable->item(row, 4);
+        if (existingItem) {
+            bool parseOk;
+            uint8_t currentDisplayedInstance = existingItem->text().toUInt(&parseOk);
+            if (parseOk && currentDisplayedInstance == deviceInstance) {
+                // No change needed - the displayed value matches the device
+                return;
+            } else if (parseOk) {
+                qDebug() << "Instance mismatch for device" << QString("0x%1").arg(source, 2, 16, QChar('0'))
+                         << "- table shows" << currentDisplayedInstance << "but device reports" << deviceInstance;
+            }
+        }
+        
+        // Only update if not currently being edited and not too close to an edit
+        QTableWidgetItem* instanceItem = new QTableWidgetItem(QString::number(deviceInstance));
+        instanceItem->setTextAlignment(Qt::AlignCenter);
+        
+        // Make the instance item editable and store device address for reference
+        instanceItem->setFlags(instanceItem->flags() | Qt::ItemIsEditable);
+        instanceItem->setData(Qt::UserRole, source); // Store device address
+        instanceItem->setData(Qt::UserRole + 1, deviceInstance); // Store original instance
+        instanceItem->setToolTip("Double-click to edit device instance (0-252)");
+        
+        // Temporarily protect this cell to prevent the itemChanged signal from triggering edit logic
+        QPair<int, int> cellPos = qMakePair(row, 4);
+        m_protectedCells.insert(cellPos);
+        
+        m_deviceTable->setItem(row, 4, instanceItem);
+        
+        // Remove protection after a short delay
+        QTimer::singleShot(100, this, [this, cellPos]() {
+            m_protectedCells.remove(cellPos);
+        });
+        
+        qDebug() << "Updated instance for device" << QString("0x%1").arg(source, 2, 16, QChar('0')) << "to" << deviceInstance;
+    } else {
+        if (isProtected) {
+            qDebug() << "Skipping instance update for row" << row << "- cell is protected";
+        } else {
+            qDebug() << "Skipping instance update for row" << row << "- too close to recent edit";
+        }
+    }
     
     // Type - create based on device function and class
     QString type = getDeviceFunctionName(device->GetDeviceFunction());
@@ -1634,4 +1799,264 @@ void DeviceMainWindow::updatePGNDialogDeviceList()
     
     // Update the PGN dialog's device list
     m_pgnLogDialog->updateDeviceList(devices);
+}
+
+void DeviceMainWindow::onTableItemChanged(QTableWidgetItem* item) {
+    if (!item || m_handlingInstanceChange) return;
+    
+    // Check if this is the Instance column (column 4)
+    if (item->column() != 4) return;
+    
+    // Don't process if this change was triggered by a programmatic update
+    // Check if the cell was recently updated by us
+    QPair<int, int> cellPos = qMakePair(item->row(), 4);
+    if (m_protectedCells.contains(cellPos)) {
+        qDebug() << "Ignoring programmatic update for row" << item->row();
+        return;
+    }
+    
+    qDebug() << "onTableItemChanged called for user edit in instance column, row" << item->row();
+    
+    // Set flag to prevent recursive updates
+    m_handlingInstanceChange = true;
+    
+    // Clear the editing state since the change is complete
+    if (m_editingCell == cellPos) {
+        m_editingCell = qMakePair(-1, -1);
+        qDebug() << "Cleared editing state after item change";
+    }
+    
+    // Update timestamp for edit protection
+    m_lastEditTimestamp = QDateTime::currentMSecsSinceEpoch();
+    
+    // Temporarily block signals to prevent recursion
+    bool oldState = m_deviceTable->blockSignals(true);
+    
+    // Get the device address and original instance from stored data
+    bool ok1, ok2;
+    uint8_t deviceAddress = item->data(Qt::UserRole).toUInt(&ok1);
+    uint8_t originalInstance = item->data(Qt::UserRole + 1).toUInt(&ok2);
+    
+    if (!ok1 || !ok2) {
+        qWarning() << "Failed to retrieve device data from table item";
+        m_deviceTable->blockSignals(oldState);
+        m_handlingInstanceChange = false;
+        return;
+    }
+    
+    // Parse the new instance value
+    bool parseOk;
+    uint8_t newInstance = item->text().toUInt(&parseOk);
+    
+    // Validate the new instance value
+    if (!parseOk || newInstance > 252) {
+        QMessageBox::warning(this, "Invalid Instance", 
+                           "Device instance must be a number between 0 and 252.");
+        
+        // Revert to original value
+        item->setText(QString::number(originalInstance));
+        m_deviceTable->blockSignals(oldState);
+        m_handlingInstanceChange = false;
+        return;
+    }
+    
+    // Check if the value actually changed
+    if (newInstance == originalInstance) {
+        m_deviceTable->blockSignals(oldState);
+        m_handlingInstanceChange = false;
+        return; // No change needed
+    }
+    
+    // Ask user for confirmation
+    int result = QMessageBox::question(this, "Change Device Instance",
+                                     QString("Change device instance from %1 to %2?\n\n"
+                                             "This will send a command to device at address 0x%3.\n"
+                                             "Note: This feature is experimental and may not work with all devices.")
+                                     .arg(originalInstance).arg(newInstance)
+                                     .arg(deviceAddress, 2, 16, QChar('0')).toUpper(),
+                                     QMessageBox::Yes | QMessageBox::No);
+    
+    if (result != QMessageBox::Yes) {
+        // User cancelled, revert to original value
+        item->setText(QString::number(originalInstance));
+        m_deviceTable->blockSignals(oldState);
+        m_handlingInstanceChange = false;
+        return;
+    }
+    
+    // Send the instance change command
+    bool success = sendInstanceChangeCommand(deviceAddress, newInstance);
+    
+    if (success) {
+        // Update the stored original value
+        item->setData(Qt::UserRole + 1, newInstance);
+        
+        // Update the item appearance to indicate success
+        item->setBackground(QBrush(QColor(144, 238, 144))); // Light green
+        item->setToolTip(QString("Instance changed to %1 (Double-click to edit)").arg(newInstance));
+        
+        // Protect this cell from updates for a longer time to allow the device to respond
+        m_protectedCells.insert(qMakePair(item->row(), 4));
+        QTimer::singleShot(5000, this, [this, item]() {
+            m_protectedCells.remove(qMakePair(item->row(), 4));
+            qDebug() << "Removed extended protection for instance change at row" << item->row();
+        });
+        
+        // Force a device list refresh after a short delay to catch any device reorganization
+        QTimer::singleShot(2000, this, [this]() {
+            qDebug() << "Forcing device list refresh after instance change";
+            updateDeviceList();
+        });
+        
+        // Restore signals before showing message box
+        m_deviceTable->blockSignals(oldState);
+        m_handlingInstanceChange = false;
+        
+        qDebug() << "Instance change command sent successfully to device" 
+                 << QString("0x%1").arg(deviceAddress, 2, 16, QChar('0'))
+                 << "- protecting cell for 5 seconds";
+        
+        // Show success message without timer - simpler approach
+        QMessageBox::information(this, "Success", 
+                               QString("Instance change command sent to device 0x%1.\n"
+                                       "The device should update its instance to %2.")
+                               .arg(deviceAddress, 2, 16, QChar('0')).toUpper()
+                               .arg(newInstance));
+    } else {
+        // Command failed, revert to original value
+        item->setText(QString::number(originalInstance));
+        item->setBackground(QBrush(QColor(255, 182, 193))); // Light red
+        
+        // Restore signals before showing message box
+        m_deviceTable->blockSignals(oldState);
+        m_handlingInstanceChange = false;
+        
+        // Show error message without timer
+        QMessageBox::warning(this, "Command Failed", 
+                           "Failed to send instance change command to the device.");
+    }
+}
+
+void DeviceMainWindow::onCellEditStarted(int row, int column) {
+    // Only track editing for the Instance column (column 4)
+    if (column == 4) {
+        m_editingCell = qMakePair(row, column);
+        m_protectedCells.insert(qMakePair(row, column));
+        m_lastEditTimestamp = QDateTime::currentMSecsSinceEpoch();
+        qDebug() << "Started editing instance cell at row" << row << "- cell now protected";
+    }
+}
+
+void DeviceMainWindow::onCellEditFinished() {
+    if (m_editingCell.first != -1) {
+        qDebug() << "Finished editing instance cell at row" << m_editingCell.first;
+        
+        // Store the cell to remove from protection later
+        QPair<int, int> cellToUnprotect = m_editingCell;
+        
+        // Keep protection for a short time after edit to prevent immediate overwrites
+        QTimer::singleShot(1000, this, [this, cellToUnprotect]() {
+            m_protectedCells.remove(cellToUnprotect);
+            qDebug() << "Removed protection for cell at row" << cellToUnprotect.first;
+        });
+        
+        m_editingCell = qMakePair(-1, -1);
+    }
+}
+
+bool DeviceMainWindow::sendInstanceChangeCommand(uint8_t deviceAddress, uint8_t newInstance) {
+    if (!nmea2000 || !nmea2000->IsOpen()) {
+        qWarning() << "NMEA2000 interface is not available";
+        return false;
+    }
+    
+    qDebug() << "Sending instance change command to device" << QString("0x%1").arg(deviceAddress, 2, 16, QChar('0'))
+             << "new instance:" << newInstance;
+    
+    try {
+        // Create a group function command message (PGN 126208)
+        // This uses the Command Group Function to send a parameter change request
+        tN2kMsg N2kMsg;
+        
+        // Set up the message for PGN 126208 (NMEA Request/Command/Acknowledge Group Function)
+        N2kMsg.SetPGN(126208L);
+        N2kMsg.Priority = 3;
+        N2kMsg.Destination = deviceAddress;
+        
+        // Group function data structure:
+        // Byte 0: Function Code (1 = Command)
+        // Byte 1: PGN LSB (60928 = 0xEE00 for ISO Address Claim)
+        // Byte 2: PGN middle byte
+        // Byte 3: PGN MSB  
+        // Byte 4: Priority
+        // Byte 5: # of parameters (1)
+        // Byte 6: Parameter 1 - Device Instance field number in ISO Address Claim (field 3)
+        // Byte 7: New instance value
+        
+        N2kMsg.AddByte(1);        // Function Code: Command
+        N2kMsg.AddByte(0x00);     // PGN 60928 LSB (ISO Address Claim)
+        N2kMsg.AddByte(0xEE);     // PGN 60928 middle byte
+        N2kMsg.AddByte(0x00);     // PGN 60928 MSB
+        N2kMsg.AddByte(6);        // Priority
+        N2kMsg.AddByte(1);        // Number of parameters
+        N2kMsg.AddByte(3);        // Parameter field number (Device Instance is field 3 in ISO Address Claim)
+        N2kMsg.AddByte(newInstance); // New instance value
+        
+        // Send the message
+        bool result = nmea2000->SendMsg(N2kMsg);
+        
+        if (result) {
+            qDebug() << "Instance change command sent successfully";
+        } else {
+            qWarning() << "Failed to send instance change command";
+        }
+        
+        return result;
+        
+    } catch (...) {
+        qWarning() << "Exception occurred while sending instance change command";
+        return false;
+    }
+}
+
+void DeviceMainWindow::handleAddressClaimResponse(uint8_t source, const tN2kMsg& /* msg */) {
+    // Find or create discovered device entry
+    auto it = std::find_if(m_discoveredDevices.begin(), m_discoveredDevices.end(),
+        [source](const DiscoveredDevice& device) {
+            return device.source == source;
+        });
+    
+    if (it == m_discoveredDevices.end()) {
+        // New device discovered
+        DiscoveredDevice newDevice;
+        newDevice.source = source;
+        newDevice.discoveredTime = QDateTime::currentDateTime();
+        newDevice.isActive = true;
+        
+        // Try to get device info from NMEA2000 library
+        if (m_deviceList) {
+            const tNMEA2000::tDevice* device = m_deviceList->FindDeviceBySource(source);
+            if (device) {
+                newDevice.name = QString(device->GetModelID());
+                newDevice.model = QString(device->GetModelID()); // Use GetModelID since GetProductInformation doesn't exist
+                newDevice.serial = QString(device->GetSwCode());
+                newDevice.uniqueNumber = device->GetUniqueNumber();
+                newDevice.manufacturerCode = device->GetManufacturerCode();
+                newDevice.deviceFunction = device->GetDeviceFunction();
+                newDevice.deviceClass = device->GetDeviceClass();
+                newDevice.deviceInstance = device->GetDeviceInstance();
+            }
+        }
+        
+        m_discoveredDevices.append(newDevice);
+        qDebug() << "Discovered new device at source" 
+                 << QString("0x%1").arg(source, 2, 16, QChar('0'))
+                 << "name:" << newDevice.name;
+    } else {
+        // Update existing device
+        it->discoveredTime = QDateTime::currentDateTime();
+        it->isActive = true;
+        qDebug() << "Updated discovered device at source" 
+                 << QString("0x%1").arg(source, 2, 16, QChar('0'));
+    }
 }
