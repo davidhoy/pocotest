@@ -109,6 +109,7 @@ private:
     // Lumitec Poco message handling
     void handleLumitecPocoMessage(const tN2kMsg& msg);
     void handleProductInformationResponse(const tN2kMsg& msg);
+    void handleGroupFunctionMessage(const tN2kMsg& msg);
     void displayLumitecMessage(const tN2kMsg& msg, const QString& description);
     
     // Lumitec Poco control methods
@@ -117,12 +118,27 @@ private:
     void showLumitecSwitchActionDialog(uint8_t targetAddress, const QString& nodeAddress);
     void sendLumitecCustomHSB(uint8_t targetAddress, uint8_t hue, uint8_t saturation, uint8_t brightness);
     void showPocoDeviceDialog(uint8_t targetAddress, const QString& nodeAddress);
+    void sendZonePGN130561(uint8_t targetAddress, uint8_t zoneId, const QString& zoneName,
+                          uint8_t red, uint8_t green, uint8_t blue, uint16_t colorTemp,
+                          uint8_t intensity, uint8_t programId, uint8_t programColorSeqIndex,
+                          uint8_t programIntensity, uint8_t programRate,
+                          uint8_t programColorSequence, bool zoneEnabled);
 
 private slots:
     // Poco device dialog slots
     void onPocoSwitchActionRequested(uint8_t deviceAddress, uint8_t switchId, uint8_t actionId);
     void onPocoColorControlRequested(uint8_t deviceAddress);
     void onPocoDeviceInfoRequested(uint8_t deviceAddress);
+    void onPocoZoneLightingControlRequested(uint8_t deviceAddress);
+    public slots:
+    void onZonePGN130561Requested(uint8_t deviceAddress, uint8_t zoneId, const QString& zoneName,
+                                 uint8_t red, uint8_t green, uint8_t blue, uint16_t colorTemp,
+                                 uint8_t intensity, uint8_t programId, uint8_t programColorSeqIndex,
+                                 uint8_t programIntensity, uint8_t programRate,
+                                 uint8_t programColorSequence, bool zoneEnabled);
+
+signals:
+    void commandAcknowledged(uint8_t deviceAddress, uint32_t pgn, bool success);
 
 private:
     // UI Components

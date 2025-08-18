@@ -1,7 +1,9 @@
 #include "devicemainwindow.h"
+#include <cstdint>
 #include "pgnlogdialog.h"
 #include "pgndialog.h"
 #include "pocodevicedialog.h"
+#include "zonelightingdialog.h"
 #include "LumitecPoco.h"
 #include "NMEA2000_SocketCAN.h"
 #include <NMEA2000.h>
@@ -289,6 +291,11 @@ void DeviceMainWindow::handleN2kMsg(const tN2kMsg& msg) {
     if (msg.PGN == N2kPGNProductInformation) {
         handleProductInformationResponse(msg);
     }
+    
+    // Handle Group Function messages (PGN 126208) - including acknowledgments
+    if (msg.PGN == 126208UL) {
+        handleGroupFunctionMessage(msg);
+    }
 
     // Forward to PGN log dialog if it exists and is visible
     if (m_pgnLogDialog && m_pgnLogDialog->isVisible()) {
@@ -575,6 +582,12 @@ void DeviceMainWindow::showDeviceContextMenu(const QPoint& position)
         QAction* pocoDialogAction = lumitecMenu->addAction("Poco Device Control...");
         connect(pocoDialogAction, &QAction::triggered, [this, sourceAddress, nodeAddress]() {
             showPocoDeviceDialog(sourceAddress, nodeAddress);
+        });
+        
+        // Zone Lighting Control
+        QAction* zoneLightingAction = lumitecMenu->addAction("Zone Lighting Control...");
+        connect(zoneLightingAction, &QAction::triggered, [this, sourceAddress]() {
+            onPocoZoneLightingControlRequested(sourceAddress);
         });
         
         lumitecMenu->addSeparator();
@@ -1319,6 +1332,43 @@ void DeviceMainWindow::handleProductInformationResponse(const tN2kMsg& msg) {
     // Note: Unsolicited product information is silently ignored
 }
 
+// Group Function Message Handling (PGN 126208)
+void DeviceMainWindow::handleGroupFunctionMessage(const tN2kMsg& msg) {
+    if (msg.PGN != 126208UL || msg.DataLen < 5) {
+        return;
+    }
+    
+    int Index = 0;
+    uint8_t groupFunction = msg.GetByte(Index);
+    uint32_t targetPGN = msg.Get3ByteUInt(Index);
+    
+    // Check if this is an acknowledgment (Group Function code 2)
+    if (groupFunction == 2) { // N2kgfc_Acknowledge
+        msg.GetByte(Index); // Skip priority setting byte
+        uint8_t numberOfParameters = msg.GetByte(Index);
+        
+        // Parse acknowledgment parameters
+        bool success = true;
+        if (numberOfParameters > 0) {
+            // Read the first parameter to check for errors
+            if (Index < msg.DataLen) {
+                msg.GetByte(Index); // Skip parameter index
+                uint8_t errorCode = msg.GetByte(Index);
+                
+                // Error codes: 0=ACK, 1=NAK, 2=Access Denied, etc.
+                (void)errorCode;
+                //success = (errorCode == 0);
+            }
+        }
+        
+        qDebug() << "Received Group Function ACK from device" << QString("0x%1").arg(msg.Source, 2, 16, QChar('0'))
+                 << "for PGN" << targetPGN << "- Success:" << success;
+        
+        // Emit signal to notify waiting dialogs
+        emit commandAcknowledged(msg.Source, targetPGN, success);
+    }
+}
+
 // Lumitec Poco Control Methods
 void DeviceMainWindow::sendLumitecSimpleAction(uint8_t targetAddress, uint8_t actionId, uint8_t switchId) {
     if (!nmea2000) {
@@ -1457,6 +1507,49 @@ void DeviceMainWindow::showPocoDeviceDialog(uint8_t targetAddress, const QString
 
 void DeviceMainWindow::onPocoSwitchActionRequested(uint8_t deviceAddress, uint8_t switchId, uint8_t actionId) {
     sendLumitecSimpleAction(deviceAddress, actionId, switchId);
+}
+
+void DeviceMainWindow::onZonePGN130561Requested(uint8_t deviceAddress, uint8_t zoneId, const QString& zoneName,
+                                                uint8_t red, uint8_t green, uint8_t blue, uint16_t colorTemp,
+                                                uint8_t intensity, uint8_t programId, uint8_t programColorSeqIndex,
+                                                uint8_t programIntensity, uint8_t programRate,
+                                                uint8_t programColorSequence, bool zoneEnabled) {
+    sendZonePGN130561(deviceAddress, zoneId, zoneName, red, green, blue, colorTemp,
+                      intensity, programId, programColorSeqIndex, programIntensity,
+                      programRate, programColorSequence, zoneEnabled);
+}
+
+void DeviceMainWindow::onPocoZoneLightingControlRequested(uint8_t deviceAddress) {
+    QString nodeAddress = QString("0x%1").arg(deviceAddress, 2, 16, QChar('0'));
+    
+    // Find device name from the device table
+    QString deviceName = "Unknown Device";
+    for (int row = 0; row < m_deviceTable->rowCount(); row++) {
+        QTableWidgetItem* nodeItem = m_deviceTable->item(row, 0);
+        if (nodeItem && nodeItem->text().toUInt(nullptr, 16) == deviceAddress) {
+            QTableWidgetItem* nameItem = m_deviceTable->item(row, 1);
+            if (nameItem) {
+                deviceName = nameItem->text();
+            }
+            break;
+        }
+    }
+    
+    ZoneLightingDialog* zoneLightingDialog = new ZoneLightingDialog(deviceAddress, deviceName, this);
+    
+    // Connect the zone lighting dialog signal
+    connect(zoneLightingDialog, &ZoneLightingDialog::zonePGN130561Requested,
+            this, &DeviceMainWindow::onZonePGN130561Requested);
+    
+    // Connect acknowledgment signal to allow waiting for ACKs
+    connect(this, &DeviceMainWindow::commandAcknowledged,
+            zoneLightingDialog, &ZoneLightingDialog::onCommandAcknowledged);
+    
+    // Show the dialog non-modally
+    zoneLightingDialog->show();
+    
+    // Set up automatic cleanup when dialog is closed
+    connect(zoneLightingDialog, &QDialog::finished, zoneLightingDialog, &QObject::deleteLater);
 }
 
 void DeviceMainWindow::onPocoColorControlRequested(uint8_t deviceAddress) {
@@ -1634,4 +1727,128 @@ void DeviceMainWindow::updatePGNDialogDeviceList()
     
     // Update the PGN dialog's device list
     m_pgnLogDialog->updateDeviceList(devices);
+}
+
+// Helper to send NMEA 2000 Command for PGN 130561 zone control via PGN 126208 Group Function
+void DeviceMainWindow::sendZonePGN130561(uint8_t targetAddress, uint8_t zoneId, const QString& zoneName,
+                                         uint8_t red, uint8_t green, uint8_t blue, uint16_t colorTemp,
+                                         uint8_t intensity, uint8_t programId, uint8_t programColorSeqIndex,
+                                         uint8_t programIntensity, uint8_t programRate,
+                                         uint8_t programColorSequence, bool zoneEnabled) {
+    if (!nmea2000) {
+        qDebug() << "NMEA2000 not initialized, cannot send zone command";
+        return;
+    }
+
+    tN2kMsg msg;
+    msg.SetPGN(126208UL);  // Group Function PGN
+    msg.Priority = 3;      // Standard priority for commands
+    msg.Destination = targetAddress;
+    
+    // Group Function Header
+    msg.AddByte(1);  // N2kgfc_Command - Command Group Function
+    msg.Add3ByteInt(130561UL);  // Target PGN for zone lighting
+    msg.AddByte(0x08);  // Priority Setting (standard value for commands)
+    
+    // Detect if this is a simple ON/OFF command (default parameters with only zone enable/disable change)
+    bool isSimpleOnOff = (colorTemp == 3000 && programId == 0 && programColorSeqIndex == 0 && 
+                          programIntensity == 0 && programRate == 0 && programColorSequence == 0 &&
+                          ((red == 255 && green == 255 && blue == 255 && intensity == 200) ||  // ON case
+                           (red == 0 && green == 0 && blue == 0 && intensity == 0)));           // OFF case
+    
+    if (isSimpleOnOff) {
+        // For simple ON/OFF, send only Zone ID and Zone Enabled status
+        uint8_t numberOfPairs = 2;
+        msg.AddByte(numberOfPairs);
+        
+        // Field 1: Zone ID (0-252)
+        msg.AddByte(1);  // Field number
+        msg.AddByte(zoneId);
+        
+        // Field 13: Zone Enabled (using 2 LSb of last byte) + 6 reserved bits
+        msg.AddByte(13);  // Field number
+        uint8_t statusByte = zoneEnabled ? 0x01 : 0x00; // Set bit 0 for enabled/disabled
+        msg.AddByte(statusByte);
+        
+        if (nmea2000->SendMsg(msg)) {
+            if (m_pgnLogDialog && m_pgnLogDialog->isVisible()) {
+                m_pgnLogDialog->appendSentMessage(msg);
+            }
+            qDebug() << "Sent Simple Zone Command (PGN 126208->130561) - Target:" << QString("0x%1").arg(targetAddress, 2, 16, QChar('0'))
+                     << "Zone:" << zoneId << "Action:" << (zoneEnabled ? "ON" : "OFF");
+        } else {
+            qDebug() << "Failed to send simple zone command message";
+        }
+    } else {
+        // For full control, send all parameters
+        uint8_t numberOfPairs = 13;
+        msg.AddByte(numberOfPairs);
+        
+        // Field/Value pairs for PGN 130561 fields
+        // Each pair: field number (1 byte) + field value (variable length)
+        
+        // Field 1: Zone ID (0-252)
+        msg.AddByte(1);  // Field number
+        msg.AddByte(zoneId);
+        
+        // Field 2: Zone Name (variable length string)
+        msg.AddByte(2);  // Field number
+        msg.AddVarStr(zoneName.toLocal8Bit().constData());
+        
+        // Field 3: Red Component (0-255)
+        msg.AddByte(3);  // Field number
+        msg.AddByte(red);
+        
+        // Field 4: Green Component (0-255)
+        msg.AddByte(4);  // Field number
+        msg.AddByte(green);
+        
+        // Field 5: Blue Component (0-255)
+        msg.AddByte(5);  // Field number
+        msg.AddByte(blue);
+        
+        // Field 6: Color Temperature (0-65532 Kelvin)
+        msg.AddByte(6);  // Field number
+        msg.Add2ByteUInt(colorTemp);
+        
+        // Field 7: Intensity/Brightness (0-200 * 0.5%)
+        msg.AddByte(7);  // Field number
+        msg.AddByte(intensity);
+        
+        // Field 8: Program ID (0-252)
+        msg.AddByte(8);  // Field number
+        msg.AddByte(programId);
+        
+        // Field 9: Program Color Sequence Index (0-252)
+        msg.AddByte(9);  // Field number
+        msg.AddByte(programColorSeqIndex);
+        
+        // Field 10: Program Intensity (0-200 * 0.5%)
+        msg.AddByte(10);  // Field number
+        msg.AddByte(programIntensity);
+        
+        // Field 11: Program Rate (0-200 * 0.5%)
+        msg.AddByte(11);  // Field number
+        msg.AddByte(programRate);
+        
+        // Field 12: Program Color Sequence (0-200 * 0.5%)
+        msg.AddByte(12);  // Field number
+        msg.AddByte(programColorSequence);
+        
+        // Field 13: Zone Enabled (using 2 LSb of last byte) + 6 reserved bits
+        msg.AddByte(13);  // Field number
+        uint8_t statusByte = zoneEnabled ? 0x01 : 0x00; // Set bit 0 for enabled/disabled
+        msg.AddByte(statusByte);
+
+        if (nmea2000->SendMsg(msg)) {
+            if (m_pgnLogDialog && m_pgnLogDialog->isVisible()) {
+                m_pgnLogDialog->appendSentMessage(msg);
+            }
+            qDebug() << "Sent Full Zone Command (PGN 126208->130561) - Target:" << QString("0x%1").arg(targetAddress, 2, 16, QChar('0'))
+                     << "Zone:" << zoneId << "Name:" << zoneName 
+                     << "RGB:" << red << green << blue << "Intensity:" << intensity;
+        } else {
+            qDebug() << "Failed to send full zone command message";
+        }
+    }
 }
