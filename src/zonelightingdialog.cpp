@@ -13,6 +13,7 @@
 #include <QTimer>
 #include <QCheckBox>
 #include <QMessageBox>
+#include <QApplication>
 #include <QDebug>
 
 ZoneLightingDialog::ZoneLightingDialog(uint8_t deviceAddress, const QString& deviceName, QWidget *parent)
@@ -61,6 +62,7 @@ ZoneLightingDialog::ZoneLightingDialog(uint8_t deviceAddress, const QString& dev
     , m_acknowledgmentTimeoutTimer(nullptr)
     , m_currentRetryCount(0)
     , m_maxRetries(3)
+    , m_busyCursorSet(false)
 {
     setupUI();
     setModal(false);
@@ -72,6 +74,8 @@ ZoneLightingDialog::ZoneLightingDialog(uint8_t deviceAddress, const QString& dev
 
 ZoneLightingDialog::~ZoneLightingDialog()
 {
+    // Ensure busy cursor is cleared when dialog is destroyed
+    clearBusyCursor();
     // Qt will handle cleanup of child widgets
 }
 
@@ -307,17 +311,17 @@ void ZoneLightingDialog::setupMultiZoneTab()
     
     m_startZoneSpinBox = new QSpinBox();
     m_startZoneSpinBox->setRange(0, 252);
-    m_startZoneSpinBox->setValue(1);
+    m_startZoneSpinBox->setValue(0);
     rangeLayout->addRow("Start Zone:", m_startZoneSpinBox);
     
     m_endZoneSpinBox = new QSpinBox();
     m_endZoneSpinBox->setRange(0, 252);
-    m_endZoneSpinBox->setValue(12);
+    m_endZoneSpinBox->setValue(14);
     rangeLayout->addRow("End Zone:", m_endZoneSpinBox);
     
     m_delaySpinBox = new QSpinBox();
     m_delaySpinBox->setRange(0, 5000);
-    m_delaySpinBox->setValue(100);
+    m_delaySpinBox->setValue(50);
     m_delaySpinBox->setSuffix(" ms");
     rangeLayout->addRow("Delay between zones:", m_delaySpinBox);
     
@@ -414,6 +418,8 @@ void ZoneLightingDialog::onSendMultipleZones()
         return;
     }
     
+    setBusyCursor();
+    
     // Send current settings to each zone in range
     // Note: This sends all commands immediately without waiting for acknowledgments
     // For sequential sending with acknowledgment waiting, use the ON/OFF buttons instead
@@ -436,10 +442,13 @@ void ZoneLightingDialog::onSendMultipleZones()
                                    programColorSeqIndex, programIntensity, programRate,
                                    programColorSequence, zoneEnabled);
     }
+    
+    clearBusyCursor();
 }
 
 void ZoneLightingDialog::onSendAllZonesOn()
 {
+    setBusyCursor();
     m_currentZoneInSequence = m_startZoneSpinBox->value();
     m_endZoneInSequence = m_endZoneSpinBox->value();
     m_isOnSequence = true;
@@ -448,6 +457,7 @@ void ZoneLightingDialog::onSendAllZonesOn()
 
 void ZoneLightingDialog::onSendAllZonesOff()
 {
+    setBusyCursor();
     m_currentZoneInSequence = m_startZoneSpinBox->value();
     m_endZoneInSequence = m_endZoneSpinBox->value();
     m_isOnSequence = false;
@@ -458,6 +468,7 @@ void ZoneLightingDialog::sendNextZoneInSequence()
 {
     if (m_currentZoneInSequence > m_endZoneInSequence) {
         m_waitingForAcknowledgment = false;
+        clearBusyCursor(); // Clear cursor when sequence completes
         return; // Sequence complete
     }
     
@@ -487,6 +498,9 @@ void ZoneLightingDialog::sendNextZoneInSequence()
         if (m_currentZoneInSequence <= m_endZoneInSequence) {
             int delay = m_delaySpinBox->value();
             m_sequenceTimer->start(delay);
+        } else {
+            // Sequence completed (no acknowledgment waiting)
+            clearBusyCursor();
         }
     }
 }
@@ -527,9 +541,13 @@ void ZoneLightingDialog::onCommandAcknowledged(uint8_t deviceAddress, uint32_t p
             if (m_currentZoneInSequence <= m_endZoneInSequence) {
                 int delay = m_delaySpinBox->value();
                 m_sequenceTimer->start(delay);
+            } else {
+                // Sequence completed successfully
+                clearBusyCursor();
             }
         } else {
             // NACK received, stop the sequence
+            clearBusyCursor(); // Clear cursor when sequence fails
             QMessageBox::warning(this, "Command Failed", 
                 QString("Zone %1 command was rejected by device. Sequence stopped.")
                 .arg(m_currentZoneInSequence));
@@ -554,6 +572,7 @@ void ZoneLightingDialog::onAcknowledgmentTimeout()
             // No more retries or retry disabled, stop the sequence
             m_waitingForAcknowledgment = false;
             ++m_currentZoneInSequence; // Move past the failed zone
+            clearBusyCursor(); // Clear cursor when sequence fails due to timeout
             
             QString message;
             if (shouldRetry) {
@@ -566,5 +585,21 @@ void ZoneLightingDialog::onAcknowledgmentTimeout()
             }
             QMessageBox::warning(this, "Command Timeout", message);
         }
+    }
+}
+
+void ZoneLightingDialog::setBusyCursor()
+{
+    if (!m_busyCursorSet) {
+        QApplication::setOverrideCursor(Qt::WaitCursor);
+        m_busyCursorSet = true;
+    }
+}
+
+void ZoneLightingDialog::clearBusyCursor()
+{
+    if (m_busyCursorSet) {
+        QApplication::restoreOverrideCursor();
+        m_busyCursorSet = false;
     }
 }

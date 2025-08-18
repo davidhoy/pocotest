@@ -15,6 +15,7 @@
 #include <QTimer>
 #include <QCheckBox>
 #include <QTabWidget>
+#include <QApplication>
 #include <cstdint>
 
 class ZoneLightingDialog : public QDialog
@@ -100,6 +101,7 @@ private:
     QTimer* m_acknowledgmentTimeoutTimer; // timeout for acknowledgment
     int m_currentRetryCount; // current retry attempt for the current command
     int m_maxRetries; // maximum number of retries (default 3)
+    bool m_busyCursorSet; // tracks if busy cursor is currently set
 
 public slots:
     void onCommandAcknowledged(uint8_t deviceAddress, uint32_t pgn, bool success);
@@ -109,6 +111,8 @@ private slots:
     
 private:
     void sendCurrentZoneCommand(); // Helper to send the current zone command
+    void setBusyCursor(); // Set busy cursor during operations
+    void clearBusyCursor(); // Clear busy cursor when operations complete
 
 signals:
     void zonePGN130561Requested(uint8_t deviceAddress, uint8_t zoneId, const QString& zoneName,
