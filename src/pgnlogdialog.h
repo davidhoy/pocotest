@@ -35,6 +35,7 @@ public:
 private slots:
     void clearLog();
     void onCloseClicked();
+    void onSaveLogClicked();
     void onSourceFilterChanged();
     void onDestinationFilterChanged();
     void onSourceFilterEnabled(bool enabled);
@@ -68,6 +69,7 @@ private:
     QTableWidget* m_logTable;
     QPushButton* m_clearButton;
     QPushButton* m_closeButton;
+    QPushButton* m_saveButton;
     QPushButton* m_clearFiltersButton;
     QPushButton* m_pauseButton;
     QPushButton* m_startButton;
