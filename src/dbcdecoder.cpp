@@ -247,35 +247,94 @@ DecodedMessage DBCDecoder::decodeMessage(const tN2kMsg& msg)
 {
     DecodedMessage decoded;
     decoded.isDecoded = false;
-    
+
+    // Special handling for PGN 126208 (Request/Command/Acknowledge Group Function)
+    if (msg.PGN == 126208) {
+        decoded.messageName = "Group Function (126208)";
+        decoded.description = "NMEA2000 Group Function Command/Request/Ack";
+        decoded.isDecoded = true;
+
+        // Minimum length check
+        if (msg.DataLen < 8) {
+            DecodedSignal sig;
+            sig.name = "Error";
+            sig.value = "Too short for 126208 decode";
+            decoded.signalList.append(sig);
+            return decoded;
+        }
+
+        // Byte 0: Function Code
+        uint8_t functionCode = msg.Data[0];
+        // Bytes 1-3: Target PGN (little endian)
+        uint32_t targetPGN = msg.Data[1] | (msg.Data[2] << 8) | (msg.Data[3] << 16);
+        // Byte 4: Priority
+        uint8_t priority = msg.Data[4];
+        // Byte 5: Number of parameters
+        uint8_t numParams = msg.Data[5];
+
+        DecodedSignal sigFC;
+        sigFC.name = "Function Code";
+        sigFC.value = functionCode;
+        decoded.signalList.append(sigFC);
+
+        DecodedSignal sigPGN;
+        sigPGN.name = "Target PGN";
+        sigPGN.value = QString("%1").arg(targetPGN);
+        decoded.signalList.append(sigPGN);
+
+        DecodedSignal sigPrio;
+        sigPrio.name = "Priority";
+        sigPrio.value = priority;
+        decoded.signalList.append(sigPrio);
+
+        DecodedSignal sigNumParams;
+        sigNumParams.name = "Number of Parameters";
+        sigNumParams.value = numParams;
+        decoded.signalList.append(sigNumParams);
+
+        // Each parameter: Byte 6 + 2*i: Field Number, Byte 7 + 2*i: Value
+        int paramStart = 6;
+        for (uint8_t i = 0; i < numParams; ++i) {
+            int fieldIdx = paramStart + i * 2;
+            if (fieldIdx + 1 >= msg.DataLen) break;
+            uint8_t fieldNum = msg.Data[fieldIdx];
+            uint8_t fieldVal = msg.Data[fieldIdx + 1];
+            DecodedSignal sigField;
+            sigField.name = QString("Field %1").arg(fieldNum);
+            sigField.value = fieldVal;
+            decoded.signalList.append(sigField);
+        }
+        return decoded;
+    }
+
     if (!m_messages.contains(msg.PGN)) {
         return decoded;
     }
-    
+
     const DBCMessage& dbcMsg = m_messages[msg.PGN];
     decoded.messageName = dbcMsg.name;
     decoded.description = dbcMsg.description;
     decoded.isDecoded = true;
-    
+
     // Decode each signal
     for (const DBCSignal& signal : dbcMsg.signalList) {
         DecodedSignal decodedSignal;
         decodedSignal.name = signal.name;
         decodedSignal.unit = signal.unit;
         decodedSignal.description = signal.description;
-        
+
         double rawValue = extractSignalValue(msg.Data, signal);
         decodedSignal.isValid = isSignalValid(rawValue, signal);
-        
+
         if (decodedSignal.isValid) {
             double scaledValue = rawValue * signal.scale + signal.offset;
-            
+
             // Special handling for temperature (convert from Kelvin to Celsius)
             if (signal.unit == "°C" && scaledValue > 100) {
                 // Assume raw value is in 0.01K units, convert to Celsius
                 scaledValue = (rawValue * 0.01) - 273.15;
             }
-            
+
             // Check for enumerated values
             if (!signal.valueDescriptions.isEmpty() && signal.valueDescriptions.contains((int)rawValue)) {
                 decodedSignal.value = signal.valueDescriptions[(int)rawValue];
@@ -285,10 +344,10 @@ DecodedMessage DBCDecoder::decodeMessage(const tN2kMsg& msg)
         } else {
             decodedSignal.value = "N/A";
         }
-        
+
         decoded.signalList.append(decodedSignal);
     }
-    
+
     return decoded;
 }
 
@@ -349,11 +408,21 @@ bool DBCDecoder::isSignalValid(double rawValue, const DBCSignal& signal)
 
 bool DBCDecoder::canDecode(unsigned long pgn) const
 {
+    // Special handling for PGN 126208 (Group Function)
+    if (pgn == 126208) {
+        return true;
+    }
+    
     return m_messages.contains(pgn);
 }
 
 QString DBCDecoder::getMessageName(unsigned long pgn) const
 {
+    // Special handling for PGN 126208 (Group Function)
+    if (pgn == 126208) {
+        return "Group Function";
+    }
+    
     if (m_messages.contains(pgn)) {
         return m_messages[pgn].name;
     }
