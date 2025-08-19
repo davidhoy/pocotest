@@ -11,6 +11,8 @@
 #include <QComboBox>
 #include <QCheckBox>
 #include <QGroupBox>
+#include <QDateTime>
+#include <QVector>
 #include <N2kMsg.h>
 #include "dbcdecoder.h"
 
@@ -45,7 +47,19 @@ private slots:
     void onStartClicked();
     void onStopClicked();
 
+public:
+    enum TimestampMode {
+        Absolute,
+        Relative
+    };
+    void setTimestampMode(TimestampMode mode);
+    TimestampMode getTimestampMode() const;
+
 private:
+    TimestampMode m_timestampMode = Absolute;
+    QDateTime m_lastTimestamp;
+    QVector<QDateTime> m_messageTimestamps;
+    QCheckBox* m_timestampModeCheck = nullptr; // Absolute/Relative toggle
     void setupUI();
     void updateStatusLabel();
     bool messagePassesFilter(const tN2kMsg& msg);

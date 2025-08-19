@@ -155,24 +155,31 @@ void PGNLogDialog::setupUI()
     connect(m_clearFiltersButton, &QPushButton::clicked, this, &PGNLogDialog::onClearFilters);
     connect(m_decodingEnabled, &QCheckBox::toggled, this, &PGNLogDialog::onToggleDecoding);
     
+    // Timestamp mode control
+    m_timestampModeCheck = new QCheckBox("Show relative timestamps (ms)");
+    m_timestampModeCheck->setChecked(false); // Default to absolute
+    connect(m_timestampModeCheck, &QCheckBox::toggled, this, [this](bool checked) {
+        setTimestampMode(checked ? Relative : Absolute);
+    });
+
     // Log table
     m_logTable = new QTableWidget();
-    m_logTable->setColumnCount(7);
-    
+    m_logTable->setColumnCount(8);
     QStringList headers;
-    headers << "PGN" << "Message Name" << "Pri" << "Src" << "Dst" << "Len" << "Data";
+    headers << "Timestamp" << "PGN" << "Message Name" << "Pri" << "Src" << "Dst" << "Len" << "Data";
     m_logTable->setHorizontalHeaderLabels(headers);
     
     // Configure table
     m_logTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_logTable->setAlternatingRowColors(true);
-    m_logTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents); // PGN
-    m_logTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Interactive); // Message Name
-    m_logTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents); // Priority
-    m_logTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents); // Source
-    m_logTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents); // Destination
-    m_logTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::ResizeToContents); // Length
-    m_logTable->horizontalHeader()->setSectionResizeMode(6, QHeaderView::Stretch); // Data - stretch to fill
+    m_logTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents); // Timestamp
+    m_logTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents); // PGN
+    m_logTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Interactive); // Message Name
+    m_logTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents); // Priority
+    m_logTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents); // Source
+    m_logTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::ResizeToContents); // Destination
+    m_logTable->horizontalHeader()->setSectionResizeMode(6, QHeaderView::ResizeToContents); // Length
+    m_logTable->horizontalHeader()->setSectionResizeMode(7, QHeaderView::Stretch); // Data - stretch to fill
     m_logTable->verticalHeader()->setVisible(false);
     m_logTable->setSortingEnabled(false);
     
@@ -183,6 +190,7 @@ void PGNLogDialog::setupUI()
     // Connect table click signal
     connect(m_logTable, &QTableWidget::cellClicked, this, &PGNLogDialog::onTableItemClicked);
     
+    mainLayout->addWidget(m_timestampModeCheck);
     mainLayout->addWidget(m_logTable);
     
     // Buttons
@@ -260,43 +268,60 @@ void PGNLogDialog::appendMessage(const tN2kMsg& msg)
     // Add new row to table
     int row = m_logTable->rowCount();
     m_logTable->insertRow(row);
-    
-    // Column 0: PGN
+
+    // Timestamp column (0)
+    QDateTime now = QDateTime::currentDateTime();
+    QString tsText;
+    if (m_timestampMode == Absolute) {
+        tsText = now.toString("HH:mm:ss.zzz");
+    } else {
+        qint64 deltaMs = 0;
+        if (!m_messageTimestamps.isEmpty()) {
+            deltaMs = m_messageTimestamps.last().msecsTo(now);
+        }
+        tsText = QString::number(deltaMs) + " ms";
+    }
+    m_messageTimestamps.append(now);
+    QTableWidgetItem* tsItem = new QTableWidgetItem(tsText);
+    tsItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    m_logTable->setItem(row, 0, tsItem);
+
+    // Column 1: PGN
     QTableWidgetItem* pgnItem = new QTableWidgetItem(QString::number(msg.PGN));
     pgnItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    m_logTable->setItem(row, 0, pgnItem);
-    
-    // Column 1: Message Name
+    m_logTable->setItem(row, 1, pgnItem);
+
+    // Column 2: Message Name
     QTableWidgetItem* nameItem = new QTableWidgetItem(messageName);
     nameItem->setTextAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    m_logTable->setItem(row, 1, nameItem);
-    
-    // Column 2: Priority
+    m_logTable->setItem(row, 2, nameItem);
+
+    // Column 3: Priority
     QTableWidgetItem* priItem = new QTableWidgetItem(QString::number(msg.Priority));
     priItem->setTextAlignment(Qt::AlignCenter);
-    m_logTable->setItem(row, 2, priItem);
-    
-    // Column 3: Source
+    m_logTable->setItem(row, 3, priItem);
+
+    // Column 4: Source
     QTableWidgetItem* srcItem = new QTableWidgetItem(QString("%1").arg(msg.Source, 2, 16, QChar('0')).toUpper());
     srcItem->setTextAlignment(Qt::AlignCenter);
-    m_logTable->setItem(row, 3, srcItem);
-    
-    // Column 4: Destination
+    m_logTable->setItem(row, 4, srcItem);
+
+    // Column 5: Destination
     QString destText = QString("%1").arg(msg.Destination, 2, 16, QChar('0')).toUpper();
     QTableWidgetItem* destItem = new QTableWidgetItem(destText);
     destItem->setTextAlignment(Qt::AlignCenter);
-    m_logTable->setItem(row, 4, destItem);
-    
-    // Column 5: Length
+    m_logTable->setItem(row, 5, destItem);
+
+    // Column 6: Length
     QTableWidgetItem* lenItem = new QTableWidgetItem(QString::number(msg.DataLen));
     lenItem->setTextAlignment(Qt::AlignCenter);
-    m_logTable->setItem(row, 5, lenItem);
-    
-    // Column 6: Data (decoded or raw)
+    m_logTable->setItem(row, 6, lenItem);
+
+    // Column 7: Data (decoded or raw)
     QTableWidgetItem* dataItem = new QTableWidgetItem(displayData);
     dataItem->setFont(QFont("Consolas, Monaco, monospace", 9));
-    m_logTable->setItem(row, 6, dataItem);
-    
+    m_logTable->setItem(row, 7, dataItem);
+
     // Auto-scroll to bottom
     m_logTable->scrollToBottom();
 }
@@ -347,48 +372,66 @@ void PGNLogDialog::appendSentMessage(const tN2kMsg& msg)
     
     QColor blueColor(0, 0, 255);
     
-    // Column 0: PGN (with "Sent:" prefix for sent messages)
+    // Timestamp column (0)
+    QDateTime now = QDateTime::currentDateTime();
+    QString tsText;
+    if (m_timestampMode == Absolute) {
+        tsText = now.toString("HH:mm:ss.zzz");
+    } else {
+        qint64 deltaMs = 0;
+        if (!m_messageTimestamps.isEmpty()) {
+            deltaMs = m_messageTimestamps.last().msecsTo(now);
+        }
+        tsText = QString::number(deltaMs) + " ms";
+    }
+    m_messageTimestamps.append(now);
+    QTableWidgetItem* tsItem = new QTableWidgetItem(tsText);
+    tsItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    tsItem->setForeground(QBrush(blueColor));
+    m_logTable->setItem(row, 0, tsItem);
+    
+    // Column 1: PGN (with "Sent:" prefix for sent messages)
     QTableWidgetItem* pgnItem = new QTableWidgetItem(QString("Sent: %1").arg(msg.PGN));
     pgnItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
     pgnItem->setForeground(QBrush(blueColor));
-    m_logTable->setItem(row, 0, pgnItem);
+    m_logTable->setItem(row, 1, pgnItem);
     
-    // Column 1: Message Name
+    // Column 2: Message Name
     QTableWidgetItem* nameItem = new QTableWidgetItem(messageName);
     nameItem->setTextAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     nameItem->setForeground(QBrush(blueColor));
-    m_logTable->setItem(row, 1, nameItem);
+    m_logTable->setItem(row, 2, nameItem);
     
-    // Column 2: Priority
+    // Column 3: Priority
     QTableWidgetItem* priItem = new QTableWidgetItem(QString::number(msg.Priority));
     priItem->setTextAlignment(Qt::AlignCenter);
     priItem->setForeground(QBrush(blueColor));
-    m_logTable->setItem(row, 2, priItem);
+    m_logTable->setItem(row, 3, priItem);
     
-    // Column 3: Source
+    // Column 4: Source
     QTableWidgetItem* srcItem = new QTableWidgetItem(QString("%1").arg(msg.Source, 2, 16, QChar('0')).toUpper());
     srcItem->setTextAlignment(Qt::AlignCenter);
     srcItem->setForeground(QBrush(blueColor));
-    m_logTable->setItem(row, 3, srcItem);
+    m_logTable->setItem(row, 4, srcItem);
     
-    // Column 4: Destination
+    // Column 5: Destination
     QString destText = QString("%1").arg(msg.Destination, 2, 16, QChar('0')).toUpper();
     QTableWidgetItem* destItem = new QTableWidgetItem(destText);
     destItem->setTextAlignment(Qt::AlignCenter);
     destItem->setForeground(QBrush(blueColor));
-    m_logTable->setItem(row, 4, destItem);
+    m_logTable->setItem(row, 5, destItem);
     
-    // Column 5: Length
+    // Column 6: Length
     QTableWidgetItem* lenItem = new QTableWidgetItem(QString::number(msg.DataLen));
     lenItem->setTextAlignment(Qt::AlignCenter);
     lenItem->setForeground(QBrush(blueColor));
-    m_logTable->setItem(row, 5, lenItem);
+    m_logTable->setItem(row, 6, lenItem);
     
-    // Column 6: Data (decoded or raw)
+    // Column 7: Data (decoded or raw)
     QTableWidgetItem* dataItem = new QTableWidgetItem(displayData);
     dataItem->setFont(QFont("Consolas, Monaco, monospace", 9));
     dataItem->setForeground(QBrush(blueColor));
-    m_logTable->setItem(row, 6, dataItem);
+    m_logTable->setItem(row, 7, dataItem);
     
     // Auto-scroll to bottom
     m_logTable->scrollToBottom();
@@ -397,6 +440,7 @@ void PGNLogDialog::appendSentMessage(const tN2kMsg& msg)
 void PGNLogDialog::clearLog()
 {
     m_logTable->setRowCount(0);
+    m_messageTimestamps.clear();
     
     // Reset to running state when clearing
     m_logPaused = false;
@@ -795,4 +839,30 @@ void PGNLogDialog::onStopClicked()
     // Update status
     m_statusLabel->setText("STOPPED - Click Start to resume logging or Clear to empty log");
     m_statusLabel->setStyleSheet("font-weight: bold; color: #cc0000; padding: 5px;");
+}
+
+void PGNLogDialog::setTimestampMode(TimestampMode mode)
+{
+    if (m_timestampMode == mode) return;
+    m_timestampMode = mode;
+    // Update all timestamps in the table
+    for (int row = 0; row < m_logTable->rowCount(); ++row) {
+        QString tsText;
+        if (mode == Absolute) {
+            tsText = m_messageTimestamps[row].toString("HH:mm:ss.zzz");
+        } else {
+            qint64 deltaMs = 0;
+            if (row > 0) {
+                deltaMs = m_messageTimestamps[row-1].msecsTo(m_messageTimestamps[row]);
+            }
+            tsText = QString::number(deltaMs) + " ms";
+        }
+        QTableWidgetItem* tsItem = m_logTable->item(row, 0);
+        if (tsItem) tsItem->setText(tsText);
+    }
+}
+
+PGNLogDialog::TimestampMode PGNLogDialog::getTimestampMode() const
+{
+    return m_timestampMode;
 }
