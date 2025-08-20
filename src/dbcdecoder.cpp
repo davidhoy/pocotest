@@ -307,6 +307,23 @@ DecodedMessage DBCDecoder::decodeMessage(const tN2kMsg& msg)
         return decoded;
     }
 
+    // Special handling for lighting PGNs
+    if (msg.PGN == 130561) {
+        return decodePGN130561(msg);
+    }
+    if (msg.PGN == 130563) {
+        return decodePGN130563(msg);
+    }
+    if (msg.PGN == 130564) {
+        return decodePGN130564(msg);
+    }
+    if (msg.PGN == 130565) {
+        return decodePGN130565(msg);
+    }
+    if (msg.PGN == 130566) {
+        return decodePGN130566(msg);
+    }
+
     if (!m_messages.contains(msg.PGN)) {
         return decoded;
     }
@@ -413,6 +430,11 @@ bool DBCDecoder::canDecode(unsigned long pgn) const
         return true;
     }
     
+    // Special handling for lighting PGNs
+    if (pgn == 130563 || pgn == 130564 || pgn == 130565 || pgn == 130566 || pgn == 130561) {
+        return true;
+    }
+    
     return m_messages.contains(pgn);
 }
 
@@ -421,6 +443,23 @@ QString DBCDecoder::getMessageName(unsigned long pgn) const
     // Special handling for PGN 126208 (Group Function)
     if (pgn == 126208) {
         return "Group Function";
+    }
+    
+    // Special handling for lighting PGNs
+    if (pgn == 130561) {
+        return "Zone Lighting Control";
+    }
+    if (pgn == 130563) {
+        return "Lighting Device";
+    }
+    if (pgn == 130564) {
+        return "Lighting Device Enumeration";
+    }
+    if (pgn == 130565) {
+        return "Lighting Color Sequence";
+    }
+    if (pgn == 130566) {
+        return "Lighting Program";
     }
     
     if (m_messages.contains(pgn)) {
@@ -560,5 +599,277 @@ QString DBCDecoder::decodePGN(const tN2kMsg& msg)
         decoded = QString("PGN %1 (no decoder available)").arg(pgn);
     }
     
+    return decoded;
+}
+
+// Lighting PGN Decoders
+
+DecodedMessage DBCDecoder::decodePGN130561(const tN2kMsg& msg)
+{
+    DecodedMessage decoded;
+    decoded.messageName = "Zone Lighting Control (130561)";
+    decoded.description = "NMEA2000 Zone Lighting Control Message";
+    decoded.isDecoded = true;
+
+    if (msg.DataLen < 3) {
+        DecodedSignal sig;
+        sig.name = "Error";
+        sig.value = "Message too short for PGN 130561";
+        decoded.signalList.append(sig);
+        return decoded;
+    }
+
+    int index = 0;
+
+    // Byte 0: Zone ID (0-252, 253=Broadcast, 254=No Zone, 255=NULL)
+    uint8_t zoneId = msg.GetByte(index);
+    DecodedSignal sigZoneId;
+    sigZoneId.name = "Zone ID";
+    sigZoneId.value = zoneId;
+    if (zoneId == 253) {
+        sigZoneId.value = QString("%1 (Broadcast)").arg(zoneId);
+    } else if (zoneId == 254) {
+        sigZoneId.value = QString("%1 (No Zone)").arg(zoneId);
+    } else if (zoneId == 255) {
+        sigZoneId.value = QString("%1 (NULL)").arg(zoneId);
+    }
+    decoded.signalList.append(sigZoneId);
+
+    // Byte 1: Zone Name Length
+    uint8_t nameLen = msg.GetByte(index);
+    DecodedSignal sigNameLen;
+    sigNameLen.name = "Zone Name Length";
+    sigNameLen.value = nameLen;
+    decoded.signalList.append(sigNameLen);
+
+    // Bytes 2+: Zone Name (variable length string)
+    QString zoneName;
+    for (int i = 0; i < nameLen && index < msg.DataLen; i++) {
+        char c = msg.GetByte(index);
+        if (c != 0) zoneName += c;
+    }
+    if (!zoneName.isEmpty()) {
+        DecodedSignal sigZoneName;
+        sigZoneName.name = "Zone Name";
+        sigZoneName.value = zoneName;
+        decoded.signalList.append(sigZoneName);
+    }
+
+    // Continue decoding remaining fields if available
+    if (index < msg.DataLen) {
+        // Red Component (0-255)
+        uint8_t red = msg.GetByte(index);
+        DecodedSignal sigRed;
+        sigRed.name = "Red";
+        sigRed.value = red;
+        decoded.signalList.append(sigRed);
+    }
+
+    if (index < msg.DataLen) {
+        // Green Component (0-255)
+        uint8_t green = msg.GetByte(index);
+        DecodedSignal sigGreen;
+        sigGreen.name = "Green";
+        sigGreen.value = green;
+        decoded.signalList.append(sigGreen);
+    }
+
+    if (index < msg.DataLen) {
+        // Blue Component (0-255)
+        uint8_t blue = msg.GetByte(index);
+        DecodedSignal sigBlue;
+        sigBlue.name = "Blue";
+        sigBlue.value = blue;
+        decoded.signalList.append(sigBlue);
+    }
+
+    if (index + 1 < msg.DataLen) {
+        // Color Temperature (0-65532 Kelvin)
+        uint16_t colorTemp = msg.Get2ByteUInt(index);
+        DecodedSignal sigColorTemp;
+        sigColorTemp.name = "Color Temperature";
+        sigColorTemp.value = colorTemp;
+        sigColorTemp.unit = "K";
+        decoded.signalList.append(sigColorTemp);
+    }
+
+    if (index < msg.DataLen) {
+        // Intensity/Brightness (0-200 * 0.5%)
+        uint8_t intensity = msg.GetByte(index);
+        DecodedSignal sigIntensity;
+        sigIntensity.name = "Intensity";
+        sigIntensity.value = QString("%1% (%2/200)").arg(intensity * 0.5, 0, 'f', 1).arg(intensity);
+        decoded.signalList.append(sigIntensity);
+    }
+
+    return decoded;
+}
+
+DecodedMessage DBCDecoder::decodePGN130563(const tN2kMsg& msg)
+{
+    DecodedMessage decoded;
+    decoded.messageName = "Lighting Device (130563)";
+    decoded.description = "NMEA2000 Lighting Device Message";
+    decoded.isDecoded = true;
+
+    if (msg.DataLen < 1) {
+        DecodedSignal sig;
+        sig.name = "Error";
+        sig.value = "Message too short";
+        decoded.signalList.append(sig);
+        return decoded;
+    }
+
+    int index = 0;
+
+    // Basic decoding - this PGN structure varies by implementation
+    DecodedSignal sigDeviceId;
+    sigDeviceId.name = "Device ID";
+    sigDeviceId.value = msg.GetByte(index);
+    decoded.signalList.append(sigDeviceId);
+
+    // Add remaining bytes as hex data for now
+    if (index < msg.DataLen) {
+        QString remainingData;
+        while (index < msg.DataLen) {
+            remainingData += QString(" %1").arg(msg.GetByte(index), 2, 16, QChar('0')).toUpper();
+        }
+        DecodedSignal sigData;
+        sigData.name = "Additional Data";
+        sigData.value = remainingData.trimmed();
+        decoded.signalList.append(sigData);
+    }
+
+    return decoded;
+}
+
+DecodedMessage DBCDecoder::decodePGN130564(const tN2kMsg& msg)
+{
+    DecodedMessage decoded;
+    decoded.messageName = "Lighting Device Enumeration (130564)";
+    decoded.description = "NMEA2000 Lighting Device Enumeration Message";
+    decoded.isDecoded = true;
+
+    if (msg.DataLen < 1) {
+        DecodedSignal sig;
+        sig.name = "Error";
+        sig.value = "Message too short";
+        decoded.signalList.append(sig);
+        return decoded;
+    }
+
+    int index = 0;
+
+    // Device enumeration info
+    DecodedSignal sigDeviceCount;
+    sigDeviceCount.name = "Device Count";
+    sigDeviceCount.value = msg.GetByte(index);
+    decoded.signalList.append(sigDeviceCount);
+
+    // Add remaining bytes as device info
+    int deviceNum = 1;
+    while (index < msg.DataLen) {
+        DecodedSignal sigDevice;
+        sigDevice.name = QString("Device %1 Info").arg(deviceNum++);
+        sigDevice.value = QString("0x%1").arg(msg.GetByte(index), 2, 16, QChar('0')).toUpper();
+        decoded.signalList.append(sigDevice);
+    }
+
+    return decoded;
+}
+
+DecodedMessage DBCDecoder::decodePGN130565(const tN2kMsg& msg)
+{
+    DecodedMessage decoded;
+    decoded.messageName = "Lighting Color Sequence (130565)";
+    decoded.description = "NMEA2000 Lighting Color Sequence Message";
+    decoded.isDecoded = true;
+
+    if (msg.DataLen < 2) {
+        DecodedSignal sig;
+        sig.name = "Error";
+        sig.value = "Message too short";
+        decoded.signalList.append(sig);
+        return decoded;
+    }
+
+    int index = 0;
+
+    // Sequence ID
+    DecodedSignal sigSeqId;
+    sigSeqId.name = "Sequence ID";
+    sigSeqId.value = msg.GetByte(index);
+    decoded.signalList.append(sigSeqId);
+
+    // Number of colors in sequence
+    DecodedSignal sigColorCount;
+    sigColorCount.name = "Color Count";
+    sigColorCount.value = msg.GetByte(index);
+    decoded.signalList.append(sigColorCount);
+
+    // Decode color entries (typically RGB triplets)
+    int colorIndex = 1;
+    while (index + 2 < msg.DataLen) {
+        uint8_t red = msg.GetByte(index);
+        uint8_t green = msg.GetByte(index);
+        uint8_t blue = msg.GetByte(index);
+        
+        DecodedSignal sigColor;
+        sigColor.name = QString("Color %1").arg(colorIndex++);
+        sigColor.value = QString("RGB(%1,%2,%3)").arg(red).arg(green).arg(blue);
+        decoded.signalList.append(sigColor);
+    }
+
+    return decoded;
+}
+
+DecodedMessage DBCDecoder::decodePGN130566(const tN2kMsg& msg)
+{
+    DecodedMessage decoded;
+    decoded.messageName = "Lighting Program (130566)";
+    decoded.description = "NMEA2000 Lighting Program Message";
+    decoded.isDecoded = true;
+
+    if (msg.DataLen < 2) {
+        DecodedSignal sig;
+        sig.name = "Error";
+        sig.value = "Message too short";
+        decoded.signalList.append(sig);
+        return decoded;
+    }
+
+    int index = 0;
+
+    // Program ID
+    DecodedSignal sigProgId;
+    sigProgId.name = "Program ID";
+    sigProgId.value = msg.GetByte(index);
+    decoded.signalList.append(sigProgId);
+
+    // Program Type/Mode
+    DecodedSignal sigProgType;
+    sigProgType.name = "Program Type";
+    uint8_t progType = msg.GetByte(index);
+    QString progTypeName;
+    switch (progType) {
+        case 0: progTypeName = "Off"; break;
+        case 1: progTypeName = "Static"; break;
+        case 2: progTypeName = "Fade"; break;
+        case 3: progTypeName = "Flash"; break;
+        case 4: progTypeName = "Sequence"; break;
+        default: progTypeName = QString("Unknown (%1)").arg(progType); break;
+    }
+    sigProgType.value = progTypeName;
+    decoded.signalList.append(sigProgType);
+
+    // Add remaining bytes as program parameters
+    while (index < msg.DataLen) {
+        static int paramNum = 1;
+        DecodedSignal sigParam;
+        sigParam.name = QString("Parameter %1").arg(paramNum++);
+        sigParam.value = QString("0x%1").arg(msg.GetByte(index), 2, 16, QChar('0')).toUpper();
+        decoded.signalList.append(sigParam);
+    }
+
     return decoded;
 }

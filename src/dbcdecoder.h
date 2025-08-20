@@ -87,6 +87,13 @@ private:
     // Signal extraction and validation
     double extractSignalValue(const uint8_t* data, const DBCSignal& signal);
     bool isSignalValid(double rawValue, const DBCSignal& signal);
+    
+    // Lighting PGN decoders
+    DecodedMessage decodePGN130561(const tN2kMsg& msg);  // Zone Lighting Control
+    DecodedMessage decodePGN130563(const tN2kMsg& msg);  // Lighting Device
+    DecodedMessage decodePGN130564(const tN2kMsg& msg);  // Lighting Device Enumeration
+    DecodedMessage decodePGN130565(const tN2kMsg& msg);  // Lighting Color Sequence
+    DecodedMessage decodePGN130566(const tN2kMsg& msg);  // Lighting Program
 
 private:
     QMap<unsigned long, DBCMessage> m_messages;
