@@ -12,6 +12,7 @@ PGNLogDialog::PGNLogDialog(QWidget *parent)
     , m_clearButton(nullptr)
     , m_closeButton(nullptr)
     , m_saveButton(nullptr)
+    , m_loadButton(nullptr)
     , m_clearFiltersButton(nullptr)
     , m_pauseButton(nullptr)
     , m_stopButton(nullptr)
@@ -30,6 +31,8 @@ PGNLogDialog::PGNLogDialog(QWidget *parent)
     , m_useAndLogic(true)        // Default to AND logic
     , m_logPaused(false)
     , m_logStopped(false)
+    , m_showingLoadedLog(false)  // Initially showing live log
+    , m_loadedLogFileName("")    // No loaded log initially
     , m_dbcDecoder(nullptr)      // Will be initialized in constructor body
 {
     qDebug() << "PGNLogDialog constructor: Starting...";
@@ -49,7 +52,7 @@ PGNLogDialog::PGNLogDialog(QWidget *parent)
         qWarning() << "Failed to create or initialize DBC Decoder";
     }
     
-    setWindowTitle("NMEA2000 PGN Message Log");
+    setWindowTitle("NMEA2000 PGN Message Log - LIVE");
     setModal(false);
     resize(900, 700);
     
@@ -168,9 +171,9 @@ void PGNLogDialog::setupUI()
 
     // Log table
     m_logTable = new QTableWidget();
-    m_logTable->setColumnCount(8);
+    m_logTable->setColumnCount(9);
     QStringList headers;
-    headers << "Timestamp" << "PGN" << "Message Name" << "Pri" << "Src" << "Dst" << "Len" << "Data";
+    headers << "Timestamp" << "PGN" << "Message Name" << "Pri" << "Src" << "Dst" << "Len" << "Raw Data" << "Decoded";
     m_logTable->setHorizontalHeaderLabels(headers);
     
     // Configure table
@@ -183,7 +186,8 @@ void PGNLogDialog::setupUI()
     m_logTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::ResizeToContents); // Source
     m_logTable->horizontalHeader()->setSectionResizeMode(5, QHeaderView::ResizeToContents); // Destination
     m_logTable->horizontalHeader()->setSectionResizeMode(6, QHeaderView::ResizeToContents); // Length
-    m_logTable->horizontalHeader()->setSectionResizeMode(7, QHeaderView::Stretch); // Data - stretch to fill
+    m_logTable->horizontalHeader()->setSectionResizeMode(7, QHeaderView::Interactive); // Raw Data - interactive sizing
+    m_logTable->horizontalHeader()->setSectionResizeMode(8, QHeaderView::Stretch); // Decoded - stretch to fill
     m_logTable->verticalHeader()->setVisible(false);
     m_logTable->setSortingEnabled(false);
     
@@ -206,6 +210,7 @@ void PGNLogDialog::setupUI()
     m_stopButton = new QPushButton("Stop");
     m_clearButton = new QPushButton("Clear Log");
     m_saveButton = new QPushButton("Save Log...");
+    m_loadButton = new QPushButton("Load Log...");
     m_closeButton = new QPushButton("Close");
     
     // Set button states
@@ -218,6 +223,7 @@ void PGNLogDialog::setupUI()
     connect(m_stopButton, &QPushButton::clicked, this, &PGNLogDialog::onStopClicked);
     connect(m_clearButton, &QPushButton::clicked, this, &PGNLogDialog::clearLog);
     connect(m_saveButton, &QPushButton::clicked, this, &PGNLogDialog::onSaveLogClicked);
+    connect(m_loadButton, &QPushButton::clicked, this, &PGNLogDialog::onLoadLogClicked);
     connect(m_closeButton, &QPushButton::clicked, this, &PGNLogDialog::onCloseClicked);
     
     buttonLayout->addWidget(m_startButton);
@@ -225,6 +231,7 @@ void PGNLogDialog::setupUI()
     buttonLayout->addWidget(m_stopButton);
     buttonLayout->addWidget(m_clearButton);
     buttonLayout->addWidget(m_saveButton);
+    buttonLayout->addWidget(m_loadButton);
     buttonLayout->addStretch();
     buttonLayout->addWidget(m_closeButton);
     
@@ -263,13 +270,15 @@ void PGNLogDialog::appendMessage(const tN2kMsg& msg)
         messageName = QString("PGN %1").arg(msg.PGN);
     }
     
-    QString displayData = hexData;
-    
+    // Prepare decoded data
+    QString decodedData = "";
     if (m_decodingEnabled->isChecked() && m_dbcDecoder && m_dbcDecoder->canDecode(msg.PGN)) {
-        QString decodedData = m_dbcDecoder->getFormattedDecoded(msg);
-        if (!decodedData.isEmpty() && decodedData != "Raw data" && !decodedData.startsWith("PGN")) {
-            displayData = decodedData + " [" + hexData + "]";
+        decodedData = m_dbcDecoder->getFormattedDecoded(msg);
+        if (decodedData.isEmpty() || decodedData == "Raw data" || decodedData.startsWith("PGN")) {
+            decodedData = "(not decoded)";
         }
+    } else {
+        decodedData = "(decoding disabled)";
     }
 
     // Add new row to table
@@ -324,10 +333,15 @@ void PGNLogDialog::appendMessage(const tN2kMsg& msg)
     lenItem->setTextAlignment(Qt::AlignCenter);
     m_logTable->setItem(row, 6, lenItem);
 
-    // Column 7: Data (decoded or raw)
-    QTableWidgetItem* dataItem = new QTableWidgetItem(displayData);
-    dataItem->setFont(QFont("Consolas, Monaco, monospace", 9));
-    m_logTable->setItem(row, 7, dataItem);
+    // Column 7: Raw Data
+    QTableWidgetItem* rawDataItem = new QTableWidgetItem(hexData);
+    rawDataItem->setFont(QFont("Consolas, Monaco, monospace", 9));
+    m_logTable->setItem(row, 7, rawDataItem);
+
+    // Column 8: Decoded Data
+    QTableWidgetItem* decodedItem = new QTableWidgetItem(decodedData);
+    decodedItem->setFont(QFont("Consolas, Monaco, monospace", 9));
+    m_logTable->setItem(row, 8, decodedItem);
 
     // Auto-scroll to bottom
     m_logTable->scrollToBottom();
@@ -364,13 +378,15 @@ void PGNLogDialog::appendSentMessage(const tN2kMsg& msg)
         messageName = QString("PGN %1").arg(msg.PGN);
     }
     
-    QString displayData = hexData;
-    
+    // Prepare decoded data for sent messages
+    QString decodedData = "";
     if (m_decodingEnabled->isChecked() && m_dbcDecoder && m_dbcDecoder->canDecode(msg.PGN)) {
-        QString decodedData = m_dbcDecoder->getFormattedDecoded(msg);
-        if (!decodedData.isEmpty() && decodedData != "Raw data" && !decodedData.startsWith("PGN")) {
-            displayData = decodedData + " [" + hexData + "]";
+        decodedData = m_dbcDecoder->getFormattedDecoded(msg);
+        if (decodedData.isEmpty() || decodedData == "Raw data" || decodedData.startsWith("PGN")) {
+            decodedData = "(not decoded)";
         }
+    } else {
+        decodedData = "(decoding disabled)";
     }
 
     // Add new row to table
@@ -434,11 +450,17 @@ void PGNLogDialog::appendSentMessage(const tN2kMsg& msg)
     lenItem->setForeground(QBrush(blueColor));
     m_logTable->setItem(row, 6, lenItem);
     
-    // Column 7: Data (decoded or raw)
-    QTableWidgetItem* dataItem = new QTableWidgetItem(displayData);
-    dataItem->setFont(QFont("Consolas, Monaco, monospace", 9));
-    dataItem->setForeground(QBrush(blueColor));
-    m_logTable->setItem(row, 7, dataItem);
+    // Column 7: Raw Data
+    QTableWidgetItem* rawDataItem = new QTableWidgetItem(hexData);
+    rawDataItem->setFont(QFont("Consolas, Monaco, monospace", 9));
+    rawDataItem->setForeground(QBrush(blueColor));
+    m_logTable->setItem(row, 7, rawDataItem);
+    
+    // Column 8: Decoded Data
+    QTableWidgetItem* decodedItem = new QTableWidgetItem(decodedData);
+    decodedItem->setFont(QFont("Consolas, Monaco, monospace", 9));
+    decodedItem->setForeground(QBrush(blueColor));
+    m_logTable->setItem(row, 8, decodedItem);
     
     // Auto-scroll to bottom
     m_logTable->scrollToBottom();
@@ -461,6 +483,21 @@ void PGNLogDialog::clearLog()
     // Update status
     m_statusLabel->setText("Live NMEA2000 PGN message log - Real-time updates");
     m_statusLabel->setStyleSheet("font-weight: bold; color: #333; padding: 5px;");
+    
+    // Switch back to live mode when clearing
+    m_showingLoadedLog = false;
+    m_loadedLogFileName = "";
+    updateWindowTitle();
+}
+
+void PGNLogDialog::clearLogForLoad()
+{
+    // Clear table and timestamps without changing logging state
+    m_logTable->setRowCount(0);
+    m_messageTimestamps.clear();
+    
+    // Keep logging stopped and buttons in their current state
+    // Status will be updated after load completes
 }
 
 void PGNLogDialog::onCloseClicked()
@@ -477,14 +514,14 @@ void PGNLogDialog::onSaveLogClicked()
     
     // Get current timestamp for default filename
     QString timestamp = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
-    QString defaultFileName = QString("nmea2000_log_%1.txt").arg(timestamp);
+    QString defaultFileName = QString("nmea2000_log_%1.pgnlog").arg(timestamp);
     
     // Show file save dialog
     QString fileName = QFileDialog::getSaveFileName(
         this,
         "Save PGN Log",
         defaultFileName,
-        "Text Files (*.txt);;All Files (*)"
+        "PGN Log Files (*.pgnlog);;Text Files (*.txt);;All Files (*)"
     );
     
     if (fileName.isEmpty()) {
@@ -503,67 +540,335 @@ void PGNLogDialog::onSaveLogClicked()
     
     QTextStream out(&file);
     
-    // Write header information
-    out << "NMEA2000 PGN Message Log\n";
-    out << "Generated by Lumitec Poco Tester\n";
-    out << "Export Time: " << QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss") << "\n";
-    out << "Total Messages: " << m_logTable->rowCount() << "\n";
+    // Write structured header
+    out << "# NMEA2000 PGN Message Log\n";
+    out << "# Generated by Lumitec Poco Tester\n";
+    out << "# Format Version: 1.0\n";
+    out << "# Export Time: " << QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss") << "\n";
+    out << "# Total Messages: " << m_logTable->rowCount() << "\n";
     
     // Write filter information if active
     if (m_sourceFilterActive || m_destinationFilterActive) {
-        out << "\nActive Filters:\n";
+        out << "# Active Filters:\n";
         if (m_sourceFilterActive) {
-            out << "Source Filter: 0x" << QString::number(m_sourceFilter, 16).toUpper() << "\n";
+            out << "# Source Filter: 0x" << QString::number(m_sourceFilter, 16).toUpper() << "\n";
         }
         if (m_destinationFilterActive) {
-            out << "Destination Filter: 0x" << QString::number(m_destinationFilter, 16).toUpper() << "\n";
+            out << "# Destination Filter: 0x" << QString::number(m_destinationFilter, 16).toUpper() << "\n";
         }
         if (m_sourceFilterActive && m_destinationFilterActive) {
-            out << "Filter Logic: " << (m_useAndLogic ? "AND" : "OR") << "\n";
+            out << "# Filter Logic: " << (m_useAndLogic ? "AND" : "OR") << "\n";
         }
     }
     
-    out << "\n" << QString("=").repeated(80) << "\n\n";
+    out << "#\n";
+    out << "# Format: TIMESTAMP | PGN | PRIORITY | SOURCE | DESTINATION | LENGTH | RAW_DATA\n";
+    out << "# All values are preserved in original format for exact reconstruction\n";
+    out << "#\n";
     
-    // Write column headers
-    QStringList headers;
-    for (int col = 0; col < m_logTable->columnCount(); col++) {
-        headers << m_logTable->horizontalHeaderItem(col)->text();
-    }
-    out << headers.join("\t") << "\n";
-    out << QString("-").repeated(80) << "\n";
-    
-    // Write all log entries
+    // Write all log entries in structured format
     for (int row = 0; row < m_logTable->rowCount(); row++) {
-        QStringList rowData;
-        for (int col = 0; col < m_logTable->columnCount(); col++) {
-            QTableWidgetItem* item = m_logTable->item(row, col);
-            if (item) {
-                QString text = item->text();
-                // Clean up text for better readability
-                if (col == 7 && text.contains("[")) { // Data column with decoded info
-                    // Keep both decoded and hex data for completeness
-                    rowData << text;
-                } else {
-                    rowData << text;
+        QStringList messageData;
+        
+        // Extract core message data for reconstruction
+        QString timestamp = m_logTable->item(row, 0) ? m_logTable->item(row, 0)->text() : "";
+        QString pgn = m_logTable->item(row, 1) ? m_logTable->item(row, 1)->text() : "";
+        QString priority = m_logTable->item(row, 3) ? m_logTable->item(row, 3)->text() : "";
+        QString source = m_logTable->item(row, 4) ? m_logTable->item(row, 4)->text() : "";
+        QString destination = m_logTable->item(row, 5) ? m_logTable->item(row, 5)->text() : "";
+        QString length = m_logTable->item(row, 6) ? m_logTable->item(row, 6)->text() : "";
+        QString rawData = m_logTable->item(row, 7) ? m_logTable->item(row, 7)->text() : "";
+        
+        // Clean up PGN field (remove "Sent:" prefix if present)
+        if (pgn.startsWith("Sent: ")) {
+            pgn = pgn.mid(6);
+        }
+        
+        // Format: TIMESTAMP | PGN | PRIORITY | SOURCE | DESTINATION | LENGTH | RAW_DATA
+        messageData << timestamp << pgn << priority << source << destination << length << rawData;
+        out << messageData.join(" | ") << "\n";
+        
+        // Append current decoded information as human-readable comments (without reserved fields)
+        QString messageName = m_logTable->item(row, 2) ? m_logTable->item(row, 2)->text() : "";
+        
+        if (!messageName.isEmpty() && messageName != QString("PGN %1").arg(pgn)) {
+            out << "#   Message: " << pgn << " - " << messageName << "\n";
+        }
+        
+        // Reconstruct message for clean decoding without reserved fields
+        if (m_dbcDecoder && m_decodingEnabled->isChecked()) {
+            bool ok;
+            uint32_t pgnNum = pgn.toUInt(&ok);
+            if (ok && m_dbcDecoder->canDecode(pgnNum)) {
+                // Parse raw data to reconstruct message
+                QStringList hexBytes = rawData.split(" ", Qt::SkipEmptyParts);
+                uint8_t dataLen = length.toUInt(&ok);
+                if (ok && !rawData.isEmpty() && rawData != "(no data)") {
+                    // Reconstruct N2K message
+                    tN2kMsg reconstructedMsg;
+                    reconstructedMsg.PGN = pgnNum;
+                    reconstructedMsg.Priority = priority.toUInt(&ok) ? priority.toUInt() : 6;
+                    reconstructedMsg.Source = source.toUInt(&ok, 16) ? source.toUInt(nullptr, 16) : 0;
+                    reconstructedMsg.Destination = destination.toUInt(&ok, 16) ? destination.toUInt(nullptr, 16) : 255;
+                    reconstructedMsg.DataLen = qMin(dataLen, (uint8_t)hexBytes.size());
+                    
+                    // Parse hex data into byte array
+                    for (int i = 0; i < reconstructedMsg.DataLen && i < hexBytes.size(); i++) {
+                        bool hexOk;
+                        uint8_t byteVal = hexBytes[i].toUInt(&hexOk, 16);
+                        if (hexOk) {
+                            reconstructedMsg.Data[i] = byteVal;
+                        } else {
+                            reconstructedMsg.Data[i] = 0;
+                        }
+                    }
+                    
+                    // Get decoded data without reserved fields
+                    QString cleanDecodedData = m_dbcDecoder->getFormattedDecodedForSave(reconstructedMsg);
+                    if (!cleanDecodedData.isEmpty() && cleanDecodedData != "Raw data" && cleanDecodedData != "(not decoded)") {
+                        // Split decoded data into multiple lines for readability if it's long
+                        if (cleanDecodedData.length() > 80) {
+                            QStringList decodedLines = cleanDecodedData.split(", ");
+                            out << "#   Decoded: " << decodedLines.first() << "\n";
+                            for (int i = 1; i < decodedLines.size(); i++) {
+                                out << "#           " << decodedLines[i] << "\n";
+                            }
+                        } else {
+                            out << "#   Decoded: " << cleanDecodedData << "\n";
+                        }
+                    }
                 }
-            } else {
-                rowData << "";
             }
         }
-        out << rowData.join("\t") << "\n";
+        
+        // Add blank line for readability between messages
+        out << "\n";
     }
-    
-    out << "\n" << QString("=").repeated(80) << "\n";
-    out << "End of log - " << m_logTable->rowCount() << " total messages\n";
     
     file.close();
     
     // Show success message
     QMessageBox::information(this, "Save Successful", 
-                           QString("PGN log saved successfully!\n\nFile: %1\nMessages: %2")
+                           QString("PGN log saved successfully!\n\nFile: %1\nMessages: %2\n\nThis file can be reloaded to display the PGN trace and re-decode the data.")
                            .arg(fileName)
                            .arg(m_logTable->rowCount()));
+}
+
+void PGNLogDialog::onLoadLogClicked()
+{
+    // Show file open dialog first
+    QString fileName = QFileDialog::getOpenFileName(
+        this,
+        "Load PGN Log",
+        "",
+        "PGN Log Files (*.pgnlog);;Text Files (*.txt);;All Files (*)"
+    );
+    
+    if (fileName.isEmpty()) {
+        return; // User cancelled - no action needed
+    }
+    
+    // Automatically stop live logging when loading a log file
+    if (!m_logStopped) {
+        onStopClicked();
+    }
+    
+    // Read log from file
+    QFile file(fileName);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QMessageBox::critical(this, "Load Error", 
+                             QString("Could not open file for reading:\n%1\n\nError: %2")
+                             .arg(fileName)
+                             .arg(file.errorString()));
+        return;
+    }
+    
+    QTextStream in(&file);
+    
+    // Clear current log without restarting live logging
+    clearLogForLoad();
+    
+    int loadedMessages = 0;
+    int skippedMessages = 0;
+    
+    while (!in.atEnd()) {
+        QString line = in.readLine().trimmed();
+        
+        // Skip comments and empty lines
+        if (line.isEmpty() || line.startsWith("#")) {
+            continue;
+        }
+        
+        // Parse message line: TIMESTAMP | PGN | PRIORITY | SOURCE | DESTINATION | LENGTH | RAW_DATA
+        // Handle both old format (TIMESTAMP|PGN|...) and new format (TIMESTAMP | PGN | ...)
+        QStringList parts = line.split("|");
+        if (parts.size() != 7) {
+            skippedMessages++;
+            continue;
+        }
+        
+        // Extract message data (trim spaces for compatibility with new format)
+        QString timestamp = parts[0].trimmed();
+        QString pgnStr = parts[1].trimmed();
+        QString priorityStr = parts[2].trimmed();
+        QString sourceStr = parts[3].trimmed();
+        QString destStr = parts[4].trimmed();
+        QString lengthStr = parts[5].trimmed();
+        QString rawDataStr = parts[6].trimmed();
+        
+        // Validate and convert data
+        bool ok;
+        uint32_t pgn = pgnStr.toUInt(&ok);
+        if (!ok) {
+            skippedMessages++;
+            continue;
+        }
+        
+        uint8_t priority = priorityStr.toUInt(&ok);
+        if (!ok) priority = 6; // Default priority
+        
+        uint8_t source = sourceStr.toUInt(&ok, 16);
+        if (!ok) source = 0;
+        
+        uint8_t destination = destStr.toUInt(&ok, 16);
+        if (!ok) destination = 255;
+        
+        uint8_t dataLen = lengthStr.toUInt(&ok);
+        if (!ok) dataLen = 0;
+        
+        // Parse raw data (space-separated hex bytes)
+        QStringList hexBytes = rawDataStr.split(" ", Qt::SkipEmptyParts);
+        if (hexBytes.size() != dataLen && !rawDataStr.isEmpty() && rawDataStr != "(no data)") {
+            // Try to parse anyway, might be valid
+        }
+        
+        // Reconstruct N2K message for decoding
+        tN2kMsg reconstructedMsg;
+        reconstructedMsg.PGN = pgn;
+        reconstructedMsg.Priority = priority;
+        reconstructedMsg.Source = source;
+        reconstructedMsg.Destination = destination;
+        reconstructedMsg.DataLen = qMin(dataLen, (uint8_t)hexBytes.size());
+        
+        // Parse hex data into byte array
+        for (int i = 0; i < reconstructedMsg.DataLen && i < hexBytes.size(); i++) {
+            bool hexOk;
+            uint8_t byteVal = hexBytes[i].toUInt(&hexOk, 16);
+            if (hexOk) {
+                reconstructedMsg.Data[i] = byteVal;
+            } else {
+                reconstructedMsg.Data[i] = 0;
+            }
+        }
+        
+        // Add message to table (similar to appendMessage but without filtering)
+        addLoadedMessage(reconstructedMsg, timestamp);
+        loadedMessages++;
+    }
+    
+    file.close();
+    
+    // Update status to clearly indicate a log has been loaded and live logging is stopped
+    m_statusLabel->setText(QString("LOG LOADED (%1 messages) - Live logging STOPPED - Click Start to resume live logging").arg(loadedMessages));
+    m_statusLabel->setStyleSheet("font-weight: bold; color: #0066cc; padding: 5px;");
+    
+    // Set loaded log state and update window title
+    m_showingLoadedLog = true;
+    QFileInfo fileInfo(fileName);
+    m_loadedLogFileName = fileInfo.fileName();
+    updateWindowTitle();
+    
+    // Show load result
+    QMessageBox::information(this, "Load Complete", 
+                           QString("PGN log loaded successfully!\n\nFile: %1\nLoaded: %2 messages\nSkipped: %3 messages\n\nMessages have been re-decoded with current DBC definitions.\n\nLive logging has been stopped.")
+                           .arg(fileName)
+                           .arg(loadedMessages)
+                           .arg(skippedMessages));
+}
+
+void PGNLogDialog::addLoadedMessage(const tN2kMsg& msg, const QString& originalTimestamp)
+{
+    // Get decoded message name and data using current decoder
+    QString messageName;
+    if (m_dbcDecoder && m_dbcDecoder->canDecode(msg.PGN)) {
+        messageName = m_dbcDecoder->getCleanMessageName(msg.PGN);
+    } else {
+        messageName = QString("PGN %1").arg(msg.PGN);
+    }
+    
+    // Prepare decoded data
+    QString decodedData = "";
+    if (m_decodingEnabled->isChecked() && m_dbcDecoder && m_dbcDecoder->canDecode(msg.PGN)) {
+        decodedData = m_dbcDecoder->getFormattedDecoded(msg);
+        if (decodedData.isEmpty() || decodedData == "Raw data" || decodedData.startsWith("PGN")) {
+            decodedData = "(not decoded)";
+        }
+    } else {
+        decodedData = "(decoding disabled)";
+    }
+    
+    // Format hex data payload
+    QString hexData = "";
+    for (int i = 0; i < msg.DataLen; i++) {
+        if (i > 0) hexData += " ";
+        hexData += QString("%1").arg(msg.Data[i], 2, 16, QChar('0')).toUpper();
+    }
+    if (hexData.isEmpty()) {
+        hexData = "(no data)";
+    }
+    
+    // Add new row to table
+    int row = m_logTable->rowCount();
+    m_logTable->insertRow(row);
+
+    // Column 0: Timestamp (use original timestamp from file)
+    QTableWidgetItem* tsItem = new QTableWidgetItem(originalTimestamp);
+    tsItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    m_logTable->setItem(row, 0, tsItem);
+
+    // Column 1: PGN
+    QTableWidgetItem* pgnItem = new QTableWidgetItem(QString::number(msg.PGN));
+    pgnItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    m_logTable->setItem(row, 1, pgnItem);
+
+    // Column 2: Message Name (re-decoded with current definitions)
+    QTableWidgetItem* nameItem = new QTableWidgetItem(messageName);
+    nameItem->setTextAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    m_logTable->setItem(row, 2, nameItem);
+
+    // Column 3: Priority
+    QTableWidgetItem* priItem = new QTableWidgetItem(QString::number(msg.Priority));
+    priItem->setTextAlignment(Qt::AlignCenter);
+    m_logTable->setItem(row, 3, priItem);
+
+    // Column 4: Source
+    QTableWidgetItem* srcItem = new QTableWidgetItem(QString("%1").arg(msg.Source, 2, 16, QChar('0')).toUpper());
+    srcItem->setTextAlignment(Qt::AlignCenter);
+    m_logTable->setItem(row, 4, srcItem);
+
+    // Column 5: Destination
+    QString destText = QString("%1").arg(msg.Destination, 2, 16, QChar('0')).toUpper();
+    QTableWidgetItem* destItem = new QTableWidgetItem(destText);
+    destItem->setTextAlignment(Qt::AlignCenter);
+    m_logTable->setItem(row, 5, destItem);
+
+    // Column 6: Length
+    QTableWidgetItem* lenItem = new QTableWidgetItem(QString::number(msg.DataLen));
+    lenItem->setTextAlignment(Qt::AlignCenter);
+    m_logTable->setItem(row, 6, lenItem);
+
+    // Column 7: Raw Data
+    QTableWidgetItem* rawDataItem = new QTableWidgetItem(hexData);
+    rawDataItem->setFont(QFont("Consolas, Monaco, monospace", 9));
+    m_logTable->setItem(row, 7, rawDataItem);
+
+    // Column 8: Decoded Data (re-decoded with current DBC definitions)
+    QTableWidgetItem* decodedItem = new QTableWidgetItem(decodedData);
+    decodedItem->setFont(QFont("Consolas, Monaco, monospace", 9));
+    m_logTable->setItem(row, 8, decodedItem);
+
+    // Auto-scroll to bottom
+    m_logTable->scrollToBottom();
 }
 
 void PGNLogDialog::setSourceFilter(uint8_t sourceAddress)
@@ -789,10 +1094,7 @@ void PGNLogDialog::clearAllFilters()
     m_destinationFilter = 255;
     m_useAndLogic = true;
     
-    // Reset window title
-    setWindowTitle("NMEA2000 PGN Message Log");
-    
-    // Clear the log and add fresh header
+    // Clear the log and add fresh header (this will handle window title)
     clearLog();
     
     updateStatusLabel();
@@ -807,6 +1109,11 @@ void PGNLogDialog::onFilterLogicChanged()
 
 void PGNLogDialog::updateStatusLabel()
 {
+    // Don't override status if we're showing a loaded log file
+    if (m_showingLoadedLog) {
+        return;
+    }
+    
     QString status = "Live NMEA2000 PGN message log";
     
     QStringList activeFilters;
@@ -929,6 +1236,11 @@ void PGNLogDialog::onStartClicked()
     // Update status
     m_statusLabel->setText("Live NMEA2000 PGN message log - Real-time updates");
     m_statusLabel->setStyleSheet("font-weight: bold; color: #333; padding: 5px;");
+    
+    // Switch back to live mode
+    m_showingLoadedLog = false;
+    m_loadedLogFileName = "";
+    updateWindowTitle();
 }
 
 void PGNLogDialog::onStopClicked()
@@ -944,6 +1256,15 @@ void PGNLogDialog::onStopClicked()
     // Update status
     m_statusLabel->setText("STOPPED - Click Start to resume logging or Clear to empty log");
     m_statusLabel->setStyleSheet("font-weight: bold; color: #cc0000; padding: 5px;");
+}
+
+void PGNLogDialog::updateWindowTitle()
+{
+    if (m_showingLoadedLog) {
+        setWindowTitle(QString("NMEA2000 PGN Message Log - LOADED: %1").arg(m_loadedLogFileName));
+    } else {
+        setWindowTitle("NMEA2000 PGN Message Log - LIVE");
+    }
 }
 
 void PGNLogDialog::setTimestampMode(TimestampMode mode)

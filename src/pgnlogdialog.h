@@ -34,8 +34,10 @@ public:
 
 private slots:
     void clearLog();
+    void clearLogForLoad(); // Clear log without restarting live logging
     void onCloseClicked();
     void onSaveLogClicked();
+    void onLoadLogClicked();
     void onSourceFilterChanged();
     void onDestinationFilterChanged();
     void onSourceFilterEnabled(bool enabled);
@@ -63,13 +65,16 @@ private:
     QCheckBox* m_timestampModeCheck = nullptr; // Absolute/Relative toggle
     void setupUI();
     void updateStatusLabel();
+    void updateWindowTitle();  // Update window title based on current state
     bool messagePassesFilter(const tN2kMsg& msg);
+    void addLoadedMessage(const tN2kMsg& msg, const QString& originalTimestamp);
 
 private:
     QTableWidget* m_logTable;
     QPushButton* m_clearButton;
     QPushButton* m_closeButton;
     QPushButton* m_saveButton;
+    QPushButton* m_loadButton;
     QPushButton* m_clearFiltersButton;
     QPushButton* m_pauseButton;
     QPushButton* m_startButton;
@@ -95,6 +100,8 @@ private:
     // Log control state
     bool m_logPaused;
     bool m_logStopped;
+    bool m_showingLoadedLog;  // Track if we're displaying a loaded log file
+    QString m_loadedLogFileName; // Name of loaded log file for title display
     
     // Original DBC Decoder - stable and fast
     DBCDecoder* m_dbcDecoder;
