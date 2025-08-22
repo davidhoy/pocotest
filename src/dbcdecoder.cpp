@@ -254,11 +254,13 @@ DecodedMessage DBCDecoder::decodeMessage(const tN2kMsg& msg)
         decoded.description = "NMEA2000 Group Function Command/Request/Ack";
         decoded.isDecoded = true;
 
-        // Minimum length check
-        if (msg.DataLen < 8) {
+        // Minimum length check - Group Function needs at least 6 bytes
+        // (Function Code + PGN[3] + Priority + Number of Parameters)
+        if (msg.DataLen < 6) {
             DecodedSignal sig;
             sig.name = "Error";
-            sig.value = "Too short for 126208 decode";
+            sig.value = "Too short for 126208 decode (minimum 6 bytes)";
+            sig.isValid = true;
             decoded.signalList.append(sig);
             return decoded;
         }
@@ -274,22 +276,37 @@ DecodedMessage DBCDecoder::decodeMessage(const tN2kMsg& msg)
 
         DecodedSignal sigFC;
         sigFC.name = "Function Code";
-        sigFC.value = functionCode;
+        QString functionCodeDescription;
+        switch (functionCode) {
+            case 0: functionCodeDescription = "Request"; break;
+            case 1: functionCodeDescription = "Command"; break;
+            case 2: functionCodeDescription = "Acknowledge"; break;
+            case 3: functionCodeDescription = "Read Response"; break;
+            case 4: functionCodeDescription = "Read Request"; break;
+            case 5: functionCodeDescription = "Write Request"; break;
+            case 6: functionCodeDescription = "Write Response"; break;
+            default: functionCodeDescription = QString("Unknown (%1)").arg(functionCode); break;
+        }
+        sigFC.value = QString("%1 (%2)").arg(functionCode).arg(functionCodeDescription);
+        sigFC.isValid = true;
         decoded.signalList.append(sigFC);
 
         DecodedSignal sigPGN;
         sigPGN.name = "Target PGN";
         sigPGN.value = QString("%1").arg(targetPGN);
+        sigPGN.isValid = true;
         decoded.signalList.append(sigPGN);
 
         DecodedSignal sigPrio;
         sigPrio.name = "Priority";
         sigPrio.value = priority;
+        sigPrio.isValid = true;
         decoded.signalList.append(sigPrio);
 
         DecodedSignal sigNumParams;
         sigNumParams.name = "Number of Parameters";
         sigNumParams.value = numParams;
+        sigNumParams.isValid = true;
         decoded.signalList.append(sigNumParams);
 
         // Each parameter: Byte 6 + 2*i: Field Number, Byte 7 + 2*i: Value
@@ -302,6 +319,7 @@ DecodedMessage DBCDecoder::decodeMessage(const tN2kMsg& msg)
             DecodedSignal sigField;
             sigField.name = QString("Field %1").arg(fieldNum);
             sigField.value = fieldVal;
+            sigField.isValid = true;
             decoded.signalList.append(sigField);
         }
         return decoded;
@@ -531,6 +549,41 @@ QString DBCDecoder::getFormattedDecoded(const tN2kMsg& msg)
     
     QStringList parts;
     for (const DecodedSignal& signal : decoded.signalList) {
+        if (signal.isValid && signal.value.toString() != "N/A") {
+            QString part = QString("%1: %2").arg(signal.name);
+            
+            if (signal.value.type() == QVariant::Double) {
+                part = part.arg(signal.value.toDouble(), 0, 'f', 2);
+            } else {
+                part = part.arg(signal.value.toString());
+            }
+            
+            if (!signal.unit.isEmpty()) {
+                part += " " + signal.unit;
+            }
+            
+            parts.append(part);
+        }
+    }
+    
+    return parts.join(", ");
+}
+
+QString DBCDecoder::getFormattedDecodedForSave(const tN2kMsg& msg)
+{
+    DecodedMessage decoded = decodeMessage(msg);
+    
+    if (!decoded.isDecoded) {
+        return "Raw data";
+    }
+    
+    QStringList parts;
+    for (const DecodedSignal& signal : decoded.signalList) {
+        // Skip reserved fields when saving
+        if (signal.name.contains("Reserved", Qt::CaseInsensitive)) {
+            continue;
+        }
+        
         if (signal.isValid && signal.value.toString() != "N/A") {
             QString part = QString("%1: %2").arg(signal.name);
             

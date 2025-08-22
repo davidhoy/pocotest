@@ -66,6 +66,7 @@ public:
     QString getMessageName(unsigned long pgn) const;
     QString getCleanMessageName(unsigned long pgn) const;  // Enhanced message name formatting
     QString getFormattedDecoded(const tN2kMsg& msg);
+    QString getFormattedDecodedForSave(const tN2kMsg& msg);  // Format without reserved fields for saving
     QString formatSignalValue(const DecodedSignal& signal);
     
     // Status functions
