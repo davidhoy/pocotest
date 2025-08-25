@@ -1241,94 +1241,72 @@ DecodedMessage DBCDecoder::decodePGN130565(const tN2kMsg& msg)
 
     int index = 0;
 
-    // Byte 0: Sequence ID
-    DecodedSignal sigSeqId;
-    sigSeqId.name = "Sequence ID";
-    uint8_t seqId = msg.GetByte(index);
-    if (seqId == 0xFF) {
-        sigSeqId.value = "NULL/All Sequences";
-    } else {
-        sigSeqId.value = QString::number(seqId);
+    // Field 1 - Sequence Index (0-252)
+    uint8_t sequenceIndex = msg.GetByte(index);
+    DecodedSignal sigSeqIndex;
+    sigSeqIndex.name = "Sequence Index";
+    sigSeqIndex.value = QString::number(sequenceIndex);
+    sigSeqIndex.isValid = true;
+    decoded.signalList.append(sigSeqIndex);
+
+    // Field 2 - Color Count (0-252)
+    uint8_t colorCount = msg.GetByte(index);
+    DecodedSignal sigColorCount;
+    sigColorCount.name = "Color Count";
+    sigColorCount.value = QString::number(colorCount);
+    sigColorCount.isValid = true;
+    decoded.signalList.append(sigColorCount);
+
+    // Repeat field 3-8 as needed
+    for (int i = 0; i < colorCount; i++) {
+        // Field 3 - Color Index (0-252)
+        uint8_t colorIndex = msg.GetByte(index);
+        DecodedSignal sigColorIndex;
+        sigColorIndex.name = QString("Color Index [%1]").arg(i);
+        sigColorIndex.value = QString::number(colorIndex);
+        sigColorIndex.isValid = true;
+        decoded.signalList.append(sigColorIndex);
+
+        // Field 4 - Red Component (0-255)
+        uint8_t redComponent = msg.GetByte(index);
+        DecodedSignal sigRedComponent;
+        sigRedComponent.name = QString("Red [%1]").arg(i);
+        sigRedComponent.value = QString::number(redComponent);
+        sigRedComponent.isValid = true;
+        decoded.signalList.append(sigRedComponent);
+
+        // Field 5 - Green Component (0-255)
+        uint8_t greenComponent = msg.GetByte(index);
+        DecodedSignal sigGreenComponent;
+        sigGreenComponent.name = QString("Green [%1]").arg(i);
+        sigGreenComponent.value = QString::number(greenComponent);
+        sigGreenComponent.isValid = true;
+        decoded.signalList.append(sigGreenComponent);
+
+        // Field 6 - Blue Component (0-255)
+        uint8_t blueComponent = msg.GetByte(index);
+        DecodedSignal sigBlueComponent;
+        sigBlueComponent.name = QString("Blue [%1]").arg(i);
+        sigBlueComponent.value = QString::number(blueComponent);
+        sigBlueComponent.isValid = true;
+        decoded.signalList.append(sigBlueComponent);
+
+        // Field 7 - Color Temperature (0-65536)
+        uint16_t colorTemperature = msg.Get2ByteUInt(index);
+        DecodedSignal sigColorTemp;
+        sigColorTemp.name = QString("Color Temp [%1]").arg(i);
+        sigColorTemp.value = QString::number(colorTemperature);
+        sigColorTemp.isValid = true;
+        decoded.signalList.append(sigColorTemp);
+
+        // Field 8 - Intensity (0-100)
+        uint8_t intensity = msg.GetByte(index);
+        DecodedSignal sigIntensity;
+        sigIntensity.name = QString("Intensity [%1]").arg(i);
+        sigIntensity.value = QString::number(intensity);
+        sigIntensity.isValid = true;
+        decoded.signalList.append(sigIntensity);
     }
-    sigSeqId.isValid = true;
-    decoded.signalList.append(sigSeqId);
-
-    // Byte 1: Sequence Command
-    DecodedSignal sigCommand;
-    sigCommand.name = "Command";
-    uint8_t command = msg.GetByte(index);
-    QString commandName;
-    switch (command) {
-        case 0: commandName = "Stop Sequence"; break;
-        case 1: commandName = "Start Sequence"; break;
-        case 2: commandName = "Pause Sequence"; break;
-        case 3: commandName = "Resume Sequence"; break;
-        case 4: commandName = "Define Sequence"; break;
-        case 5: commandName = "Delete Sequence"; break;
-        case 255: commandName = "NULL"; break;
-        default: commandName = QString("Reserved (%1)").arg(command); break;
-    }
-    sigCommand.value = commandName;
-    sigCommand.isValid = true;
-    decoded.signalList.append(sigCommand);
-
-    // Byte 2: Number of colors/steps in sequence (for define command)
-    if (command == 4 && index < msg.DataLen) { // Define Sequence
-        DecodedSignal sigColorCount;
-        sigColorCount.name = "Color Count";
-        uint8_t colorCount = msg.GetByte(index);
-        if (colorCount == 0xFF) {
-            sigColorCount.value = "NULL";
-        } else {
-            sigColorCount.value = QString::number(colorCount);
-        }
-        sigColorCount.isValid = true;
-        decoded.signalList.append(sigColorCount);
-
-        // Decode color entries (RGB triplets + timing)
-        int colorIndex = 1;
-        while (index + 3 < msg.DataLen) {
-            uint8_t red = msg.GetByte(index);
-            uint8_t green = msg.GetByte(index);
-            uint8_t blue = msg.GetByte(index);
-            uint8_t duration = msg.GetByte(index); // Duration in 0.1 second units
-            
-            DecodedSignal sigColor;
-            sigColor.name = QString("Color %1").arg(colorIndex++);
-            QString durationStr = (duration == 0xFF) ? "NULL" : QString("%1s").arg(duration * 0.1, 0, 'f', 1);
-            sigColor.value = QString("RGB(%1,%2,%3) Duration: %4").arg(red).arg(green).arg(blue).arg(durationStr);
-            sigColor.isValid = true;
-            decoded.signalList.append(sigColor);
-        }
-    } else {
-        // For other commands, remaining bytes might contain timing or other parameters
-        if (index < msg.DataLen) {
-            DecodedSignal sigParam;
-            sigParam.name = "Sequence Parameter";
-            uint8_t param = msg.GetByte(index);
-            if (param == 0xFF) {
-                sigParam.value = "NULL";
-            } else {
-                sigParam.value = QString::number(param);
-            }
-            sigParam.isValid = true;
-            decoded.signalList.append(sigParam);
-        }
-    }
-
-    // Any remaining bytes as additional data
-    if (index < msg.DataLen) {
-        QString remainingData;
-        while (index < msg.DataLen) {
-            remainingData += QString(" %1").arg(msg.GetByte(index), 2, 16, QChar('0')).toUpper();
-        }
-        DecodedSignal sigData;
-        sigData.name = "Additional Data";
-        sigData.value = remainingData.trimmed();
-        sigData.isValid = true;
-        decoded.signalList.append(sigData);
-    }
-
     return decoded;
 }
 
