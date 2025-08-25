@@ -704,7 +704,7 @@ DecodedMessage DBCDecoder::decodePGN130561(const tN2kMsg& msg)
     // Field 3 - Red Component (0-255)
     uint8_t red = msg.GetByte(index);
     DecodedSignal sigRed;
-    sigRed.name = "Red Component";
+    sigRed.name = "Red";
     sigRed.isValid = true;
     if (red == 255) {
         sigRed.value = "Not Available";
@@ -716,7 +716,7 @@ DecodedMessage DBCDecoder::decodePGN130561(const tN2kMsg& msg)
     // Field 4 - Green Component (0-255)
     uint8_t green = msg.GetByte(index);
     DecodedSignal sigGreen;
-    sigGreen.name = "Green Component";
+    sigGreen.name = "Green";
     sigGreen.isValid = true;
     if (green == 255) {
         sigGreen.value = "Not Available";
@@ -728,7 +728,7 @@ DecodedMessage DBCDecoder::decodePGN130561(const tN2kMsg& msg)
     // Field 5 - Blue Component (0-255)
     uint8_t blue = msg.GetByte(index);
     DecodedSignal sigBlue;
-    sigBlue.name = "Blue Component";
+    sigBlue.name = "Blue";
     sigBlue.isValid = true;
     if (blue == 255) {
         sigBlue.value = "Not Available";
@@ -740,7 +740,7 @@ DecodedMessage DBCDecoder::decodePGN130561(const tN2kMsg& msg)
     // Field 6 - Color Temperature (0-65535)
     uint16_t colorTemp = msg.Get2ByteUInt(index);
     DecodedSignal sigColorTemp;
-    sigColorTemp.name = "Color Temperature";
+    sigColorTemp.name = "Color Temp";
     sigColorTemp.isValid = true;
     if (colorTemp == 65535) {
         sigColorTemp.value = "Not Available";
@@ -776,7 +776,7 @@ DecodedMessage DBCDecoder::decodePGN130561(const tN2kMsg& msg)
     // Field 9 - Program Color Sequence Index (0-255)
     uint8_t programColorSeqIndex = msg.GetByte(index);
     DecodedSignal sigProgramColorSeqIndex;
-    sigProgramColorSeqIndex.name = "Program Color Sequence Index";
+    sigProgramColorSeqIndex.name = "Color Seq Index";
     sigProgramColorSeqIndex.isValid = true;
     if (programColorSeqIndex == 255) {
         sigProgramColorSeqIndex.value = "Not Available";
@@ -788,7 +788,7 @@ DecodedMessage DBCDecoder::decodePGN130561(const tN2kMsg& msg)
     // Field 10 - Program Intensity (0-255)
     uint8_t programIntensity = msg.GetByte(index);
     DecodedSignal sigProgramIntensity;
-    sigProgramIntensity.name = "Program Intensity";
+    sigProgramIntensity.name = "Intensity";
     sigProgramIntensity.isValid = true;
     if (programIntensity == 255) {
         sigProgramIntensity.value = "Not Available";
@@ -800,7 +800,7 @@ DecodedMessage DBCDecoder::decodePGN130561(const tN2kMsg& msg)
     // Field 11 - Program Rate (0-255)
     uint8_t programRate = msg.GetByte(index);
     DecodedSignal sigProgramRate;
-    sigProgramRate.name = "Program Rate";
+    sigProgramRate.name = "Rate";
     sigProgramRate.isValid = true;
     if (programRate == 255) {
         sigProgramRate.value = "Not Available";
@@ -812,7 +812,7 @@ DecodedMessage DBCDecoder::decodePGN130561(const tN2kMsg& msg)
     // Field 12 - Program Color Sequence (0-255)
     uint8_t programColorSeq = msg.GetByte(index);
     DecodedSignal sigProgramColorSeq;
-    sigProgramColorSeq.name = "Program Color Sequence";
+    sigProgramColorSeq.name = "Color Seq";
     sigProgramColorSeq.isValid = true;
     if (programColorSeq == 255) {
         sigProgramColorSeq.value = "Not Available";
@@ -836,10 +836,9 @@ DecodedMessage DBCDecoder::decodePGN130561(const tN2kMsg& msg)
     }
     decoded.signalList.append(sigZoneEnabled);
 
-    
-
     return decoded;
 }
+
 
 DecodedMessage DBCDecoder::decodePGN130562(const tN2kMsg& msg)
 {
@@ -987,92 +986,169 @@ DecodedMessage DBCDecoder::decodePGN130563(const tN2kMsg& msg)
 
     int index = 0;
 
-    // Byte 0: Device Instance
-    DecodedSignal sigDeviceInstance;
-    sigDeviceInstance.name = "Device Instance";
-    uint8_t deviceInstance = msg.GetByte(index);
-    if (deviceInstance == 0xFF) {
-        sigDeviceInstance.value = "NULL/Unknown";
-    } else {
-        sigDeviceInstance.value = QString::number(deviceInstance);
-    }
-    sigDeviceInstance.isValid = true;
-    decoded.signalList.append(sigDeviceInstance);
+    // Field 1  - Device ID (0-4,294,967,295)
+    uint32_t deviceId = msg.Get4ByteUInt(index);
+    DecodedSignal sigDeviceId;
+    sigDeviceId.name = "Device ID";
+    sigDeviceId.isValid = true;
+    sigDeviceId.value = QString::number(deviceId);
+    decoded.signalList.append(sigDeviceId);
 
-    // Byte 1: Device Type
-    DecodedSignal sigDeviceType;
-    sigDeviceType.name = "Device Type";
-    uint8_t deviceType = msg.GetByte(index);
-    QString deviceTypeName;
-    switch (deviceType) {
-        case 0: deviceTypeName = "Not Specified"; break;
-        case 1: deviceTypeName = "Navigation Light"; break;
-        case 2: deviceTypeName = "Anchor Light"; break;
-        case 3: deviceTypeName = "Strobe Light"; break;
-        case 4: deviceTypeName = "Deck Light"; break;
-        case 5: deviceTypeName = "Cabin Light"; break;
-        case 6: deviceTypeName = "Underwater Light"; break;
-        case 7: deviceTypeName = "Search Light"; break;
-        case 8: deviceTypeName = "RGB Light"; break;
-        case 9: deviceTypeName = "White Light"; break;
-        case 10: deviceTypeName = "Warning Light"; break;
-        case 255: deviceTypeName = "NULL"; break;
-        default: deviceTypeName = QString("Reserved (%1)").arg(deviceType); break;
-    }
-    sigDeviceType.value = deviceTypeName;
-    sigDeviceType.isValid = true;
-    decoded.signalList.append(sigDeviceType);
+    // Field 2 - Device Capabilities (0-0xff)
+    uint8_t deviceCapabilities = msg.GetByte(index);
+    DecodedSignal sigDeviceCapabilities;
+    sigDeviceCapabilities.name = "Device Capabilities";
+    sigDeviceCapabilities.isValid = true;
+    sigDeviceCapabilities.value = QString::number(deviceCapabilities);
+    decoded.signalList.append(sigDeviceCapabilities);
 
-    // Byte 2: Device Status
+    // Field 3 - Color Capabilities (0-0xff)
+    uint8_t colorCapabilities = msg.GetByte(index);
+    DecodedSignal sigColorCapabilities;
+    sigColorCapabilities.name = "Color Capabilities";
+    sigColorCapabilities.isValid = true;
+    sigColorCapabilities.value = QString::number(colorCapabilities);
+    decoded.signalList.append(sigColorCapabilities);
+
+    // Field 4 - Zone Index (0-255)
+    uint8_t zoneIndex = msg.GetByte(index);
+    DecodedSignal sigZoneIndex;
+    sigZoneIndex.name = "Zone Index";
+    sigZoneIndex.isValid = true;
+    sigZoneIndex.value = QString::number(zoneIndex);
+    decoded.signalList.append(sigZoneIndex);
+
+    // Field 5 - Device Name (variable string)
+    char deviceName[80];
+    size_t deviceNameSize = sizeof(deviceName);
+    msg.GetVarStr(deviceNameSize, deviceName, index);
+    DecodedSignal sigDeviceName;
+    sigDeviceName.name = "Device Name";
+    sigDeviceName.isValid = true;
+    sigDeviceName.value = QString::fromUtf8(deviceName);
+    decoded.signalList.append(sigDeviceName);
+
+    // Field 6 - Status (0-252)
+    uint8_t deviceStatus = msg.GetByte(index);
     DecodedSignal sigDeviceStatus;
     sigDeviceStatus.name = "Device Status";
-    uint8_t deviceStatus = msg.GetByte(index);
-    QString statusName;
-    switch (deviceStatus & 0x0F) {
-        case 0: statusName = "Off"; break;
-        case 1: statusName = "On"; break;
-        case 2: statusName = "Error"; break;
-        case 3: statusName = "Fault"; break;
-        case 4: statusName = "Disabled"; break;
-        case 15: statusName = "NULL"; break;
-        default: statusName = QString("Reserved (%1)").arg(deviceStatus & 0x0F); break;
-    }
-    if ((deviceStatus & 0x30) >> 4 != 0) {
-        statusName += QString(" | Fault Code: %1").arg((deviceStatus & 0x30) >> 4);
-    }
-    sigDeviceStatus.value = statusName;
     sigDeviceStatus.isValid = true;
+    QString statusDesc;
+    switch (deviceStatus) {
+        case 0x00: statusDesc = "Normal"; break;
+        case 0x01: statusDesc = "Undetected"; break;
+        case 0x02: statusDesc = "General Error"; break;
+        case 0x03: statusDesc = "Temperature Error"; break;
+        case 0x04: statusDesc = "Voltage Error"; break;
+        case 0x05: statusDesc = "Maintenance Req"; break;
+        case 0x06: statusDesc = "Over Current"; break;
+        default: statusDesc = "Reserved"; break;
+    }
+    sigDeviceStatus.value = QString("%1 (0x%2)").arg(statusDesc).arg(deviceStatus, 2, 16, QChar('0')).toUpper();
     decoded.signalList.append(sigDeviceStatus);
 
-    // If more data available, decode additional parameters
-    if (index < msg.DataLen) {
-        // Byte 3+: Brightness/Intensity (if available)
-        if (index < msg.DataLen) {
-            DecodedSignal sigBrightness;
-            sigBrightness.name = "Brightness";
-            uint8_t brightness = msg.GetByte(index);
-            if (brightness == 0xFF) {
-                sigBrightness.value = "NULL/Unknown";
-            } else {
-                sigBrightness.value = QString("%1%").arg((brightness * 100) / 255);
-            }
-            sigBrightness.isValid = true;
-            decoded.signalList.append(sigBrightness);
-        }
+    // Field 7 - Red Component (0-255)
+    uint8_t redComponent = msg.GetByte(index);
+    DecodedSignal sigRedComponent;
+    sigRedComponent.name = "Red";
+    sigRedComponent.isValid = true;
+    sigRedComponent.value = QString::number(redComponent);
+    decoded.signalList.append(sigRedComponent);
 
-        // Remaining bytes as device-specific data
-        if (index < msg.DataLen) {
-            QString remainingData;
-            while (index < msg.DataLen) {
-                remainingData += QString(" %1").arg(msg.GetByte(index), 2, 16, QChar('0')).toUpper();
-            }
-            DecodedSignal sigDeviceData;
-            sigDeviceData.name = "Device Specific Data";
-            sigDeviceData.value = remainingData.trimmed();
-            sigDeviceData.isValid = true;
-            decoded.signalList.append(sigDeviceData);
-        }
+    // Field 8 - Green Component (0-255)
+    uint8_t greenComponent = msg.GetByte(index);
+    DecodedSignal sigGreenComponent;
+    sigGreenComponent.name = "Green";
+    sigGreenComponent.isValid = true;
+    sigGreenComponent.value = QString::number(greenComponent);
+    decoded.signalList.append(sigGreenComponent);
+
+    // Field 9 - Blue Component (0-255)
+    uint8_t blueComponent = msg.GetByte(index);
+    DecodedSignal sigBlueComponent;
+    sigBlueComponent.name = "Blue";
+    sigBlueComponent.isValid = true;
+    sigBlueComponent.value = QString::number(blueComponent);
+    decoded.signalList.append(sigBlueComponent);
+
+    // Field 10 - Color Temperature (0-65535)
+    uint16_t colorTemperature = msg.Get2ByteUInt(index);
+    DecodedSignal sigColorTemperature;
+    sigColorTemperature.name = "Color Temp";
+    sigColorTemperature.isValid = true;
+    sigColorTemperature.value = QString::number(colorTemperature);
+    decoded.signalList.append(sigColorTemperature);
+
+    // Field 11 - Intensity (0-255)
+    uint8_t intensity = msg.GetByte(index);
+    DecodedSignal sigIntensity;
+    sigIntensity.name = "Intensity";
+    sigIntensity.isValid = true;
+    sigIntensity.value = QString::number(intensity);
+    decoded.signalList.append(sigIntensity);
+
+    // Field 12 - Program ID (0-255)
+    uint8_t programID = msg.GetByte(index);
+    DecodedSignal sigProgramID;
+    sigProgramID.name = "Program ID";
+    sigProgramID.isValid = true;
+    sigProgramID.value = QString::number(programID);
+    decoded.signalList.append(sigProgramID);
+
+    // Field 13 - Program Color Sequence ID (0-255)
+    uint8_t programColorSeqID = msg.GetByte(index);
+    DecodedSignal sigProgramColorSeqID;
+    sigProgramColorSeqID.name = "Color Seq ID";
+    sigProgramColorSeqID.isValid = true;
+    sigProgramColorSeqID.value = QString::number(programColorSeqID);
+    decoded.signalList.append(sigProgramColorSeqID);
+
+    // Field 14 - Program Intensity (0-255)
+    uint8_t programIntensity = msg.GetByte(index);
+    DecodedSignal sigProgramIntensity;
+    sigProgramIntensity.name = "Intensity";
+    sigProgramIntensity.isValid = true;
+    sigProgramIntensity.value = QString::number(programIntensity);
+    decoded.signalList.append(sigProgramIntensity);
+
+    // Field 15 - Program Rate (0-100)
+    uint8_t programRate = msg.GetByte(index);
+    DecodedSignal sigProgramRate;
+    sigProgramRate.name = "Rate";
+    sigProgramRate.isValid = true;
+    sigProgramRate.value = QString::number(programRate);
+    decoded.signalList.append(sigProgramRate);
+
+    // Field 16 - Program Color Sequence Rate (0-100)
+    uint8_t programColorSeqRate = msg.GetByte(index);
+    DecodedSignal sigProgramColorSeqRate;
+    sigProgramColorSeqRate.name = "Color Seq Rate";
+    sigProgramColorSeqRate.isValid = true;
+    sigProgramColorSeqRate.value = QString::number(programColorSeqRate);
+    decoded.signalList.append(sigProgramColorSeqRate);
+
+    // Field 17 - Enabled (2 bits)
+    uint8_t byte = msg.GetByte(index);
+    uint8_t programEnabled = byte & 0x03;
+    DecodedSignal sigProgramEnabled;
+    sigProgramEnabled.name = "Program Enabled";
+    sigProgramEnabled.isValid = true;
+    switch (programEnabled) {
+        case 0:  sigProgramEnabled.value = "Off"; break;
+        case 1:  sigProgramEnabled.value = "On";  break;
+        case 2:  sigProgramEnabled.value = "Error"; break;
+        case 3:  sigProgramEnabled.value = "Unknown"; break;
+        default: sigProgramEnabled.value = QString::number(programEnabled);  break;
     }
+    decoded.signalList.append(sigProgramEnabled);
+
+    // Field 18 - Reserved (6 bits)
+    uint8_t reserved = (byte >> 2) & 0x3F;
+    DecodedSignal sigReserved;
+    sigReserved.name = "Reserved";
+    sigReserved.isValid = true;
+    sigReserved.value = QString::number(reserved);
+    decoded.signalList.append(sigReserved);
 
     return decoded;
 }
@@ -1094,88 +1170,57 @@ DecodedMessage DBCDecoder::decodePGN130564(const tN2kMsg& msg)
 
     int index = 0;
 
-    // Byte 0: Command/Request Type
-    DecodedSignal sigCommand;
-    sigCommand.name = "Command";
-    uint8_t command = msg.GetByte(index);
-    QString commandName;
-    switch (command) {
-        case 0: commandName = "Enumerate Request"; break;
-        case 1: commandName = "Enumerate Response"; break;
-        case 2: commandName = "Get Device Info"; break;
-        case 3: commandName = "Device Info Response"; break;
-        case 255: commandName = "NULL"; break;
-        default: commandName = QString("Reserved (%1)").arg(command); break;
-    }
-    sigCommand.value = commandName;
-    sigCommand.isValid = true;
-    decoded.signalList.append(sigCommand);
+    // Field 1: Index of First Device (0-65536)
+    uint16_t firstDeviceIndex = msg.Get2ByteUInt(index);
+    DecodedSignal sigFirstDeviceIndex;
+    sigFirstDeviceIndex.name = "First Device Index";
+    sigFirstDeviceIndex.value = QString::number(firstDeviceIndex);
+    sigFirstDeviceIndex.isValid = true;
+    decoded.signalList.append(sigFirstDeviceIndex);
 
-    // Byte 1: Device Count (for enumerate response) or Device Instance (for device info)
-    DecodedSignal sigCount;
-    uint8_t countOrInstance = msg.GetByte(index);
-    if (command == 1) { // Enumerate Response
-        sigCount.name = "Device Count";
-        if (countOrInstance == 0xFF) {
-            sigCount.value = "NULL/Unknown";
-        } else {
-            sigCount.value = QString::number(countOrInstance);
-        }
-    } else {
-        sigCount.name = "Device Instance";
-        if (countOrInstance == 0xFF) {
-            sigCount.value = "NULL/Unknown";
-        } else {
-            sigCount.value = QString::number(countOrInstance);
-        }
-    }
-    sigCount.isValid = true;
-    decoded.signalList.append(sigCount);
+    // Field 2: Total Number of Devices (0-65536)
+    uint16_t totalNumberOfDevices = msg.Get2ByteUInt(index);
+    DecodedSignal sigNumberOfDevices;
+    sigNumberOfDevices.name = "Total Number of Devices";
+    sigNumberOfDevices.value = QString::number(totalNumberOfDevices);
+    sigNumberOfDevices.isValid = true;
+    decoded.signalList.append(sigNumberOfDevices);
 
-    // Remaining bytes: Device enumeration data
-    if (command == 1 && index < msg.DataLen) { // Enumerate Response
-        int deviceNum = 1;
-        while (index + 1 < msg.DataLen) {
-            uint8_t deviceInstance = msg.GetByte(index);
-            uint8_t deviceType = msg.GetByte(index);
-            
-            DecodedSignal sigDevice;
-            sigDevice.name = QString("Device %1").arg(deviceNum++);
-            
-            QString deviceTypeName;
-            switch (deviceType) {
-                case 0: deviceTypeName = "Not Specified"; break;
-                case 1: deviceTypeName = "Navigation Light"; break;
-                case 2: deviceTypeName = "Anchor Light"; break;
-                case 3: deviceTypeName = "Strobe Light"; break;
-                case 4: deviceTypeName = "Deck Light"; break;
-                case 5: deviceTypeName = "Cabin Light"; break;
-                case 6: deviceTypeName = "Underwater Light"; break;
-                case 7: deviceTypeName = "Search Light"; break;
-                case 8: deviceTypeName = "RGB Light"; break;
-                case 9: deviceTypeName = "White Light"; break;
-                case 10: deviceTypeName = "Warning Light"; break;
-                case 255: deviceTypeName = "NULL"; break;
-                default: deviceTypeName = QString("Reserved (%1)").arg(deviceType); break;
-            }
-            
-            sigDevice.value = QString("Instance %1: %2").arg(deviceInstance).arg(deviceTypeName);
-            sigDevice.isValid = true;
-            decoded.signalList.append(sigDevice);
-        }
-    } else if (index < msg.DataLen) {
-        // Additional data as hex
-        QString remainingData;
-        while (index < msg.DataLen) {
-            remainingData += QString(" %1").arg(msg.GetByte(index), 2, 16, QChar('0')).toUpper();
-        }
-        DecodedSignal sigData;
-        sigData.name = "Additional Data";
-        sigData.value = remainingData.trimmed();
-        sigData.isValid = true;
-        decoded.signalList.append(sigData);
-    }
+    // Field 3 - Number of Devices (0-65536)
+    uint16_t numberOfDevices = msg.Get2ByteUInt(index);
+    DecodedSignal sigNumberOfDevices;
+    sigNumberOfDevices.name = "Number of Devices";
+    sigNumberOfDevices.value = QString::number(numberOfDevices);
+    sigNumberOfDevices.isValid = true;
+    decoded.signalList.append(sigNumberOfDevices);
 
+    // Field 4 - Device ID (4 bytes)
+    uint32_t deviceID = msg.Get4ByteUInt(index);
+    DecodedSignal sigDeviceID;
+    sigDeviceID.name = "Device ID";
+    sigDeviceID.value = QString::number(deviceID);
+    sigDeviceID.isValid = true;
+    decoded.signalList.append(sigDeviceID);
+
+    // Field 5 - Status (0-255)
+    uint8_t status = msg.GetByte(index);
+    DecodedSignal sigStatus;
+    sigStatus.name = "Status";
+    QString statusDesc;
+    switch (status) {
+        case 0x00: statusDesc = "Detected / Normal"; break;
+        case 0x01: statusDesc = "Undetected"; break;
+        case 0x02: statusDesc = "General Error"; break;
+        case 0x03: statusDesc = "Temperature Error"; break;
+        case 0x04: statusDesc = "Voltage Error"; break;
+        case 0x05: statusDesc = "Maintenance Required"; break;
+        case 0x06: statusDesc = "Over Current Detected"; break;
+        default:   statusDesc = "Reserved for future use"; break;
+    }
+    sigStatus.value = QString("%1 (0x%2)").arg(statusDesc).arg(status, 2, 16, QChar('0')).toUpper();
+    sigStatus.isValid = true;
+    decoded.signalList.append(sigStatus);
+    
     return decoded;
 }
 
