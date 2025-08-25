@@ -1180,11 +1180,11 @@ DecodedMessage DBCDecoder::decodePGN130564(const tN2kMsg& msg)
 
     // Field 2: Total Number of Devices (0-65536)
     uint16_t totalNumberOfDevices = msg.Get2ByteUInt(index);
-    DecodedSignal sigNumberOfDevices;
-    sigNumberOfDevices.name = "Total Number of Devices";
-    sigNumberOfDevices.value = QString::number(totalNumberOfDevices);
-    sigNumberOfDevices.isValid = true;
-    decoded.signalList.append(sigNumberOfDevices);
+    DecodedSignal sigTotalNumberOfDevices;
+    sigTotalNumberOfDevices.name = "Total Number of Devices";
+    sigTotalNumberOfDevices.value = QString::number(totalNumberOfDevices);
+    sigTotalNumberOfDevices.isValid = true;
+    decoded.signalList.append(sigTotalNumberOfDevices);
 
     // Field 3 - Number of Devices (0-65536)
     uint16_t numberOfDevices = msg.Get2ByteUInt(index);
