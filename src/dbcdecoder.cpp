@@ -688,7 +688,7 @@ DecodedMessage DBCDecoder::decodePGN130561(const tN2kMsg& msg)
     DecodedSignal sigZoneId;
     sigZoneId.name = "Zone ID";
     sigZoneId.isValid = true;
-        sigZoneId.value = zoneId;
+    sigZoneId.value = zoneId;
     decoded.signalList.append(sigZoneId);
 
     // Field 2 - Zone Name
@@ -702,64 +702,64 @@ DecodedMessage DBCDecoder::decodePGN130561(const tN2kMsg& msg)
     decoded.signalList.append(sigZoneName);
 
     // Field 3 - Red Component (0-255)
-        uint8_t red = msg.GetByte(index);
-        DecodedSignal sigRed;
-        sigRed.name = "Red Component";
-        sigRed.isValid = true;
-        if (red == 255) {
-            sigRed.value = "Not Available";
-        } else {
-            sigRed.value = QString("%1 (%2%)").arg(red).arg((red * 100.0 / 255.0), 0, 'f', 1);
-        }
-        decoded.signalList.append(sigRed);
+    uint8_t red = msg.GetByte(index);
+    DecodedSignal sigRed;
+    sigRed.name = "Red Component";
+    sigRed.isValid = true;
+    if (red == 255) {
+        sigRed.value = "Not Available";
+    } else {
+        sigRed.value = QString("%1 (%2%)").arg(red).arg((red * 100.0 / 255.0), 0, 'f', 1);
+    }
+    decoded.signalList.append(sigRed);
 
     // Field 4 - Green Component (0-255)
-        uint8_t green = msg.GetByte(index);
-        DecodedSignal sigGreen;
-        sigGreen.name = "Green Component";
-        sigGreen.isValid = true;
-        if (green == 255) {
-            sigGreen.value = "Not Available";
-        } else {
-            sigGreen.value = QString("%1 (%2%)").arg(green).arg((green * 100.0 / 255.0), 0, 'f', 1);
-        }
-        decoded.signalList.append(sigGreen);
+    uint8_t green = msg.GetByte(index);
+    DecodedSignal sigGreen;
+    sigGreen.name = "Green Component";
+    sigGreen.isValid = true;
+    if (green == 255) {
+        sigGreen.value = "Not Available";
+    } else {
+        sigGreen.value = QString("%1 (%2%)").arg(green).arg((green * 100.0 / 255.0), 0, 'f', 1);
+    }
+    decoded.signalList.append(sigGreen);
 
     // Field 5 - Blue Component (0-255)
-        uint8_t blue = msg.GetByte(index);
-        DecodedSignal sigBlue;
-        sigBlue.name = "Blue Component";
-        sigBlue.isValid = true;
-        if (blue == 255) {
-            sigBlue.value = "Not Available";
-        } else {
-            sigBlue.value = QString("%1 (%2%)").arg(blue).arg((blue * 100.0 / 255.0), 0, 'f', 1);
-        }
-        decoded.signalList.append(sigBlue);
+    uint8_t blue = msg.GetByte(index);
+    DecodedSignal sigBlue;
+    sigBlue.name = "Blue Component";
+    sigBlue.isValid = true;
+    if (blue == 255) {
+        sigBlue.value = "Not Available";
+    } else {
+        sigBlue.value = QString("%1 (%2%)").arg(blue).arg((blue * 100.0 / 255.0), 0, 'f', 1);
+    }
+    decoded.signalList.append(sigBlue);
 
     // Field 6 - Color Temperature (0-65535)
-        uint16_t colorTemp = msg.Get2ByteUInt(index);
-        DecodedSignal sigColorTemp;
-        sigColorTemp.name = "Color Temperature";
-        sigColorTemp.isValid = true;
-        if (colorTemp == 65535) {
-            sigColorTemp.value = "Not Available";
-        } else {
-            sigColorTemp.value = QString("%1 K").arg(colorTemp);
-        }
-        decoded.signalList.append(sigColorTemp);
+    uint16_t colorTemp = msg.Get2ByteUInt(index);
+    DecodedSignal sigColorTemp;
+    sigColorTemp.name = "Color Temperature";
+    sigColorTemp.isValid = true;
+    if (colorTemp == 65535) {
+        sigColorTemp.value = "Not Available";
+    } else {
+        sigColorTemp.value = QString("%1 K").arg(colorTemp);
+    }
+    decoded.signalList.append(sigColorTemp);
 
     // Field 7 - Intensity (0-255)
-        uint8_t intensity = msg.GetByte(index);
-        DecodedSignal sigIntensity;
-        sigIntensity.name = "Intensity";
-        sigIntensity.isValid = true;
-        if (intensity == 255) {
-            sigIntensity.value = "Not Available";
-        } else {
+    uint8_t intensity = msg.GetByte(index);
+    DecodedSignal sigIntensity;
+    sigIntensity.name = "Intensity";
+    sigIntensity.isValid = true;
+    if (intensity == 255) {
+        sigIntensity.value = "Not Available";
+    } else {
         sigIntensity.value = QString("%1 (%2%)").arg(intensity).arg((intensity * 100.0 / 255.0), 0, 'f', 1);
-        }
-        decoded.signalList.append(sigIntensity);
+    }
+    decoded.signalList.append(sigIntensity);    
 
     // Field 8 - Program Id (0-255)
     uint8_t programId = msg.GetByte(index);
@@ -780,9 +780,9 @@ DecodedMessage DBCDecoder::decodePGN130561(const tN2kMsg& msg)
     sigProgramColorSeqIndex.isValid = true;
     if (programColorSeqIndex == 255) {
         sigProgramColorSeqIndex.value = "Not Available";
-        } else {
+    } else {
         sigProgramColorSeqIndex.value = QString::number(programColorSeqIndex);
-        }
+    }
     decoded.signalList.append(sigProgramColorSeqIndex);
 
     // Field 10 - Program Intensity (0-255)
@@ -858,7 +858,7 @@ DecodedMessage DBCDecoder::decodePGN130562(const tN2kMsg& msg)
 
     int index = 0;
 
-    // Byte 0: Scene ID (0-252, 253=All Scenes, 254=Current Scene, 255=N/A)
+    // Field 1: Scene ID (0-252, 253=All Scenes, 254=Current Scene, 255=N/A)
     uint8_t sceneId = msg.GetByte(index);
     DecodedSignal sigSceneId;
     sigSceneId.name = "Scene ID";
@@ -874,71 +874,99 @@ DecodedMessage DBCDecoder::decodePGN130562(const tN2kMsg& msg)
     }
     decoded.signalList.append(sigSceneId);
 
-    // Byte 1: Scene Command
-    if (index < msg.DataLen) {
-        uint8_t sceneCommand = msg.GetByte(index);
-        DecodedSignal sigSceneCommand;
-        sigSceneCommand.name = "Scene Command";
-        sigSceneCommand.isValid = true;
-        QString commandName;
-        switch (sceneCommand) {
-            case 0: commandName = "No Action"; break;
-            case 1: commandName = "Activate Scene"; break;
-            case 2: commandName = "Store Current as Scene"; break;
-            case 3: commandName = "Delete Scene"; break;
-            case 4: commandName = "Fade to Scene"; break;
-            case 5: commandName = "Recall Scene"; break;
-            case 255: commandName = "Not Available"; break;
-            default: commandName = QString("Reserved (%1)").arg(sceneCommand); break;
-        }
-        sigSceneCommand.value = QString("%1 (%2)").arg(commandName).arg(sceneCommand);
-        decoded.signalList.append(sigSceneCommand);
+    // Field 2 - Scene Name (variable)
+    char sceneName[80];
+    size_t sceneNameSize = sizeof(sceneName);
+    msg.GetVarStr(sceneNameSize, sceneName, index);
+    DecodedSignal sigSceneName;
+    sigSceneName.name = "Scene Name";
+    sigSceneName.isValid = true;
+    sigSceneName.value = QString::fromUtf8(sceneName);
+    decoded.signalList.append(sigSceneName);
+
+    // Field 3 - Control (0-255)
+    uint8_t control = msg.GetByte(index);
+    DecodedSignal sigControl;
+    sigControl.name = "Control";
+    sigControl.isValid = true;
+    sigControl.value = QString::number(control);
+    decoded.signalList.append(sigControl);
+
+    // Field 4 - Configuration Count (0-255)
+    uint8_t configCount = msg.GetByte(index);
+    DecodedSignal sigConfigCount;
+    sigConfigCount.name = "Config Count";
+    sigConfigCount.isValid = true;
+    sigConfigCount.value = QString::number(configCount);
+    decoded.signalList.append(sigConfigCount);
+
+    // Repeat fields 5-12 as needed based on value from field #4
+    for (int i = 0; i < configCount; ++i) {
+        // Field 5 - Configuration Index (0-255)
+        uint8_t configIndex = msg.GetByte(index);
+        DecodedSignal sigConfigIndex;
+        sigConfigIndex.name = QString("Config Index [%1]").arg(i);
+        sigConfigIndex.isValid = true;
+        sigConfigIndex.value = QString::number(configIndex);
+        decoded.signalList.append(sigConfigIndex);
+
+        // Field 6 - Zone Index (0-255)
+        uint8_t zoneIndex = msg.GetByte(index);
+        DecodedSignal sigZoneIndex;
+        sigZoneIndex.name = QString("Zone Index [%1]").arg(i);
+        sigZoneIndex.isValid = true;
+        sigZoneIndex.value = QString::number(zoneIndex);
+        decoded.signalList.append(sigZoneIndex);
+
+        // Field 7 - Devices ID (0-4,294,967,295)
+        uint32_t devicesId = msg.Get4ByteUInt(index);
+        DecodedSignal sigDevicesId;
+        sigDevicesId.name = QString("Devices ID [%1]").arg(i);
+        sigDevicesId.isValid = true;
+        sigDevicesId.value = QString::number(devicesId);
+        decoded.signalList.append(sigDevicesId);
+
+        // Field 8 - Program Index (0-255)
+        uint8_t programIndex = msg.GetByte(index);
+        DecodedSignal sigProgramIndex;
+        sigProgramIndex.name = QString("Index [%1]").arg(i);
+        sigProgramIndex.isValid = true;
+        sigProgramIndex.value = QString::number(programIndex);
+        decoded.signalList.append(sigProgramIndex);
+
+        // Field 9 - Program Color Sequence Index (0-255)
+        uint8_t programColorSeqIndex = msg.GetByte(index);
+        DecodedSignal sigProgramColorSeqIndex;
+        sigProgramColorSeqIndex.name = QString("Color Sequence Index [%1]").arg(i);
+        sigProgramColorSeqIndex.isValid = true;
+        sigProgramColorSeqIndex.value = QString::number(programColorSeqIndex);
+        decoded.signalList.append(sigProgramColorSeqIndex); 
+
+        // Field 10 - Program Intensity (0-255)
+        uint8_t programIntensity = msg.GetByte(index);
+        DecodedSignal sigProgramIntensity;
+        sigProgramIntensity.name = QString("Intensity [%1]").arg(i);
+        sigProgramIntensity.isValid = true;
+        sigProgramIntensity.value = QString::number(programIntensity);
+        decoded.signalList.append(sigProgramIntensity);
+
+        // Field 11 - Program Rate (0-255)
+        uint8_t programRate = msg.GetByte(index);
+        DecodedSignal sigProgramRate;
+        sigProgramRate.name = QString("Rate [%1]").arg(i);
+        sigProgramRate.isValid = true;
+        sigProgramRate.value = QString::number(programRate);
+        decoded.signalList.append(sigProgramRate);
+
+        // Field 12 - Program Color Sequence Rate (0-100)
+        uint8_t programColorSeqRate = msg.GetByte(index);
+        DecodedSignal sigProgramColorSeqRate;
+        sigProgramColorSeqRate.name = QString("Color Seq Rate [%1]").arg(i);
+        sigProgramColorSeqRate.isValid = true;
+        sigProgramColorSeqRate.value = QString::number(programColorSeqRate);
+        decoded.signalList.append(sigProgramColorSeqRate);
     }
-
-    // Byte 2: Scene Name Length
-    if (index < msg.DataLen) {
-        uint8_t nameLen = msg.GetByte(index);
-        DecodedSignal sigNameLen;
-        sigNameLen.name = "Scene Name Length";
-        sigNameLen.value = nameLen;
-        decoded.signalList.append(sigNameLen);
-
-        // Scene Name (variable length string)
-        QString sceneName;
-        for (int i = 0; i < nameLen && index < msg.DataLen; i++) {
-            char c = msg.GetByte(index);
-            if (c != 0) sceneName += c;
-        }
-        if (!sceneName.isEmpty()) {
-            DecodedSignal sigSceneName;
-            sigSceneName.name = "Scene Name";
-            sigSceneName.value = sceneName;
-            decoded.signalList.append(sigSceneName);
-        }
-    }
-
-    // Byte N: Transition Time (0-254 seconds, 255=N/A)
-    if (index < msg.DataLen) {
-        uint8_t transitionTime = msg.GetByte(index);
-        DecodedSignal sigTransitionTime;
-        sigTransitionTime.name = "Transition Time";
-        if (transitionTime == 255) {
-            sigTransitionTime.value = "Not Available";
-        } else {
-            sigTransitionTime.value = QString("%1 seconds").arg(transitionTime);
-        }
-        decoded.signalList.append(sigTransitionTime);
-    }
-
-    // Additional bytes as reserved/manufacturer specific
-    while (index < msg.DataLen) {
-        static int paramNum = 1;
-        DecodedSignal sigReserved;
-        sigReserved.name = QString("Reserved %1").arg(paramNum++);
-        sigReserved.value = QString("0x%1").arg(msg.GetByte(index), 2, 16, QChar('0')).toUpper();
-        decoded.signalList.append(sigReserved);
-    }
-
+    
     return decoded;
 }
 
