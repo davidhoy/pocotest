@@ -17,9 +17,6 @@ PGNLogDialog::PGNLogDialog(QWidget *parent)
     , m_pauseButton(nullptr)
     , m_stopButton(nullptr)
     , m_statusLabel(nullptr)
-    , m_filterGroup(nullptr)
-    , m_sourceFilterEnabled(nullptr)
-    , m_destinationFilterEnabled(nullptr)
     , m_sourceFilterCombo(nullptr)
     , m_destinationFilterCombo(nullptr)
     , m_filterLogicCombo(nullptr)
@@ -78,81 +75,62 @@ void PGNLogDialog::setupUI()
     
     qDebug() << "setupUI: Created status label";
     
-    // Filter group box
-    m_filterGroup = new QGroupBox("Message Filters");
-    QVBoxLayout* filterLayout = new QVBoxLayout(m_filterGroup);
+    // Filter toolbar - single horizontal line
+    QHBoxLayout* filterToolbar = new QHBoxLayout();
     
-    qDebug() << "setupUI: Created filter group";
+    qDebug() << "setupUI: Creating filter toolbar";
     
-    // Source filter row
-    QHBoxLayout* sourceLayout = new QHBoxLayout();
-    m_sourceFilterEnabled = new QCheckBox("Filter by Source:");
+    // Source filter
+    filterToolbar->addWidget(new QLabel("Source:"));
     m_sourceFilterCombo = new QComboBox();
-    m_sourceFilterCombo->setEnabled(false);
-    m_sourceFilterCombo->setMinimumWidth(200);
-    sourceLayout->addWidget(m_sourceFilterEnabled);
-    sourceLayout->addWidget(m_sourceFilterCombo);
-    sourceLayout->addStretch();
-    filterLayout->addLayout(sourceLayout);
+    m_sourceFilterCombo->setMinimumWidth(150);
+    filterToolbar->addWidget(m_sourceFilterCombo);
     
     qDebug() << "setupUI: Created source filter";
     
-    // Destination filter row
-    QHBoxLayout* destLayout = new QHBoxLayout();
-    m_destinationFilterEnabled = new QCheckBox("Filter by Destination:");
+    // Add spacing
+    filterToolbar->addSpacing(20);
+    
+    // Filter logic (between source and destination)
+    filterToolbar->addWidget(new QLabel("Logic:"));
+    m_filterLogicCombo = new QComboBox();
+    m_filterLogicCombo->addItem("AND");
+    m_filterLogicCombo->addItem("OR");
+    m_filterLogicCombo->setCurrentIndex(0); // Default to AND
+    m_filterLogicCombo->setMinimumWidth(80);
+    filterToolbar->addWidget(m_filterLogicCombo);
+    
+    // Add spacing
+    filterToolbar->addSpacing(20);
+    
+    // Destination filter
+    filterToolbar->addWidget(new QLabel("Dest:"));
     m_destinationFilterCombo = new QComboBox();
-    m_destinationFilterCombo->setEnabled(false);
-    m_destinationFilterCombo->setMinimumWidth(200);
-    destLayout->addWidget(m_destinationFilterEnabled);
-    destLayout->addWidget(m_destinationFilterCombo);
-    destLayout->addStretch();
-    filterLayout->addLayout(destLayout);
+    m_destinationFilterCombo->setMinimumWidth(150);
+    filterToolbar->addWidget(m_destinationFilterCombo);
     
     qDebug() << "setupUI: Created destination filter";
     
-    // Filter logic row
-    QHBoxLayout* logicLayout = new QHBoxLayout();
-    logicLayout->addWidget(new QLabel("Filter Logic:"));
-    m_filterLogicCombo = new QComboBox();
-    m_filterLogicCombo->addItem("AND (both conditions must match)");
-    m_filterLogicCombo->addItem("OR (either condition can match)");
-    m_filterLogicCombo->setCurrentIndex(0); // Default to AND
-    m_filterLogicCombo->setMinimumWidth(250);
-    logicLayout->addWidget(m_filterLogicCombo);
-    logicLayout->addStretch();
-    filterLayout->addLayout(logicLayout);
-    
-    // DBC Decoding option
-    QHBoxLayout* decodingLayout = new QHBoxLayout();
-    m_decodingEnabled = new QCheckBox("Enable DBC Decoding");
-    m_decodingEnabled->setChecked(true); // Default to enabled
-    m_decodingEnabled->setToolTip("Decode known NMEA2000 messages using DBC definitions");
-    decodingLayout->addWidget(m_decodingEnabled);
-    decodingLayout->addStretch();
-    filterLayout->addLayout(decodingLayout);
+    // Add spacing
+    filterToolbar->addSpacing(20);
     
     // Clear filters button
-    QHBoxLayout* filterButtonLayout = new QHBoxLayout();
-    m_clearFiltersButton = new QPushButton("Clear All Filters");
-    filterButtonLayout->addWidget(m_clearFiltersButton);
-    filterButtonLayout->addStretch();
-    filterLayout->addLayout(filterButtonLayout);
+    m_clearFiltersButton = new QPushButton("Clear Filters");
+    filterToolbar->addWidget(m_clearFiltersButton);
     
-    mainLayout->addWidget(m_filterGroup);
+    // Add stretch to push everything to the left
+    filterToolbar->addStretch();
     
-    // Initialize combo boxes with common values
-    QStringList commonAddresses;
-    commonAddresses << "Any" << "Broadcast (255)";
-    for (int i = 0; i < 254; i++) {
-        commonAddresses << QString("0x%1 (%2)").arg(i, 2, 16, QChar('0')).toUpper().arg(i);
-    }
+    mainLayout->addLayout(filterToolbar);
     
-    m_sourceFilterCombo->addItems(commonAddresses);
-    m_destinationFilterCombo->addItems(commonAddresses);
+    // Initialize combo boxes with basic values (devices will be populated later)
+    QStringList basicAddresses;
+    basicAddresses << "Any" << "Broadcast (255)";
+    
+    m_sourceFilterCombo->addItems(basicAddresses);
+    m_destinationFilterCombo->addItems(basicAddresses);
     
     // Connect filter signals
-    connect(m_sourceFilterEnabled, &QCheckBox::toggled, this, &PGNLogDialog::onSourceFilterEnabled);
-    connect(m_destinationFilterEnabled, &QCheckBox::toggled, this, &PGNLogDialog::onDestinationFilterEnabled);
     connect(m_sourceFilterCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), 
             this, &PGNLogDialog::onSourceFilterChanged);
     connect(m_destinationFilterCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), 
@@ -168,6 +146,11 @@ void PGNLogDialog::setupUI()
     connect(m_timestampModeCheck, &QCheckBox::toggled, this, [this](bool checked) {
         setTimestampMode(checked ? Relative : Absolute);
     });
+
+    // DBC Decoding option
+    m_decodingEnabled = new QCheckBox("Enable DBC Decoding");
+    m_decodingEnabled->setChecked(true); // Default to enabled
+    m_decodingEnabled->setToolTip("Decode known NMEA2000 messages using DBC definitions");
 
     // Log table
     m_logTable = new QTableWidget();
@@ -199,6 +182,7 @@ void PGNLogDialog::setupUI()
     connect(m_logTable, &QTableWidget::cellClicked, this, &PGNLogDialog::onTableItemClicked);
     
     mainLayout->addWidget(m_timestampModeCheck);
+    mainLayout->addWidget(m_decodingEnabled);
     mainLayout->addWidget(m_logTable);
     
     // Buttons
@@ -876,9 +860,6 @@ void PGNLogDialog::setSourceFilter(uint8_t sourceAddress)
     m_sourceFilter = sourceAddress;
     m_sourceFilterActive = true;
     
-    // Update UI
-    m_sourceFilterEnabled->setChecked(true);
-    
     // Find and select the appropriate item in the combo box
     for (int i = 0; i < m_sourceFilterCombo->count(); i++) {
         QString itemText = m_sourceFilterCombo->itemText(i);
@@ -900,9 +881,6 @@ void PGNLogDialog::setDestinationFilter(uint8_t destinationAddress)
 {
     m_destinationFilter = destinationAddress;
     m_destinationFilterActive = true;
-    
-    // Update UI
-    m_destinationFilterEnabled->setChecked(true);
     
     // Find and select the appropriate item in the combo box
     for (int i = 0; i < m_destinationFilterCombo->count(); i++) {
@@ -946,20 +924,13 @@ void PGNLogDialog::updateDeviceList(const QStringList& devices)
     m_destinationFilterCombo->addItem("Any");
     m_destinationFilterCombo->addItem("Broadcast (255)");
     
-    // Add device-specific options
+    // Add device-specific options (only known devices)
     for (const QString& device : devices) {
         m_sourceFilterCombo->addItem(device);
         m_destinationFilterCombo->addItem(device);
     }
     
-    // Add generic address options
-    for (int i = 0; i < 254; i++) {
-        QString addr = QString("0x%1 (%2)").arg(i, 2, 16, QChar('0')).toUpper().arg(i);
-        if (!devices.contains(addr)) {
-            m_sourceFilterCombo->addItem(addr);
-            m_destinationFilterCombo->addItem(addr);
-        }
-    }
+    // Note: Removed generic address options - only show currently known devices
     
     // Restore selections if possible
     int sourceIndex = m_sourceFilterCombo->findText(currentSource);
@@ -1036,36 +1007,8 @@ void PGNLogDialog::onDestinationFilterChanged()
     updateStatusLabel();
 }
 
-void PGNLogDialog::onSourceFilterEnabled(bool enabled)
-{
-    m_sourceFilterActive = enabled;
-    m_sourceFilterCombo->setEnabled(enabled);
-    
-    if (enabled) {
-        onSourceFilterChanged(); // Update filter value
-    } else {
-        m_sourceFilter = 255; // No filter
-    }
-    
-    updateStatusLabel();
-}
-
-void PGNLogDialog::onDestinationFilterEnabled(bool enabled)
-{
-    m_destinationFilterActive = enabled;
-    m_destinationFilterCombo->setEnabled(enabled);
-    
-    if (enabled) {
-        onDestinationFilterChanged(); // Update filter value
-    }
-    
-    updateStatusLabel();
-}
-
 void PGNLogDialog::onClearFilters()
 {
-    m_sourceFilterEnabled->setChecked(false);
-    m_destinationFilterEnabled->setChecked(false);
     m_sourceFilterCombo->setCurrentIndex(0); // "Any"
     m_destinationFilterCombo->setCurrentIndex(0); // "Any"
     m_filterLogicCombo->setCurrentIndex(0); // "AND"
@@ -1082,8 +1025,6 @@ void PGNLogDialog::onClearFilters()
 void PGNLogDialog::clearAllFilters()
 {
     // Reset all filter states
-    m_sourceFilterEnabled->setChecked(false);
-    m_destinationFilterEnabled->setChecked(false);
     m_sourceFilterCombo->setCurrentIndex(0); // "Any"
     m_destinationFilterCombo->setCurrentIndex(0); // "Any"
     m_filterLogicCombo->setCurrentIndex(0); // "AND"

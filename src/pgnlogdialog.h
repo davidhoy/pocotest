@@ -10,7 +10,6 @@
 #include <QLabel>
 #include <QComboBox>
 #include <QCheckBox>
-#include <QGroupBox>
 #include <QDateTime>
 #include <QVector>
 #include <N2kMsg.h>
@@ -40,8 +39,6 @@ private slots:
     void onLoadLogClicked();
     void onSourceFilterChanged();
     void onDestinationFilterChanged();
-    void onSourceFilterEnabled(bool enabled);
-    void onDestinationFilterEnabled(bool enabled);
     void onClearFilters();
     void onFilterLogicChanged();
     void onToggleDecoding(bool enabled);
@@ -82,9 +79,6 @@ private:
     QLabel* m_statusLabel;
     
     // Filter controls
-    QGroupBox* m_filterGroup;
-    QCheckBox* m_sourceFilterEnabled;
-    QCheckBox* m_destinationFilterEnabled;
     QComboBox* m_sourceFilterCombo;
     QComboBox* m_destinationFilterCombo;
     QComboBox* m_filterLogicCombo;  // AND/OR logic selector

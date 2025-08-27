@@ -882,6 +882,9 @@ void DeviceMainWindow::showPGNLogForDevice(uint8_t sourceAddress)
         m_pgnLogDialog = new PGNLogDialog(this);
     }
     
+    // Ensure the device list is up to date before setting filters
+    updatePGNDialogDeviceList();
+    
     // Set filters for both source and destination addresses to capture all traffic
     // involving this device (messages from it OR messages to it)
     m_pgnLogDialog->setSourceFilter(sourceAddress);
@@ -1754,14 +1757,23 @@ void DeviceMainWindow::updatePGNDialogDeviceList()
     QStringList devices;
     
     for (int row = 0; row < m_deviceTable->rowCount(); row++) {
-        QTableWidgetItem* nodeItem = m_deviceTable->item(row, 0);  // Node address
-        QTableWidgetItem* nameItem = m_deviceTable->item(row, 1);  // Device name
+        QTableWidgetItem* nodeItem = m_deviceTable->item(row, 0);        // Node address
+        QTableWidgetItem* manufacturerItem = m_deviceTable->item(row, 1); // Manufacturer
+        QTableWidgetItem* modelItem = m_deviceTable->item(row, 2);        // Model ID
         
-        if (nodeItem && nameItem) {
+        if (nodeItem && manufacturerItem) {
             QString nodeAddr = nodeItem->text();
-            QString deviceName = nameItem->text();
+            QString manufacturer = manufacturerItem->text();
+            QString model = modelItem ? modelItem->text() : "";
             
-            // Format: "Device Name (0xXX)"
+            // Format: "Manufacturer Model (0xXX)" or "Manufacturer (0xXX)" if no model
+            QString deviceName;
+            if (!model.isEmpty() && model != "Unknown") {
+                deviceName = QString("%1 %2").arg(manufacturer, model);
+            } else {
+                deviceName = manufacturer;
+            }
+            
             QString deviceEntry = QString("%1 (0x%2)")
                                 .arg(deviceName)
                                 .arg(nodeAddr);
