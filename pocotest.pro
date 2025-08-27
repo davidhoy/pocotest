@@ -32,6 +32,7 @@ SOURCES += \
     src/LumitecPoco.cpp \
     src/n2k_linux_port.cpp \
     src/dbcdecoder.cpp \
+    src/instanceconflictanalyzer.cpp \
     components/external/NMEA2000/src/NMEA2000.cpp \
     components/external/NMEA2000/src/N2kTimer.cpp \
     components/external/NMEA2000/src/N2kMsg.cpp \
@@ -49,7 +50,8 @@ HEADERS += \
     src/pocodevicedialog.h \
     src/zonelightingdialog.h \
     src/LumitecPoco.h \
-    src/dbcdecoder.h
+    src/dbcdecoder.h \
+    src/instanceconflictanalyzer.h
 
 # Resources
 RESOURCES += \

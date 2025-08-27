@@ -18,27 +18,14 @@
 #include <N2kMsg.h>
 #include <N2kDeviceList.h>
 #include "LumitecPoco.h"
+#include "instanceconflictanalyzer.h"
 
 // Forward declarations
 class tN2kDeviceList;
 class tNMEA2000_SocketCAN;
 class PGNLogDialog;
 class PocoDeviceDialog;
-
-// Structure to track PGN instance data
-struct PGNInstanceData {
-    unsigned long pgn;
-    uint8_t source;
-    uint8_t instance;
-    qint64 lastSeen;  // timestamp
-};
-
-// Structure to track conflicts
-struct InstanceConflict {
-    unsigned long pgn;
-    uint8_t instance;
-    QSet<uint8_t> conflictingSources;
-};
+class InstanceConflictAnalyzer;
 
 class DeviceMainWindow : public QMainWindow
 {
@@ -51,10 +38,9 @@ public:
     void initNMEA2000();
     void timerEvent(QTimerEvent *event) override;
     
-    // PGN instance conflict tracking
-    QList<InstanceConflict> getInstanceConflicts() const;
+    // Conflict analysis interface
     bool hasInstanceConflicts() const;
-    QSet<uint8_t> getConflictingSources() const;
+    int getConflictCount() const;
 
 private slots:
     void updateDeviceList();
@@ -89,12 +75,6 @@ private:
     void reinitializeNMEA2000();
     QStringList getAvailableCanInterfaces();
     void updateConnectionButtonStates();
-    
-    // PGN instance tracking methods
-    void trackPGNInstance(const tN2kMsg& msg);
-    uint8_t extractInstanceFromPGN(const tN2kMsg& msg);
-    void updateInstanceConflicts();
-    bool isPGNWithInstance(unsigned long pgn);
     
     // Device activity tracking methods
     void updateDeviceActivity(uint8_t sourceAddress);
@@ -182,10 +162,8 @@ private:
     // Secondary dialogs
     PGNLogDialog* m_pgnLogDialog;
     
-    // PGN instance tracking
-    QMap<QString, PGNInstanceData> m_pgnInstances; // key: "pgn_source" -> instance data
-    QList<InstanceConflict> m_instanceConflicts;
-    QSet<uint8_t> m_conflictingSources;
+    // Instance conflict analysis
+    InstanceConflictAnalyzer* m_conflictAnalyzer;
     
     // Device activity tracking
     struct DeviceActivity {

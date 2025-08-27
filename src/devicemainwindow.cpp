@@ -6,6 +6,7 @@
 #include "zonelightingdialog.h"
 #include "LumitecPoco.h"
 #include "NMEA2000_SocketCAN.h"
+#include "instanceconflictanalyzer.h"
 #include <NMEA2000.h>
 #include <QDir>
 #include <QProcess>
@@ -54,8 +55,12 @@ DeviceMainWindow::DeviceMainWindow(QWidget *parent)
     , m_deviceList(nullptr)
     , m_isConnected(false)
     , m_pgnLogDialog(nullptr)
+    , m_conflictAnalyzer(nullptr)
 {
     DeviceMainWindow::instance = this;  // Capture 'this' for static callback
+    
+    // Initialize the instance conflict analyzer
+    m_conflictAnalyzer = new InstanceConflictAnalyzer(this);
     
     setupUI();
     setupMenuBar();
@@ -312,7 +317,7 @@ void DeviceMainWindow::handleN2kMsg(const tN2kMsg& msg) {
     updateDeviceActivity(msg.Source);
     
     // Track PGN instances for conflict detection
-    trackPGNInstance(msg);
+    m_conflictAnalyzer->trackPGNMessage(msg);
 
     // Handle Lumitec Poco specific messages
     if (msg.PGN == LUMITEC_PGN_61184) {
@@ -493,9 +498,12 @@ void DeviceMainWindow::populateDeviceTable()
         QString statusText = QString("Found %1 NMEA2000 device(s) - Auto-updating every 2 seconds").arg(deviceCount);
         QString statusStyle = "font-weight: bold; color: green; padding: 5px; background-color: #e6ffe6; border: 1px solid #99ff99; border-radius: 3px;";
         
+        // Update conflict analysis before checking
+        m_conflictAnalyzer->updateConflictAnalysis();
+        
         // Check for instance conflicts and update status accordingly
-        if (!m_instanceConflicts.isEmpty()) {
-            statusText += QString(" - WARNING: %1 instance conflict(s) detected!").arg(m_instanceConflicts.size());
+        if (m_conflictAnalyzer->hasConflicts()) {
+            statusText += QString(" - WARNING: %1 instance conflict(s) detected!").arg(m_conflictAnalyzer->getConflictCount());
             statusStyle = "font-weight: bold; color: red; padding: 5px; background-color: #ffe6e6; border: 1px solid #ff9999; border-radius: 3px;";
         }
         
@@ -504,7 +512,7 @@ void DeviceMainWindow::populateDeviceTable()
     }
     
     // Analyze and highlight instance conflicts
-    highlightInstanceConflicts();
+    m_conflictAnalyzer->highlightConflictsInTable(m_deviceTable);
     
     // Resize columns to content
     m_deviceTable->resizeColumnsToContents();
@@ -779,17 +787,13 @@ void DeviceMainWindow::showDeviceDetails(int row)
             additionalInfo += QString("Industry Group: %1\n").arg(device->GetIndustryGroup());
             
             // Check if device has instance conflicts
-            if (m_conflictingSources.contains(source)) {
+            if (m_conflictAnalyzer->hasConflictForSource(source)) {
                 additionalInfo += "\n⚠️  WARNING: This device has instance conflicts!\n";
                 
-                // List the conflicting PGNs
-                for (const InstanceConflict& conflict : m_instanceConflicts) {
-                    if (conflict.conflictingSources.contains(source)) {
-                        additionalInfo += QString("• PGN %1 (%2), Instance %3\n")
-                                         .arg(conflict.pgn)
-                                         .arg(getPGNName(conflict.pgn))
-                                         .arg(conflict.instance);
-                    }
+                // Get the conflicting PGNs for this source
+                QString conflictInfo = m_conflictAnalyzer->getConflictInfoForSource(source);
+                if (!conflictInfo.isEmpty()) {
+                    additionalInfo += conflictInfo;
                 }
             }
         }
@@ -901,211 +905,20 @@ void DeviceMainWindow::showPGNLogForDevice(uint8_t sourceAddress)
 
 void DeviceMainWindow::clearConflictHistory()
 {
-    m_pgnInstances.clear();
-    m_instanceConflicts.clear();
-    m_conflictingSources.clear();
+    m_conflictAnalyzer->clearHistory();
     updateDeviceList(); // Refresh display
 }
 
-// PGN instance tracking methods (from MainWindow)
-void DeviceMainWindow::trackPGNInstance(const tN2kMsg& msg) {
-    // Only track PGNs that contain instance data
-    if (!isPGNWithInstance(msg.PGN)) {
-        return;
-    }
-    
-    uint8_t instance = extractInstanceFromPGN(msg);
-    if (instance == 255) { // Invalid instance
-        return;
-    }
-    
-    QString key = QString("%1_%2").arg(msg.PGN).arg(msg.Source);
-    
-    PGNInstanceData data;
-    data.pgn = msg.PGN;
-    data.source = msg.Source;
-    data.instance = instance;
-    data.lastSeen = QDateTime::currentMSecsSinceEpoch();
-    
-    m_pgnInstances[key] = data;
-    
-    // Update conflict detection
-    updateInstanceConflicts();
-}
-
-uint8_t DeviceMainWindow::extractInstanceFromPGN(const tN2kMsg& msg) {
-    // Extract instance data based on PGN type
-    if (msg.DataLen < 1) {
-        return 255; // Invalid
-    }
-    
-    uint8_t instance = 255;
-    
-    switch (msg.PGN) {
-        case 127488: // Engine Parameters, Rapid
-        case 127489: // Engine Parameters, Dynamic
-        case 127502: // Binary Switch Bank Control
-        case 127505: // Fluid Level
-        case 127508: // Battery Status
-        case 127509: // Inverter Status
-        case 127513: // Battery Configuration Status
-            if (msg.DataLen >= 1) {
-                instance = msg.Data[0]; // Instance is first byte
-            }
-            break;
-            
-        case 130312: // Temperature
-        case 130314: // Actual Pressure
-        case 130316: // Temperature, Extended Range
-            if (msg.DataLen >= 2) {
-                instance = msg.Data[1]; // Instance is second byte (after SID)
-            }
-            break;
-            
-        default:
-            // For other PGNs, assume instance is first byte if present
-            if (msg.DataLen >= 1) {
-                instance = msg.Data[0];
-            }
-            break;
-    }
-    
-    return instance;
-}
-
-bool DeviceMainWindow::isPGNWithInstance(unsigned long pgn) {
-    // List of PGNs that contain instance data
-    static QSet<unsigned long> instancePGNs = {
-        127488, // Engine Parameters, Rapid
-        127489, // Engine Parameters, Dynamic
-        127502, // Binary Switch Bank Control
-        127505, // Fluid Level
-        127508, // Battery Status
-        127509, // Inverter Status
-        127513, // Battery Configuration Status
-        130312, // Temperature
-        130314, // Actual Pressure
-        130316, // Temperature, Extended Range
-    };
-    
-    return instancePGNs.contains(pgn);
-}
-
-void DeviceMainWindow::updateInstanceConflicts() {
-    m_instanceConflicts.clear();
-    m_conflictingSources.clear();
-    
-    // Group PGN instances by PGN and instance number
-    QMap<QString, QList<PGNInstanceData>> groupedInstances;
-    
-    for (auto it = m_pgnInstances.begin(); it != m_pgnInstances.end(); ++it) {
-        const PGNInstanceData& data = it.value();
-        QString groupKey = QString("%1_%2").arg(data.pgn).arg(data.instance);
-        groupedInstances[groupKey].append(data);
-    }
-    
-    // Find conflicts (same PGN + instance from different sources)
-    for (auto it = groupedInstances.begin(); it != groupedInstances.end(); ++it) {
-        const QList<PGNInstanceData>& instances = it.value();
-        
-        if (instances.size() > 1) {
-            // This is a conflict!
-            InstanceConflict conflict;
-            conflict.pgn = instances[0].pgn;
-            conflict.instance = instances[0].instance;
-            
-            for (const PGNInstanceData& data : instances) {
-                conflict.conflictingSources.insert(data.source);
-                m_conflictingSources.insert(data.source);
-            }
-            
-            m_instanceConflicts.append(conflict);
-        }
-    }
-}
-
-// Getter methods for conflict data
-QList<InstanceConflict> DeviceMainWindow::getInstanceConflicts() const {
-    return m_instanceConflicts;
-}
-
 bool DeviceMainWindow::hasInstanceConflicts() const {
-    return !m_instanceConflicts.isEmpty();
+    return m_conflictAnalyzer->hasConflicts();
 }
 
-QSet<uint8_t> DeviceMainWindow::getConflictingSources() const {
-    return m_conflictingSources;
-}
-
-// Stub implementations for now - will copy from DeviceListDialog later
-void DeviceMainWindow::highlightInstanceConflicts() {
-    // Reset all row colors first
-    for (int row = 0; row < m_deviceTable->rowCount(); row++) {
-        for (int col = 0; col < m_deviceTable->columnCount(); col++) {
-            QTableWidgetItem* item = m_deviceTable->item(row, col);
-            if (item) {
-                item->setBackground(QBrush()); // Reset to default background
-            }
-        }
-    }
-    
-    // Highlight conflicting devices in red
-    if (!m_conflictingSources.isEmpty()) {
-        for (int row = 0; row < m_deviceTable->rowCount(); row++) {
-            QTableWidgetItem* nodeAddressItem = m_deviceTable->item(row, 0); // Node Address column
-            if (nodeAddressItem) {
-                // Convert hex node address back to uint8_t for comparison
-                bool ok;
-                uint8_t source = nodeAddressItem->text().toUInt(&ok, 16);
-                
-                if (ok && m_conflictingSources.contains(source)) {
-                    // Highlight this entire row in red
-                    for (int col = 0; col < m_deviceTable->columnCount(); col++) {
-                        QTableWidgetItem* item = m_deviceTable->item(row, col);
-                        if (item) {
-                            item->setBackground(QBrush(QColor(255, 200, 200))); // Light red background
-                            item->setForeground(QBrush(QColor(139, 0, 0))); // Dark red text
-                        }
-                    }
-                }
-            }
-        }
-    }
+int DeviceMainWindow::getConflictCount() const {
+    return m_conflictAnalyzer->getConflictCount();
 }
 
 void DeviceMainWindow::analyzeInstanceConflicts() {
-    if (m_instanceConflicts.isEmpty()) {
-        QMessageBox::information(this, "Instance Conflict Analysis", 
-                                "No instance conflicts detected.\n\n"
-                                "All devices are using unique instance numbers for their PGN types.");
-        return;
-    }
-    
-    QString analysisText = QString("Found %1 instance conflict(s):\n\n").arg(m_instanceConflicts.size());
-    
-    for (const InstanceConflict& conflict : m_instanceConflicts) {
-        analysisText += QString("PGN %1 (%2), Instance %3:\n")
-                       .arg(conflict.pgn)
-                       .arg(getPGNName(conflict.pgn))
-                       .arg(conflict.instance);
-        
-        analysisText += "  Conflicting sources: ";
-        QStringList sourceList;
-        for (uint8_t source : conflict.conflictingSources) {
-            sourceList.append(QString("0x%1").arg(source, 2, 16, QChar('0')).toUpper());
-        }
-        analysisText += sourceList.join(", ") + "\n\n";
-    }
-    
-    analysisText += "Recommendation: Check device configuration to ensure each device type uses unique instance numbers.";
-    
-    QMessageBox msgBox(this);
-    msgBox.setWindowTitle("Instance Conflict Analysis");
-    msgBox.setIcon(QMessageBox::Warning);
-    msgBox.setText("Instance conflicts detected on the NMEA2000 network!");
-    msgBox.setDetailedText(analysisText);
-    msgBox.setStandardButtons(QMessageBox::Ok);
-    msgBox.exec();
+    m_conflictAnalyzer->analyzeAndShowConflicts();
 }
 
 QString DeviceMainWindow::getDeviceClassName(unsigned char deviceClass) {
