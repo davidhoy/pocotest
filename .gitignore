@@ -5,3 +5,4 @@ moc*.*
 *.stash
 /Makefile
 pocotest
+*.pgnlog
