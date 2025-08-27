@@ -58,6 +58,8 @@ public:
 
 private slots:
     void updateDeviceList();
+        void onConnectClicked();
+        void onDisconnectClicked();
     void onRefreshClicked();
     void onRowSelectionChanged();
     void analyzeInstanceConflicts();
@@ -86,6 +88,7 @@ private:
     void populateCanInterfaces();
     void reinitializeNMEA2000();
     QStringList getAvailableCanInterfaces();
+    void updateConnectionButtonStates();
     
     // PGN instance tracking methods
     void trackPGNInstance(const tN2kMsg& msg);
@@ -155,7 +158,14 @@ private:
     
     // NMEA2000 Components
     tN2kDeviceList* m_deviceList;
+        QPushButton *m_connectButton = nullptr;
+        QPushButton *m_disconnectButton = nullptr;
+        tNMEA2000 *m_nmea2000Instance = nullptr;
     QString m_currentInterface;
+    bool m_isConnected;
+    
+    // Secondary dialogs
+    PGNLogDialog* m_pgnLogDialog;
     
     // PGN instance tracking
     QMap<QString, PGNInstanceData> m_pgnInstances; // key: "pgn_source" -> instance data
@@ -177,8 +187,6 @@ private:
     // Helper methods
     void updatePGNDialogDeviceList();
     
-    // Secondary dialogs
-    PGNLogDialog* m_pgnLogDialog;
 };
 
 #endif // DEVICEMAINWINDOW_H

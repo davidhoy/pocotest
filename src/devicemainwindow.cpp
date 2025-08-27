@@ -48,6 +48,7 @@ DeviceMainWindow::DeviceMainWindow(QWidget *parent)
     , m_updateTimer(nullptr)
     , m_canInterfaceCombo(nullptr)
     , m_deviceList(nullptr)
+    , m_isConnected(false)
     , m_pgnLogDialog(nullptr)
 {
     DeviceMainWindow::instance = this;  // Capture 'this' for static callback
@@ -102,7 +103,7 @@ void DeviceMainWindow::setupUI()
     
     QVBoxLayout* mainLayout = new QVBoxLayout(m_centralWidget);
     
-    // Top toolbar with CAN interface selector
+    // Top toolbar with CAN interface selector and connection controls
     QHBoxLayout* toolbarLayout = new QHBoxLayout();
     
     QLabel* canLabel = new QLabel("CAN Interface:");
@@ -111,8 +112,20 @@ void DeviceMainWindow::setupUI()
     connect(m_canInterfaceCombo, QOverload<const QString &>::of(&QComboBox::currentTextChanged),
             this, &DeviceMainWindow::onCanInterfaceChanged);
     
+    // Connection control buttons
+    m_connectButton = new QPushButton("Connect");
+    m_disconnectButton = new QPushButton("Disconnect");
+    connect(m_connectButton, &QPushButton::clicked, this, &DeviceMainWindow::onConnectClicked);
+    connect(m_disconnectButton, &QPushButton::clicked, this, &DeviceMainWindow::onDisconnectClicked);
+    
+    // Set initial button states
+    updateConnectionButtonStates();
+    
     toolbarLayout->addWidget(canLabel);
     toolbarLayout->addWidget(m_canInterfaceCombo);
+    toolbarLayout->addSpacing(10); // Add some space between interface and buttons
+    toolbarLayout->addWidget(m_connectButton);
+    toolbarLayout->addWidget(m_disconnectButton);
     toolbarLayout->addStretch();
     
     mainLayout->addLayout(toolbarLayout);
@@ -257,6 +270,10 @@ void DeviceMainWindow::initNMEA2000()
     }
     m_deviceList = new tN2kDeviceList(nmea2000);
     qDebug() << "Device list created with NMEA2000 interface";
+    
+    // Update connection state to reflect that we're connected
+    m_isConnected = true;
+    updateConnectionButtonStates();
     
     startTimer(100); // Start timer event for regular NMEA2000 processing
 }
@@ -1853,5 +1870,45 @@ void DeviceMainWindow::sendZonePGN130561(uint8_t targetAddress, uint8_t zoneId, 
         } else {
             qDebug() << "Failed to send full zone command message";
         }
+    }
+}
+
+void DeviceMainWindow::onConnectClicked()
+{
+    if (!nmea2000) {
+        // Reinitialize the NMEA2000 connection
+        initNMEA2000();
+        m_statusLabel->setText("NMEA2000 interface connected.");
+    } else {
+        m_statusLabel->setText("Already connected.");
+    }
+}
+
+void DeviceMainWindow::onDisconnectClicked()
+{
+    if (nmea2000) {
+        // Cleanup and delete the NMEA2000 connection
+        delete nmea2000;
+        nmea2000 = nullptr;
+        
+        // Cleanup device list
+        if (m_deviceList) {
+            delete m_deviceList;
+            m_deviceList = nullptr;
+        }
+        
+        m_isConnected = false;
+        updateConnectionButtonStates();
+        m_statusLabel->setText("NMEA2000 interface disconnected.");
+    } else {
+        m_statusLabel->setText("Already disconnected.");
+    }
+}
+
+void DeviceMainWindow::updateConnectionButtonStates()
+{
+    if (m_connectButton && m_disconnectButton) {
+        m_connectButton->setEnabled(!m_isConnected);
+        m_disconnectButton->setEnabled(m_isConnected);
     }
 }
