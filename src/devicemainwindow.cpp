@@ -47,6 +47,10 @@ DeviceMainWindow::DeviceMainWindow(QWidget *parent)
     , m_statusLabel(nullptr)
     , m_updateTimer(nullptr)
     , m_canInterfaceCombo(nullptr)
+    , m_txIndicator(nullptr)
+    , m_rxIndicator(nullptr)
+    , m_txBlinkTimer(nullptr)
+    , m_rxBlinkTimer(nullptr)
     , m_deviceList(nullptr)
     , m_isConnected(false)
     , m_pgnLogDialog(nullptr)
@@ -121,12 +125,20 @@ void DeviceMainWindow::setupUI()
     // Set initial button states
     updateConnectionButtonStates();
     
+    // Setup activity indicators
+    setupActivityIndicators();
+    
     toolbarLayout->addWidget(canLabel);
     toolbarLayout->addWidget(m_canInterfaceCombo);
     toolbarLayout->addSpacing(10); // Add some space between interface and buttons
     toolbarLayout->addWidget(m_connectButton);
     toolbarLayout->addWidget(m_disconnectButton);
-    toolbarLayout->addStretch();
+    toolbarLayout->addStretch(); // Push activity indicators to the right
+    toolbarLayout->addWidget(new QLabel("RX:"));
+    toolbarLayout->addWidget(m_rxIndicator);
+    toolbarLayout->addSpacing(5);
+    toolbarLayout->addWidget(new QLabel("TX:"));
+    toolbarLayout->addWidget(m_txIndicator);
     
     mainLayout->addLayout(toolbarLayout);
     
@@ -293,6 +305,9 @@ void DeviceMainWindow::staticN2kMsgHandler(const tN2kMsg &msg) {
 }
 
 void DeviceMainWindow::handleN2kMsg(const tN2kMsg& msg) {
+    // Blink RX indicator for received messages
+    blinkRxIndicator();
+    
     // Update device activity tracking
     updateDeviceActivity(msg.Source);
     
@@ -835,6 +850,9 @@ void DeviceMainWindow::requestProductInformation(uint8_t targetAddress)
     SetN2kPGN59904(N2kMsg, targetAddress, N2kPGNProductInformation);
     
     if (nmea2000->SendMsg(N2kMsg)) {
+        // Blink TX indicator for transmitted messages
+        blinkTxIndicator();
+        
         // Track that we've requested product info from this device
         m_pendingProductInfoRequests.insert(targetAddress);
         
@@ -1399,6 +1417,9 @@ void DeviceMainWindow::sendLumitecSimpleAction(uint8_t targetAddress, uint8_t ac
     tN2kMsg msg;
     if (SetLumitecExtSwSimpleAction(msg, targetAddress, actionId, switchId)) {
         if (nmea2000->SendMsg(msg)) {
+            // Blink TX indicator for transmitted messages
+            blinkTxIndicator();
+            
             // Log the sent message to PGN log if it's visible
             if (m_pgnLogDialog && m_pgnLogDialog->isVisible()) {
                 m_pgnLogDialog->appendSentMessage(msg);
@@ -1492,6 +1513,9 @@ void DeviceMainWindow::sendLumitecCustomHSB(uint8_t targetAddress, uint8_t hue, 
     tN2kMsg msg;
     if (SetLumitecExtSwCustomHSB(msg, targetAddress, ACTION_T2HSB, 1, hue, saturation, brightness)) {
         if (nmea2000->SendMsg(msg)) {
+            // Blink TX indicator for transmitted messages
+            blinkTxIndicator();
+            
             // Log the sent message to PGN log if it's visible
             if (m_pgnLogDialog && m_pgnLogDialog->isVisible()) {
                 m_pgnLogDialog->appendSentMessage(msg);
@@ -1791,6 +1815,9 @@ void DeviceMainWindow::sendZonePGN130561(uint8_t targetAddress, uint8_t zoneId, 
         msg.AddByte(statusByte);
         
         if (nmea2000->SendMsg(msg)) {
+            // Blink TX indicator for transmitted messages
+            blinkTxIndicator();
+            
             if (m_pgnLogDialog && m_pgnLogDialog->isVisible()) {
                 m_pgnLogDialog->appendSentMessage(msg);
             }
@@ -1861,6 +1888,9 @@ void DeviceMainWindow::sendZonePGN130561(uint8_t targetAddress, uint8_t zoneId, 
         msg.AddByte(statusByte);
 
         if (nmea2000->SendMsg(msg)) {
+            // Blink TX indicator for transmitted messages
+            blinkTxIndicator();
+            
             if (m_pgnLogDialog && m_pgnLogDialog->isVisible()) {
                 m_pgnLogDialog->appendSentMessage(msg);
             }
@@ -1911,4 +1941,94 @@ void DeviceMainWindow::updateConnectionButtonStates()
         m_connectButton->setEnabled(!m_isConnected);
         m_disconnectButton->setEnabled(m_isConnected);
     }
+}
+
+void DeviceMainWindow::setupActivityIndicators()
+{
+    // Create TX indicator (red LED)
+    m_txIndicator = new QLabel();
+    m_txIndicator->setFixedSize(12, 12);
+    m_txIndicator->setStyleSheet(
+        "QLabel {"
+        "    background-color: #400000;"  // Dark red when off
+        "    border-radius: 6px;"
+        "    border: 1px solid #333;"
+        "}"
+    );
+    m_txIndicator->setToolTip("TX Activity (Red = Transmitting)");
+    
+    // Create RX indicator (green LED)
+    m_rxIndicator = new QLabel();
+    m_rxIndicator->setFixedSize(12, 12);
+    m_rxIndicator->setStyleSheet(
+        "QLabel {"
+        "    background-color: #004000;"  // Dark green when off
+        "    border-radius: 6px;"
+        "    border: 1px solid #333;"
+        "}"
+    );
+    m_rxIndicator->setToolTip("RX Activity (Green = Receiving)");
+    
+    // Create timers for blinking
+    m_txBlinkTimer = new QTimer(this);
+    m_txBlinkTimer->setSingleShot(true);
+    connect(m_txBlinkTimer, &QTimer::timeout, this, &DeviceMainWindow::onTxBlinkTimeout);
+    
+    m_rxBlinkTimer = new QTimer(this);
+    m_rxBlinkTimer->setSingleShot(true);
+    connect(m_rxBlinkTimer, &QTimer::timeout, this, &DeviceMainWindow::onRxBlinkTimeout);
+}
+
+void DeviceMainWindow::blinkTxIndicator()
+{
+    // Turn on the red LED
+    m_txIndicator->setStyleSheet(
+        "QLabel {"
+        "    background-color: #FF0000;"  // Bright red when active
+        "    border-radius: 6px;"
+        "    border: 1px solid #333;"
+        "}"
+    );
+    
+    // Start timer to turn it off after 50ms
+    m_txBlinkTimer->start(50);
+}
+
+void DeviceMainWindow::blinkRxIndicator()
+{
+    // Turn on the green LED
+    m_rxIndicator->setStyleSheet(
+        "QLabel {"
+        "    background-color: #00FF00;"  // Bright green when active
+        "    border-radius: 6px;"
+        "    border: 1px solid #333;"
+        "}"
+    );
+    
+    // Start timer to turn it off after 50ms
+    m_rxBlinkTimer->start(50);
+}
+
+void DeviceMainWindow::onTxBlinkTimeout()
+{
+    // Turn off the red LED
+    m_txIndicator->setStyleSheet(
+        "QLabel {"
+        "    background-color: #400000;"  // Dark red when off
+        "    border-radius: 6px;"
+        "    border: 1px solid #333;"
+        "}"
+    );
+}
+
+void DeviceMainWindow::onRxBlinkTimeout()
+{
+    // Turn off the green LED
+    m_rxIndicator->setStyleSheet(
+        "QLabel {"
+        "    background-color: #004000;"  // Dark green when off
+        "    border-radius: 6px;"
+        "    border: 1px solid #333;"
+        "}"
+    );
 }

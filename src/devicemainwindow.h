@@ -126,8 +126,17 @@ private:
                           uint8_t intensity, uint8_t programId, uint8_t programColorSeqIndex,
                           uint8_t programIntensity, uint8_t programRate,
                           uint8_t programColorSequence, bool zoneEnabled);
+    
+    // Activity indicator methods
+    void setupActivityIndicators();
+    void blinkTxIndicator();
+    void blinkRxIndicator();
 
 private slots:
+    // Activity indicator slots
+    void onTxBlinkTimeout();
+    void onRxBlinkTimeout();
+    
     // Poco device dialog slots
     void onPocoSwitchActionRequested(uint8_t deviceAddress, uint8_t switchId, uint8_t actionId);
     void onPocoColorControlRequested(uint8_t deviceAddress);
@@ -155,6 +164,12 @@ private:
     QLabel* m_statusLabel;
     QTimer* m_updateTimer;
     QComboBox* m_canInterfaceCombo;
+    
+    // Activity indicators
+    QLabel* m_txIndicator;
+    QLabel* m_rxIndicator;
+    QTimer* m_txBlinkTimer;
+    QTimer* m_rxBlinkTimer;
     
     // NMEA2000 Components
     tN2kDeviceList* m_deviceList;
