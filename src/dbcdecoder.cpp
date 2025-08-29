@@ -706,11 +706,7 @@ DecodedMessage DBCDecoder::decodePGN130561(const tN2kMsg& msg)
     DecodedSignal sigRed;
     sigRed.name = "Red";
     sigRed.isValid = true;
-    if (red == 255) {
-        sigRed.value = "Not Available";
-    } else {
-        sigRed.value = QString("%1 (%2%)").arg(red).arg((red * 100.0 / 255.0), 0, 'f', 1);
-    }
+    sigRed.value = QString("%1 (%2%)").arg(red).arg((red * 100.0 / 255.0), 0, 'f', 1);
     decoded.signalList.append(sigRed);
 
     // Field 4 - Green Component (0-255)
@@ -718,11 +714,7 @@ DecodedMessage DBCDecoder::decodePGN130561(const tN2kMsg& msg)
     DecodedSignal sigGreen;
     sigGreen.name = "Green";
     sigGreen.isValid = true;
-    if (green == 255) {
-        sigGreen.value = "Not Available";
-    } else {
-        sigGreen.value = QString("%1 (%2%)").arg(green).arg((green * 100.0 / 255.0), 0, 'f', 1);
-    }
+    sigGreen.value = QString("%1 (%2%)").arg(green).arg((green * 100.0 / 255.0), 0, 'f', 1);
     decoded.signalList.append(sigGreen);
 
     // Field 5 - Blue Component (0-255)
@@ -730,11 +722,7 @@ DecodedMessage DBCDecoder::decodePGN130561(const tN2kMsg& msg)
     DecodedSignal sigBlue;
     sigBlue.name = "Blue";
     sigBlue.isValid = true;
-    if (blue == 255) {
-        sigBlue.value = "Not Available";
-    } else {
-        sigBlue.value = QString("%1 (%2%)").arg(blue).arg((blue * 100.0 / 255.0), 0, 'f', 1);
-    }
+    sigBlue.value = QString("%1 (%2%)").arg(blue).arg((blue * 100.0 / 255.0), 0, 'f', 1);
     decoded.signalList.append(sigBlue);
 
     // Field 6 - Color Temperature (0-65535)
@@ -754,10 +742,10 @@ DecodedMessage DBCDecoder::decodePGN130561(const tN2kMsg& msg)
     DecodedSignal sigIntensity;
     sigIntensity.name = "Intensity";
     sigIntensity.isValid = true;
-    if (intensity == 255) {
-        sigIntensity.value = "Not Available";
+    if (intensity <= 200) {
+        sigIntensity.value = QString("%1 (%2%)").arg(intensity).arg((intensity / 2.0), 0, 'f', 1);
     } else {
-        sigIntensity.value = QString("%1 (%2%)").arg(intensity).arg((intensity * 100.0 / 255.0), 0, 'f', 1);
+        sigIntensity.value = QString("Out of range (%1)").arg(intensity);
     }
     decoded.signalList.append(sigIntensity);    
 
@@ -766,7 +754,7 @@ DecodedMessage DBCDecoder::decodePGN130561(const tN2kMsg& msg)
     DecodedSignal sigProgramId;
     sigProgramId.name = "Program Id";
     sigProgramId.isValid = true;
-    if (programId == 255) {
+    if (programId >= 252) {
         sigProgramId.value = "Not Available";
     } else {
         sigProgramId.value = QString::number(programId);
@@ -778,7 +766,7 @@ DecodedMessage DBCDecoder::decodePGN130561(const tN2kMsg& msg)
     DecodedSignal sigProgramColorSeqIndex;
     sigProgramColorSeqIndex.name = "Color Seq Index";
     sigProgramColorSeqIndex.isValid = true;
-    if (programColorSeqIndex == 255) {
+    if (programColorSeqIndex >= 252) {
         sigProgramColorSeqIndex.value = "Not Available";
     } else {
         sigProgramColorSeqIndex.value = QString::number(programColorSeqIndex);
