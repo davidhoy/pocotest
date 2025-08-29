@@ -65,6 +65,10 @@ private:
     void updateWindowTitle();  // Update window title based on current state
     bool messagePassesFilter(const tN2kMsg& msg);
     void addLoadedMessage(const tN2kMsg& msg, const QString& originalTimestamp);
+    
+    // Format parsing helpers for loading logs
+    bool parseOlderFormatLine(const QString& line, tN2kMsg& msg, QString& timestamp);
+    bool parseNewerFormatLine(const QString& line, tN2kMsg& msg, QString& timestamp);
 
 private:
     QTableWidget* m_logTable;
