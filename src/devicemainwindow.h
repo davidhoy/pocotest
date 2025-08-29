@@ -41,6 +41,9 @@ public:
     // Conflict analysis interface
     bool hasInstanceConflicts() const;
     int getConflictCount() const;
+    
+    // Device name resolution
+    QString getDeviceName(uint8_t deviceAddress) const;
 
 private slots:
     void updateDeviceList();

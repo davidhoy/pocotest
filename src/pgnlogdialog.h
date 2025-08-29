@@ -18,6 +18,7 @@
 #include <QSet>
 #include <QMenu>
 #include <QSettings>
+#include <functional>
 #include <N2kMsg.h>
 #include "dbcdecoder.h"
 
@@ -26,6 +27,9 @@ class PGNLogDialog : public QDialog
     Q_OBJECT
 
 public:
+    // Function type for device name resolution
+    typedef std::function<QString(uint8_t)> DeviceNameResolver;
+    
     explicit PGNLogDialog(QWidget *parent = nullptr);
     ~PGNLogDialog();
     
@@ -36,6 +40,9 @@ public:
     void setFilterLogic(bool useOrLogic); // true for OR, false for AND
     void updateDeviceList(const QStringList& devices);
     void clearAllFilters(); // Clear all filters and reset to default view
+    
+    // Set device name resolver function
+    void setDeviceNameResolver(DeviceNameResolver resolver);
 
 private slots:
     void clearLog();
@@ -125,6 +132,9 @@ private:
     
     // PGN filtering state
     QSet<uint32_t> m_ignoredPgns;
+    
+    // Device name resolution
+    DeviceNameResolver m_deviceNameResolver;
     
     // PGN filtering helper methods
     void addPgnToIgnoreList(uint32_t pgn);

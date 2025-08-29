@@ -716,6 +716,12 @@ void DeviceMainWindow::showPGNLog()
     if (!m_pgnLogDialog) {
         qDebug() << "showPGNLog: Creating new PGNLogDialog...";
         m_pgnLogDialog = new PGNLogDialog(this);
+        
+        // Set up device name resolver
+        m_pgnLogDialog->setDeviceNameResolver([this](uint8_t address) {
+            return getDeviceName(address);
+        });
+        
         qDebug() << "showPGNLog: PGNLogDialog created successfully";
     }
     
@@ -884,6 +890,11 @@ void DeviceMainWindow::showPGNLogForDevice(uint8_t sourceAddress)
     // Show PGN log dialog filtered for this specific device
     if (!m_pgnLogDialog) {
         m_pgnLogDialog = new PGNLogDialog(this);
+        
+        // Set up device name resolver
+        m_pgnLogDialog->setDeviceNameResolver([this](uint8_t address) {
+            return getDeviceName(address);
+        });
     }
     
     // Ensure the device list is up to date before setting filters
@@ -972,6 +983,23 @@ QString DeviceMainWindow::getPGNName(unsigned long pgn) {
         case 61184: return "Lumitec Poco Proprietary";
         default: return QString("PGN %1").arg(pgn);
     }
+}
+
+QString DeviceMainWindow::getDeviceName(uint8_t deviceAddress) const {
+    // Search the device table for the given address
+    for (int row = 0; row < m_deviceTable->rowCount(); row++) {
+        QTableWidgetItem* nodeItem = m_deviceTable->item(row, 0);
+        if (nodeItem && nodeItem->text().toUInt(nullptr, 16) == deviceAddress) {
+            QTableWidgetItem* nameItem = m_deviceTable->item(row, 1);
+            if (nameItem && !nameItem->text().isEmpty()) {
+                return nameItem->text();
+            }
+            break;
+        }
+    }
+    
+    // Return address if device name not found
+    return QString("0x%1").arg(deviceAddress, 2, 16, QChar('0'));
 }
 
 // Lumitec Poco Message Handling

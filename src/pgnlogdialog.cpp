@@ -624,6 +624,7 @@ void PGNLogDialog::onSaveLogClicked()
     out << "#\n";
     out << "# Format: TIMESTAMP | PGN | PRIORITY | SOURCE | DESTINATION | LENGTH | RAW_DATA\n";
     out << "# All values are preserved in original format for exact reconstruction\n";
+    out << "# Device names are included in decoded comments for readability\n";
     out << "#\n";
     
     // Write all log entries in structured format
@@ -648,14 +649,41 @@ void PGNLogDialog::onSaveLogClicked()
         messageData << timestamp << pgn << priority << source << destination << length << rawData;
         out << messageData.join(" | ") << "\n";
         
-        // Append current decoded information as human-readable comments (without reserved fields)
+        // Append current decoded information as human-readable comments with device names
         QString messageName = m_logTable->item(row, 2) ? m_logTable->item(row, 2)->text() : "";
         
-        if (!messageName.isEmpty() && messageName != QString("PGN %1").arg(pgn)) {
-            out << "#   Message: " << pgn << " - " << messageName << "\n";
+        // Get device names for the comments section
+        QString sourceName = "";
+        QString destName = "";
+        
+        if (m_deviceNameResolver) {
+            bool ok;
+            uint8_t srcAddr = source.toUInt(&ok, 16);
+            if (ok) {
+                sourceName = m_deviceNameResolver(srcAddr);
+            }
+            
+            uint8_t destAddr = destination.toUInt(&ok, 16);
+            if (ok) {
+                destName = m_deviceNameResolver(destAddr);
+                if (destAddr == 255) {
+                    destName = "Broadcast";
+                }
+            }
         }
         
-        // Reconstruct message for clean decoding without reserved fields
+        // Add device name information in comments
+        if (!sourceName.isEmpty() || !destName.isEmpty()) {
+            out << QString("#   Devices: %1 (0x%2) -> %3 (0x%4)\n")
+                   .arg(sourceName.isEmpty() ? "Unknown" : sourceName)
+                   .arg(source)
+                   .arg(destName.isEmpty() ? "Unknown" : destName)
+                   .arg(destination);
+        }
+
+        if (!messageName.isEmpty() && messageName != QString("PGN %1").arg(pgn)) {
+            out << "#   Message: " << pgn << " - " << messageName << "\n";
+        }        // Reconstruct message for clean decoding without reserved fields
         if (m_dbcDecoder && m_decodingEnabled->isChecked()) {
             bool ok;
             uint32_t pgnNum = pgn.toUInt(&ok);
@@ -1446,60 +1474,113 @@ bool PGNLogDialog::parseOlderFormatLine(const QString& line, tN2kMsg& msg, QStri
 
 bool PGNLogDialog::parseNewerFormatLine(const QString& line, tN2kMsg& msg, QString& timestamp)
 {
-    // Parse newer format: TIMESTAMP | PGN | PRIORITY | SOURCE | DESTINATION | LENGTH | RAW_DATA
+    // Parse formats - try newest format first (with device names), then fall back to older
     QStringList parts = line.split("|");
-    if (parts.size() != 7) {
-        return false;
-    }
     
-    // Extract message data (trim spaces for compatibility)
-    timestamp = parts[0].trimmed();
-    QString pgnStr = parts[1].trimmed();
-    QString priorityStr = parts[2].trimmed();
-    QString sourceStr = parts[3].trimmed();
-    QString destStr = parts[4].trimmed();
-    QString lengthStr = parts[5].trimmed();
-    QString rawDataStr = parts[6].trimmed();
-    
-    // Validate and convert data
-    bool ok;
-    uint32_t pgn = pgnStr.toUInt(&ok);
-    if (!ok) return false;
-    
-    uint8_t priority = priorityStr.toUInt(&ok);
-    if (!ok) priority = 6; // Default priority
-    
-    uint8_t source = sourceStr.toUInt(&ok, 16);
-    if (!ok) source = 0;
-    
-    uint8_t destination = destStr.toUInt(&ok, 16);
-    if (!ok) destination = 255;
-    
-    uint8_t dataLen = lengthStr.toUInt(&ok);
-    if (!ok) dataLen = 0;
-    
-    // Parse raw data (space-separated hex bytes)
-    QStringList hexBytes = rawDataStr.split(" ", Qt::SkipEmptyParts);
-    
-    // Build the message
-    msg.PGN = pgn;
-    msg.Priority = priority;
-    msg.Source = source;
-    msg.Destination = destination;
-    msg.DataLen = qMin(dataLen, (uint8_t)hexBytes.size());
-    
-    // Parse hex data into byte array
-    for (int i = 0; i < msg.DataLen && i < hexBytes.size(); i++) {
-        bool hexOk;
-        uint8_t byteVal = hexBytes[i].toUInt(&hexOk, 16);
-        if (hexOk) {
-            msg.Data[i] = byteVal;
-        } else {
-            msg.Data[i] = 0;
+    if (parts.size() == 9) {
+        // Newest format: TIMESTAMP | PGN | PRIORITY | SOURCE | SOURCE_NAME | DESTINATION | DEST_NAME | LENGTH | RAW_DATA
+        timestamp = parts[0].trimmed();
+        QString pgnStr = parts[1].trimmed();
+        QString priorityStr = parts[2].trimmed();
+        QString sourceStr = parts[3].trimmed();
+        // parts[4] is source name (we ignore for parsing)
+        QString destStr = parts[5].trimmed();
+        // parts[6] is dest name (we ignore for parsing) 
+        QString lengthStr = parts[7].trimmed();
+        QString rawDataStr = parts[8].trimmed();
+        
+        // Validate and convert data
+        bool ok;
+        uint32_t pgn = pgnStr.toUInt(&ok);
+        if (!ok) return false;
+        
+        uint8_t priority = priorityStr.toUInt(&ok);
+        if (!ok) priority = 6; // Default priority
+        
+        uint8_t source = sourceStr.toUInt(&ok, 16);
+        if (!ok) source = 0;
+        
+        uint8_t destination = destStr.toUInt(&ok, 16);
+        if (!ok) destination = 255;
+        
+        uint8_t dataLen = lengthStr.toUInt(&ok);
+        if (!ok) dataLen = 0;
+        
+        // Parse hex data
+        QStringList hexBytes = rawDataStr.split(" ", Qt::SkipEmptyParts);
+        
+        // Construct N2K message
+        msg.PGN = pgn;
+        msg.Priority = priority;
+        msg.Source = source;
+        msg.Destination = destination;
+        msg.DataLen = qMin(dataLen, (uint8_t)8);
+        
+        // Parse data bytes
+        for (int i = 0; i < msg.DataLen && i < hexBytes.size(); i++) {
+            bool hexOk;
+            uint8_t byteVal = hexBytes[i].toUInt(&hexOk, 16);
+            if (hexOk) {
+                msg.Data[i] = byteVal;
+            } else {
+                msg.Data[i] = 0;
+            }
         }
+        
+        return true;
+    }
+    else if (parts.size() == 7) {
+        // Older format: TIMESTAMP | PGN | PRIORITY | SOURCE | DESTINATION | LENGTH | RAW_DATA
+        timestamp = parts[0].trimmed();
+        QString pgnStr = parts[1].trimmed();
+        QString priorityStr = parts[2].trimmed();
+        QString sourceStr = parts[3].trimmed();
+        QString destStr = parts[4].trimmed();
+        QString lengthStr = parts[5].trimmed();
+        QString rawDataStr = parts[6].trimmed();
+        
+        // Validate and convert data (same as before)
+        bool ok;
+        uint32_t pgn = pgnStr.toUInt(&ok);
+        if (!ok) return false;
+        
+        uint8_t priority = priorityStr.toUInt(&ok);
+        if (!ok) priority = 6; // Default priority
+        
+        uint8_t source = sourceStr.toUInt(&ok, 16);
+        if (!ok) source = 0;
+        
+        uint8_t destination = destStr.toUInt(&ok, 16);
+        if (!ok) destination = 255;
+        
+        uint8_t dataLen = lengthStr.toUInt(&ok);
+        if (!ok) dataLen = 0;
+        
+        // Parse hex data
+        QStringList hexBytes = rawDataStr.split(" ", Qt::SkipEmptyParts);
+        
+        // Construct N2K message
+        msg.PGN = pgn;
+        msg.Priority = priority;
+        msg.Source = source;
+        msg.Destination = destination;
+        msg.DataLen = qMin(dataLen, (uint8_t)8);
+        
+        // Parse data bytes
+        for (int i = 0; i < msg.DataLen && i < hexBytes.size(); i++) {
+            bool hexOk;
+            uint8_t byteVal = hexBytes[i].toUInt(&hexOk, 16);
+            if (hexOk) {
+                msg.Data[i] = byteVal;
+            } else {
+                msg.Data[i] = 0;
+            }
+        }
+        
+        return true;
     }
     
-    return true;
+    return false; // Unsupported format
 }
 
 
@@ -1754,4 +1835,9 @@ void PGNLogDialog::loadSettings()
     }
     
     settings.endGroup();
+}
+
+void PGNLogDialog::setDeviceNameResolver(DeviceNameResolver resolver)
+{
+    m_deviceNameResolver = resolver;
 }
