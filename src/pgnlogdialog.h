@@ -12,6 +12,12 @@
 #include <QCheckBox>
 #include <QDateTime>
 #include <QVector>
+#include <QLineEdit>
+#include <QListWidget>
+#include <QGroupBox>
+#include <QSet>
+#include <QMenu>
+#include <QSettings>
 #include <N2kMsg.h>
 #include "dbcdecoder.h"
 
@@ -46,6 +52,11 @@ private slots:
     void onPauseClicked();
     void onStartClicked();
     void onStopClicked();
+    void onAddPgnIgnore();
+    void onRemovePgnIgnore();
+    void onAddCommonNoisyPgns();
+    void onTableContextMenu(const QPoint& position);
+    void onPgnFilteringToggled(bool enabled);
 
 public:
     enum TimestampMode {
@@ -65,6 +76,7 @@ private:
     void updateWindowTitle();  // Update window title based on current state
     bool messagePassesFilter(const tN2kMsg& msg);
     void addLoadedMessage(const tN2kMsg& msg, const QString& originalTimestamp);
+    void refreshTableFilter(); // Re-apply filters to existing table rows
     
     // Format parsing helpers for loading logs
     bool parseOlderFormatLine(const QString& line, tN2kMsg& msg, QString& timestamp);
@@ -103,6 +115,26 @@ private:
     
     // Original DBC Decoder - stable and fast
     DBCDecoder* m_dbcDecoder;
+    
+    // PGN filtering UI elements
+    QLineEdit* m_pgnIgnoreEdit;
+    QPushButton* m_addPgnIgnoreButton;
+    QPushButton* m_removePgnIgnoreButton;
+    QListWidget* m_pgnIgnoreList;
+    QCheckBox* m_pgnFilteringEnabled;
+    
+    // PGN filtering state
+    QSet<uint32_t> m_ignoredPgns;
+    
+    // PGN filtering helper methods
+    void addPgnToIgnoreList(uint32_t pgn);
+    void removePgnFromIgnoreList(uint32_t pgn);
+    void setIgnoredPgns(const QSet<uint32_t>& pgns);
+    QSet<uint32_t> getIgnoredPgns() const { return m_ignoredPgns; }
+    
+    // Settings persistence
+    void saveSettings();
+    void loadSettings();
 };
 
 #endif // PGNLOGDIALOG_H

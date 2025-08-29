@@ -31,6 +31,11 @@ PGNLogDialog::PGNLogDialog(QWidget *parent)
     , m_showingLoadedLog(false)  // Initially showing live log
     , m_loadedLogFileName("")    // No loaded log initially
     , m_dbcDecoder(nullptr)      // Will be initialized in constructor body
+    , m_pgnIgnoreEdit(nullptr)
+    , m_addPgnIgnoreButton(nullptr)
+    , m_removePgnIgnoreButton(nullptr)
+    , m_pgnIgnoreList(nullptr)
+    , m_pgnFilteringEnabled(nullptr)
 {
     qDebug() << "PGNLogDialog constructor: Starting...";
     
@@ -53,11 +58,16 @@ PGNLogDialog::PGNLogDialog(QWidget *parent)
     setModal(false);
     resize(900, 700);
     
+    // Load saved settings
+    loadSettings();
+    
     qDebug() << "PGNLogDialog constructor: Completed successfully";
 }
 
 PGNLogDialog::~PGNLogDialog()
 {
+    // Save settings when dialog is destroyed
+    saveSettings();
 }
 
 void PGNLogDialog::setupUI()
@@ -138,7 +148,61 @@ void PGNLogDialog::setupUI()
     connect(m_filterLogicCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &PGNLogDialog::onFilterLogicChanged);
     connect(m_clearFiltersButton, &QPushButton::clicked, this, &PGNLogDialog::onClearFilters);
-    connect(m_decodingEnabled, &QCheckBox::toggled, this, &PGNLogDialog::onToggleDecoding);
+    
+    // PGN Filtering Section - Compact layout
+    QGroupBox* pgnFilterGroup = new QGroupBox("PGN Filtering");
+    pgnFilterGroup->setMaximumHeight(85);
+    QHBoxLayout* pgnFilterLayout = new QHBoxLayout(pgnFilterGroup);
+    pgnFilterLayout->setContentsMargins(6, 6, 6, 6);
+    pgnFilterLayout->setSpacing(8);
+    
+    // Enable/disable checkbox
+    m_pgnFilteringEnabled = new QCheckBox("Enable");
+    m_pgnFilteringEnabled->setChecked(true);
+    m_pgnFilteringEnabled->setToolTip("Enable or disable PGN message filtering");
+    pgnFilterLayout->addWidget(m_pgnFilteringEnabled);
+    pgnFilterLayout->addSpacing(8);
+    
+    // Left side: PGN input controls
+    pgnFilterLayout->addWidget(new QLabel("Ignore PGN:"));
+    m_pgnIgnoreEdit = new QLineEdit();
+    m_pgnIgnoreEdit->setPlaceholderText("e.g., 127251");
+    m_pgnIgnoreEdit->setFixedWidth(80);
+    pgnFilterLayout->addWidget(m_pgnIgnoreEdit);
+    
+    m_addPgnIgnoreButton = new QPushButton("Add");
+    m_addPgnIgnoreButton->setFixedWidth(45);
+    pgnFilterLayout->addWidget(m_addPgnIgnoreButton);
+    
+    m_removePgnIgnoreButton = new QPushButton("Remove");
+    m_removePgnIgnoreButton->setFixedWidth(60);
+    pgnFilterLayout->addWidget(m_removePgnIgnoreButton);
+    
+    QPushButton* addCommonNoisyButton = new QPushButton("Add Common");
+    addCommonNoisyButton->setFixedWidth(85);
+    addCommonNoisyButton->setToolTip("Add frequently transmitted PGNs like position, heading, etc.");
+    pgnFilterLayout->addWidget(addCommonNoisyButton);
+    
+    pgnFilterLayout->addSpacing(10);
+    
+    // Right side: Ignored PGNs list
+    pgnFilterLayout->addWidget(new QLabel("Ignored:"));
+    m_pgnIgnoreList = new QListWidget();
+    m_pgnIgnoreList->setMaximumHeight(50);
+    m_pgnIgnoreList->setToolTip("List of PGN message types being filtered out");
+    pgnFilterLayout->addWidget(m_pgnIgnoreList);
+    
+    mainLayout->addWidget(pgnFilterGroup);
+    
+    // Connect PGN filter signals
+    connect(m_addPgnIgnoreButton, &QPushButton::clicked, this, &PGNLogDialog::onAddPgnIgnore);
+    connect(m_removePgnIgnoreButton, &QPushButton::clicked, this, &PGNLogDialog::onRemovePgnIgnore);
+    connect(addCommonNoisyButton, &QPushButton::clicked, this, &PGNLogDialog::onAddCommonNoisyPgns);
+    connect(m_pgnIgnoreEdit, &QLineEdit::returnPressed, this, &PGNLogDialog::onAddPgnIgnore);
+    connect(m_pgnFilteringEnabled, &QCheckBox::toggled, this, &PGNLogDialog::onPgnFilteringToggled);
+    
+    // DBC Decoding and Timestamp options
+    QHBoxLayout* optionsLayout = new QHBoxLayout();
     
     // Timestamp mode control
     m_timestampModeCheck = new QCheckBox("Show relative timestamps (ms)");
@@ -146,11 +210,20 @@ void PGNLogDialog::setupUI()
     connect(m_timestampModeCheck, &QCheckBox::toggled, this, [this](bool checked) {
         setTimestampMode(checked ? Relative : Absolute);
     });
+    optionsLayout->addWidget(m_timestampModeCheck);
+    
+    optionsLayout->addSpacing(20);
 
     // DBC Decoding option
     m_decodingEnabled = new QCheckBox("Enable DBC Decoding");
     m_decodingEnabled->setChecked(true); // Default to enabled
     m_decodingEnabled->setToolTip("Decode known NMEA2000 messages using DBC definitions");
+    optionsLayout->addWidget(m_decodingEnabled);
+    
+    optionsLayout->addStretch();
+    mainLayout->addLayout(optionsLayout);
+    
+    connect(m_decodingEnabled, &QCheckBox::toggled, this, &PGNLogDialog::onToggleDecoding);
 
     // Log table
     m_logTable = new QTableWidget();
@@ -181,8 +254,11 @@ void PGNLogDialog::setupUI()
     // Connect table click signal
     connect(m_logTable, &QTableWidget::cellClicked, this, &PGNLogDialog::onTableItemClicked);
     
-    mainLayout->addWidget(m_timestampModeCheck);
-    mainLayout->addWidget(m_decodingEnabled);
+    // Enable context menu for right-click to add PGN to filter
+    m_logTable->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_logTable, &QTableWidget::customContextMenuRequested, 
+            this, &PGNLogDialog::onTableContextMenu);
+    
     mainLayout->addWidget(m_logTable);
     
     // Buttons
@@ -1048,6 +1124,11 @@ void PGNLogDialog::updateStatusLabel()
 
 bool PGNLogDialog::messagePassesFilter(const tN2kMsg& msg)
 {
+    // First check PGN filtering - if enabled and PGN is ignored, reject immediately
+    if (m_pgnFilteringEnabled && m_pgnFilteringEnabled->isChecked() && m_ignoredPgns.contains(msg.PGN)) {
+        return false;
+    }
+    
     bool sourceMatch = true;
     bool destMatch = true;
     
@@ -1103,6 +1184,99 @@ void PGNLogDialog::onToggleDecoding(bool enabled)
     // This slot is called when the decoding checkbox is toggled
     // No immediate action needed - the appendMessage functions will check the checkbox state
     Q_UNUSED(enabled);
+}
+
+void PGNLogDialog::refreshTableFilter()
+{
+    if (!m_logTable) {
+        return;
+    }
+    
+    int filteredCount = 0;
+    int totalRows = m_logTable->rowCount();
+    
+    for (int row = 0; row < totalRows; ++row) {
+        bool shouldShow = true;
+        
+        // Get PGN from column 1
+        QTableWidgetItem* pgnItem = m_logTable->item(row, 1);
+        if (pgnItem) {
+            bool ok;
+            uint32_t pgn = pgnItem->text().toUInt(&ok);
+            if (ok && m_pgnFilteringEnabled && m_pgnFilteringEnabled->isChecked() && m_ignoredPgns.contains(pgn)) {
+                shouldShow = false;
+            }
+        }
+        
+        // If PGN filtering passes, check source/destination filters
+        if (shouldShow) {
+            // Create a minimal tN2kMsg structure for filter checking
+            tN2kMsg testMsg;
+            
+            // Get source from column 4
+            QTableWidgetItem* srcItem = m_logTable->item(row, 4);
+            if (srcItem) {
+                bool ok;
+                testMsg.Source = srcItem->text().toUInt(&ok);
+                if (!ok) testMsg.Source = 255; // Default to broadcast
+            }
+            
+            // Get destination from column 5  
+            QTableWidgetItem* destItem = m_logTable->item(row, 5);
+            if (destItem) {
+                bool ok;
+                testMsg.Destination = destItem->text().toUInt(&ok);
+                if (!ok) testMsg.Destination = 255; // Default to broadcast
+            }
+            
+            // Get PGN for the message structure
+            if (pgnItem) {
+                bool ok;
+                testMsg.PGN = pgnItem->text().toUInt(&ok);
+                if (!ok) testMsg.PGN = 0;
+            }
+            
+            // Apply source/destination filtering logic (skip PGN check since we already did it)
+            bool sourceMatch = true;
+            bool destMatch = true;
+            
+            if (m_sourceFilterActive) {
+                sourceMatch = (testMsg.Source == m_sourceFilter);
+            }
+            
+            if (m_destinationFilterActive) {
+                destMatch = (testMsg.Destination == m_destinationFilter);
+            }
+            
+            // Apply logic
+            if (m_useAndLogic) {
+                if (m_sourceFilterActive && m_destinationFilterActive) {
+                    shouldShow = sourceMatch && destMatch;
+                } else if (m_sourceFilterActive) {
+                    shouldShow = sourceMatch;
+                } else if (m_destinationFilterActive) {
+                    shouldShow = destMatch;
+                }
+            } else {
+                if (m_sourceFilterActive && m_destinationFilterActive) {
+                    shouldShow = sourceMatch || destMatch;
+                } else if (m_sourceFilterActive) {
+                    shouldShow = sourceMatch;
+                } else if (m_destinationFilterActive) {
+                    shouldShow = destMatch;
+                }
+            }
+        }
+        
+        // Hide or show the row
+        m_logTable->setRowHidden(row, !shouldShow);
+        
+        if (!shouldShow) {
+            filteredCount++;
+        }
+    }
+    
+    updateStatusLabel();
 }
 
 void PGNLogDialog::onTableItemClicked(int row, int column)
@@ -1326,4 +1500,258 @@ bool PGNLogDialog::parseNewerFormatLine(const QString& line, tN2kMsg& msg, QStri
     }
     
     return true;
+}
+
+
+// PGN Filtering Methods
+void PGNLogDialog::onAddPgnIgnore()
+{
+    bool ok;
+    QString text = m_pgnIgnoreEdit->text().trimmed();
+    uint32_t pgn = text.toUInt(&ok);
+    
+    if (!ok || pgn == 0) {
+        QMessageBox::warning(this, "Invalid PGN", "Please enter a valid PGN number (e.g., 127251)");
+        return;
+    }
+    
+    if (m_ignoredPgns.contains(pgn)) {
+        QMessageBox::information(this, "PGN Already Ignored", QString("PGN %1 is already in the ignore list.").arg(pgn));
+        return;
+    }
+    
+    addPgnToIgnoreList(pgn);
+    m_pgnIgnoreEdit->clear();
+    updateStatusLabel();
+}
+
+void PGNLogDialog::onRemovePgnIgnore()
+{
+    QListWidgetItem* currentItem = m_pgnIgnoreList->currentItem();
+    if (!currentItem) {
+        QMessageBox::information(this, "No Selection", "Please select a PGN from the list to remove.");
+        return;
+    }
+    
+    QString itemText = currentItem->text();
+    QString pgnStr = itemText.split(" ").first();
+    bool ok;
+    uint32_t pgn = pgnStr.toUInt(&ok);
+    
+    if (ok) {
+        removePgnFromIgnoreList(pgn);
+        updateStatusLabel();
+    }
+}
+
+void PGNLogDialog::onAddCommonNoisyPgns()
+{
+    QSet<uint32_t> commonNoisyPgns = {
+        127250, 127251, 127257, 127258, 128259, 128267,
+        129025, 129026, 129029, 129033, 129539, 129540
+    };
+    
+    int addedCount = 0;
+    for (uint32_t pgn : commonNoisyPgns) {
+        if (!m_ignoredPgns.contains(pgn)) {
+            addPgnToIgnoreList(pgn);
+            addedCount++;
+        }
+    }
+    
+    if (addedCount > 0) {
+        updateStatusLabel();
+        QMessageBox::information(this, "Common Noisy PGNs Added", 
+                               QString("Added %1 common noisy PGNs to the ignore list.").arg(addedCount));
+    }
+}
+
+void PGNLogDialog::addPgnToIgnoreList(uint32_t pgn)
+{
+    m_ignoredPgns.insert(pgn);
+    
+    QString displayText = QString::number(pgn);
+    if (m_dbcDecoder && m_dbcDecoder->canDecode(pgn)) {
+        QString messageName = m_dbcDecoder->getCleanMessageName(pgn);
+        if (!messageName.isEmpty() && !messageName.startsWith("PGN")) {
+            displayText += QString(" (%1)").arg(messageName);
+        }
+    }
+    m_pgnIgnoreList->addItem(displayText);
+    m_pgnIgnoreList->sortItems();
+    
+    updateStatusLabel();
+    refreshTableFilter(); // Apply new filter to existing table rows
+    saveSettings(); // Persist the change
+}
+
+void PGNLogDialog::removePgnFromIgnoreList(uint32_t pgn)
+{
+    m_ignoredPgns.remove(pgn);
+    
+    for (int i = 0; i < m_pgnIgnoreList->count(); i++) {
+        QListWidgetItem* item = m_pgnIgnoreList->item(i);
+        QString itemText = item->text();
+        QString pgnStr = itemText.split(" ").first();
+        bool ok;
+        uint32_t itemPgn = pgnStr.toUInt(&ok);
+        if (ok && itemPgn == pgn) {
+            delete m_pgnIgnoreList->takeItem(i);
+            break;
+        }
+    }
+    
+    updateStatusLabel();
+    refreshTableFilter(); // Apply updated filter to existing table rows
+    saveSettings(); // Persist the change
+}
+
+void PGNLogDialog::setIgnoredPgns(const QSet<uint32_t>& pgns)
+{
+    m_ignoredPgns = pgns;
+    
+    m_pgnIgnoreList->clear();
+    for (uint32_t pgn : m_ignoredPgns) {
+        QString displayText = QString::number(pgn);
+        if (m_dbcDecoder && m_dbcDecoder->canDecode(pgn)) {
+            QString messageName = m_dbcDecoder->getCleanMessageName(pgn);
+            if (!messageName.isEmpty() && !messageName.startsWith("PGN")) {
+                displayText += QString(" (%1)").arg(messageName);
+            }
+        }
+        m_pgnIgnoreList->addItem(displayText);
+    }
+    m_pgnIgnoreList->sortItems();
+    
+    updateStatusLabel();
+    refreshTableFilter(); // Apply updated filters to existing table rows
+}
+
+void PGNLogDialog::onTableContextMenu(const QPoint& position)
+{
+    QTableWidgetItem* item = m_logTable->itemAt(position);
+    if (!item) {
+        return; // No item at this position
+    }
+    
+    int row = item->row();
+    
+    // Get the PGN from column 1 (PGN column)
+    QTableWidgetItem* pgnItem = m_logTable->item(row, 1);
+    if (!pgnItem) {
+        return; // No PGN data in this row
+    }
+    
+    bool ok;
+    uint32_t pgn = pgnItem->text().toUInt(&ok);
+    if (!ok) {
+        return; // Invalid PGN value
+    }
+    
+    // Get message name from column 2 for display
+    QString messageName;
+    QTableWidgetItem* nameItem = m_logTable->item(row, 2);
+    if (nameItem) {
+        messageName = nameItem->text();
+    }
+    
+    // Create context menu
+    QMenu* contextMenu = new QMenu(this);
+    
+    QString menuText;
+    if (m_ignoredPgns.contains(pgn)) {
+        // PGN is already in ignore list - offer to remove it
+        menuText = QString("Remove PGN %1 from filter list").arg(pgn);
+        if (!messageName.isEmpty() && !messageName.startsWith("PGN")) {
+            menuText += QString(" (%1)").arg(messageName);
+        }
+        
+        QAction* removeAction = contextMenu->addAction(menuText);
+        connect(removeAction, &QAction::triggered, [this, pgn]() {
+            removePgnFromIgnoreList(pgn);
+        });
+    } else {
+        // PGN is not in ignore list - offer to add it
+        menuText = QString("Add PGN %1 to filter list").arg(pgn);
+        if (!messageName.isEmpty() && !messageName.startsWith("PGN")) {
+            menuText += QString(" (%1)").arg(messageName);
+        }
+        
+        QAction* addAction = contextMenu->addAction(menuText);
+        connect(addAction, &QAction::triggered, [this, pgn]() {
+            addPgnToIgnoreList(pgn);
+        });
+    }
+    
+    // Show the context menu at the cursor position
+    contextMenu->exec(m_logTable->mapToGlobal(position));
+    
+    // Clean up
+    contextMenu->deleteLater();
+}
+
+void PGNLogDialog::onPgnFilteringToggled(bool enabled)
+{
+    // Enable/disable PGN filtering controls
+    m_pgnIgnoreEdit->setEnabled(enabled);
+    m_addPgnIgnoreButton->setEnabled(enabled);
+    m_removePgnIgnoreButton->setEnabled(enabled);
+    m_pgnIgnoreList->setEnabled(enabled);
+    
+    // Refresh the table to apply/remove PGN filtering
+    refreshTableFilter();
+    
+    // Save the setting immediately
+    saveSettings();
+}
+
+void PGNLogDialog::saveSettings()
+{
+    QSettings settings;
+    settings.beginGroup("PGNLogDialog");
+    
+    // Save PGN filtering enabled state
+    if (m_pgnFilteringEnabled) {
+        settings.setValue("pgnFilteringEnabled", m_pgnFilteringEnabled->isChecked());
+    }
+    
+    // Save ignored PGNs list
+    QStringList pgnList;
+    for (uint32_t pgn : m_ignoredPgns) {
+        pgnList << QString::number(pgn);
+    }
+    settings.setValue("ignoredPgns", pgnList);
+    
+    settings.endGroup();
+}
+
+void PGNLogDialog::loadSettings()
+{
+    QSettings settings;
+    settings.beginGroup("PGNLogDialog");
+    
+    // Load PGN filtering enabled state
+    bool pgnFilteringEnabled = settings.value("pgnFilteringEnabled", true).toBool();
+    if (m_pgnFilteringEnabled) {
+        m_pgnFilteringEnabled->setChecked(pgnFilteringEnabled);
+        onPgnFilteringToggled(pgnFilteringEnabled); // Apply the initial state
+    }
+    
+    // Load ignored PGNs list
+    QStringList pgnList = settings.value("ignoredPgns", QStringList()).toStringList();
+    QSet<uint32_t> loadedPgns;
+    
+    for (const QString& pgnStr : pgnList) {
+        bool ok;
+        uint32_t pgn = pgnStr.toUInt(&ok);
+        if (ok) {
+            loadedPgns.insert(pgn);
+        }
+    }
+    
+    if (!loadedPgns.isEmpty()) {
+        setIgnoredPgns(loadedPgns);
+    }
+    
+    settings.endGroup();
 }
