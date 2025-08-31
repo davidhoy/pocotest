@@ -1693,7 +1693,7 @@ void DeviceMainWindow::sendZonePGN130561(uint8_t targetAddress, uint8_t zoneId, 
         
         // Field 2: Zone Name (variable length string)
         msg.AddByte(2);  // Field number
-        msg.AddVarStr(zoneName.toLocal8Bit().constData());
+        msg.AddVarStr(zoneName.toLocal8Bit().constData(),false,32,16);
         
         // Field 3: Red Component (0-255)
         msg.AddByte(3);  // Field number
