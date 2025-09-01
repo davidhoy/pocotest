@@ -269,6 +269,9 @@ void DeviceMainWindow::initNMEA2000()
     qDebug() << "Global can_interface variable:" << can_interface;
     nmea2000 = new tNMEA2000_SocketCAN(can_interface);
     
+    // Verify the actual interface being used
+    verifyCanInterface();
+    
     // Set device information
     nmea2000->SetDeviceInformation(1, // Unique number for this device
                                   130, // Device function - PC Gateway
@@ -402,17 +405,28 @@ QStringList DeviceMainWindow::getAvailableCanInterfaces()
 void DeviceMainWindow::onCanInterfaceChanged(const QString &interface)
 {
     if (interface != m_currentInterface && !interface.isEmpty()) {
+        qDebug() << "=== CAN INTERFACE SWITCHING ===";
+        qDebug() << "Switching FROM:" << m_currentInterface;
+        qDebug() << "Switching TO:" << interface;
+        
         m_currentInterface = interface;
         strncpy(can_interface, interface.toLocal8Bit().data(), sizeof(can_interface) - 1);
         can_interface[sizeof(can_interface) - 1] = '\0';
         
+        qDebug() << "Global can_interface variable updated to:" << can_interface;
+        
         reinitializeNMEA2000();
+        
+        qDebug() << "=== INTERFACE SWITCH COMPLETED ===";
     }
 }
 
 void DeviceMainWindow::reinitializeNMEA2000()
 {
+    qDebug() << "reinitializeNMEA2000() called";
+    
     if (nmea2000 != nullptr) {
+        qDebug() << "Deleting existing NMEA2000 instance";
         delete nmea2000;
         nmea2000 = nullptr;
     }
@@ -420,8 +434,57 @@ void DeviceMainWindow::reinitializeNMEA2000()
     // Clear conflict history when changing interface
     clearConflictHistory();
     
+    qDebug() << "Reinitializing NMEA2000 with interface:" << m_currentInterface;
     initNMEA2000();
     updateDeviceList();
+}
+
+void DeviceMainWindow::verifyCanInterface()
+{
+    if (!nmea2000) {
+        qDebug() << "ERROR: Cannot verify interface - nmea2000 is null";
+        return;
+    }
+    
+    // Check via system calls to verify the actual socket binding
+    QString interfaceCheck;
+    
+    // Method 1: Check if interface exists in system
+    QString sysPath = QString("/sys/class/net/%1").arg(m_currentInterface);
+    QFileInfo sysInfo(sysPath);
+    bool interfaceExists = sysInfo.exists() && sysInfo.isDir();
+    
+    qDebug() << "=== INTERFACE VERIFICATION ===";
+    qDebug() << "Target interface:" << m_currentInterface;
+    qDebug() << "System path exists:" << sysPath << "=" << interfaceExists;
+    
+    // Method 2: Check interface statistics (different for physical vs virtual)
+    QString statsPath = QString("/sys/class/net/%1/statistics/rx_packets").arg(m_currentInterface);
+    QFile statsFile(statsPath);
+    if (statsFile.open(QIODevice::ReadOnly)) {
+        QString rxPackets = statsFile.readAll().trimmed();
+        qDebug() << "Interface RX packets:" << rxPackets;
+        statsFile.close();
+    }
+    
+    // Method 3: Check interface type (280 = CAN)
+    QString typePath = QString("/sys/class/net/%1/type").arg(m_currentInterface);
+    QFile typeFile(typePath);
+    if (typeFile.open(QIODevice::ReadOnly)) {
+        QString type = typeFile.readAll().trimmed();
+        qDebug() << "Interface type:" << type << (type == "280" ? "(CAN)" : "(NOT CAN!)");
+        typeFile.close();
+    }
+    
+    // Method 4: Show which interfaces are currently UP
+    QProcess process;
+    process.start("ip", QStringList() << "link" << "show" << "up");
+    process.waitForFinished();
+    QString output = process.readAllStandardOutput();
+    bool isUp = output.contains(m_currentInterface);
+    qDebug() << "Interface is UP:" << isUp;
+    
+    qDebug() << "=== END VERIFICATION ===";
 }
 
 // Include all the device table population and conflict detection methods from devicelistdialog.cpp

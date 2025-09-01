@@ -78,6 +78,7 @@ private:
     void reinitializeNMEA2000();
     QStringList getAvailableCanInterfaces();
     void updateConnectionButtonStates();
+    void verifyCanInterface();
     
     // Device activity tracking methods
     void updateDeviceActivity(uint8_t sourceAddress);
