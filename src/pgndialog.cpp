@@ -8,7 +8,7 @@
 #include <QCheckBox>
 #include <QLabel>
 
-extern tNMEA2000_SocketCAN* nmea2000;
+extern tNMEA2000* nmea2000;
 
 PGNDialog::PGNDialog(QWidget *parent)
     : QDialog(parent)

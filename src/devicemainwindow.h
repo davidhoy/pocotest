@@ -79,6 +79,7 @@ private:
     QStringList getAvailableCanInterfaces();
     void updateConnectionButtonStates();
     void verifyCanInterface();
+    void addManualIPG100();
     
     // Device activity tracking methods
     void updateDeviceActivity(uint8_t sourceAddress);

@@ -19,7 +19,8 @@ TEMPLATE = app
 INCLUDEPATH += \
     $$PWD/src \
     $$PWD/components/external/NMEA2000/src \
-    $$PWD/components/external/NMEA2000_socketCAN
+    $$PWD/components/external/NMEA2000_socketCAN \
+    $$PWD/components/external/NMEA2000_IPG100
 
 # Main application sources and headers
 SOURCES += \
@@ -41,6 +42,7 @@ SOURCES += \
     components/external/NMEA2000/src/N2kGroupFunction.cpp \
     components/external/NMEA2000/src/N2kGroupFunctionDefaultHandlers.cpp \
     components/external/NMEA2000/src/N2kDeviceList.cpp \
+    components/external/NMEA2000_IPG100/NMEA2000_IPG100.cpp \
     components/external/NMEA2000_socketCAN/NMEA2000_SocketCAN.cpp
 
 HEADERS += \
@@ -51,7 +53,8 @@ HEADERS += \
     src/zonelightingdialog.h \
     src/LumitecPoco.h \
     src/dbcdecoder.h \
-    src/instanceconflictanalyzer.h
+    src/instanceconflictanalyzer.h \
+    components/external/NMEA2000_IPG100/NMEA2000_IPG100.h
 
 # Resources
 RESOURCES += \

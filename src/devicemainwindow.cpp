@@ -6,11 +6,14 @@
 #include "zonelightingdialog.h"
 #include "LumitecPoco.h"
 #include "NMEA2000_SocketCAN.h"
+#include "NMEA2000_IPG100.h"
 #include "instanceconflictanalyzer.h"
 #include <NMEA2000.h>
 #include <QDir>
 #include <QProcess>
 #include <QMessageBox>
+#include <QInputDialog>
+#include <QHostAddress>
 #include <QLabel>
 #include <QDebug>
 #include <QHBoxLayout>
@@ -18,6 +21,7 @@
 #include <QDebug>
 #include <QRegExp>
 #include <QToolBar>
+#include <QPushButton>
 #include <QDateTime>
 #include <QApplication>
 #include <QMenuBar>
@@ -30,7 +34,7 @@
 #include <QVBoxLayout>
 #include <QDateTime>
 
-tNMEA2000_SocketCAN* nmea2000;
+tNMEA2000* nmea2000;
 extern char can_interface[80];
 
 // Static instance for message handling
@@ -121,6 +125,11 @@ void DeviceMainWindow::setupUI()
     connect(m_canInterfaceCombo, QOverload<const QString &>::of(&QComboBox::currentTextChanged),
             this, &DeviceMainWindow::onCanInterfaceChanged);
     
+    // Add IPG100 button
+    QPushButton* addIPG100Btn = new QPushButton("Add IPG100...");
+    addIPG100Btn->setMaximumWidth(100);
+    connect(addIPG100Btn, &QPushButton::clicked, this, &DeviceMainWindow::addManualIPG100);
+    
     // Connection control buttons
     m_connectButton = new QPushButton("Connect");
     m_disconnectButton = new QPushButton("Disconnect");
@@ -135,6 +144,7 @@ void DeviceMainWindow::setupUI()
     
     toolbarLayout->addWidget(canLabel);
     toolbarLayout->addWidget(m_canInterfaceCombo);
+    toolbarLayout->addWidget(addIPG100Btn);
     toolbarLayout->addSpacing(10); // Add some space between interface and buttons
     toolbarLayout->addWidget(m_connectButton);
     toolbarLayout->addWidget(m_disconnectButton);
@@ -265,9 +275,28 @@ void DeviceMainWindow::initNMEA2000()
     }
 
     // Create and initialize the NMEA2000 interface FIRST
-    qDebug() << "Creating tNMEA2000_SocketCAN with interface:" << m_currentInterface;
+    qDebug() << "Creating NMEA2000 interface for:" << m_currentInterface;
     qDebug() << "Global can_interface variable:" << can_interface;
-    nmea2000 = new tNMEA2000_SocketCAN(can_interface);
+    
+    // Check if this is an IPG100 interface
+    if (m_currentInterface.startsWith("IPG100")) {
+        // Extract IP address from interface name: "IPG100 (192.168.1.100)"
+        QRegExp regex("IPG100 \\(([0-9.]+)\\)");
+        if (regex.indexIn(m_currentInterface) != -1) {
+            QString ipAddress = regex.cap(1);
+            qDebug() << "Creating IPG100 interface for IP:" << ipAddress;
+            
+            auto* ipg100Interface = new tNMEA2000_IPG100(ipAddress.toUtf8().constData());
+            nmea2000 = ipg100Interface;
+        } else {
+            qDebug() << "Invalid IPG100 interface format:" << m_currentInterface;
+            return; // Exit early on error
+        }
+    } else {
+        // Standard SocketCAN interface
+        qDebug() << "Creating SocketCAN interface for:" << can_interface;
+        nmea2000 = new tNMEA2000_SocketCAN(can_interface);
+    }
     
     // Verify the actual interface being used
     verifyCanInterface();
@@ -377,6 +406,7 @@ QStringList DeviceMainWindow::getAvailableCanInterfaces()
 {
     QStringList interfaces;
     
+    // First, scan for physical CAN interfaces
     QDir sysClassNet("/sys/class/net");
     if (sysClassNet.exists()) {
         QStringList entries = sysClassNet.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
@@ -394,7 +424,16 @@ QStringList DeviceMainWindow::getAvailableCanInterfaces()
         }
     }
     
-    // If no CAN interfaces found, add some common ones for testing
+    // Discover IPG100 devices on the network
+    qDebug() << "Scanning for IPG100 devices...";
+    std::vector<std::string> ipg100DevicesVec = tNMEA2000_IPG100::discoverIPG100Devices(3000);
+    QStringList ipg100Devices;
+    for (const auto& device : ipg100DevicesVec) {
+        ipg100Devices << QString("IPG100 (%1)").arg(QString::fromStdString(device));
+    }
+    interfaces.append(ipg100Devices);
+    
+    // If no interfaces found, add some common ones for testing
     if (interfaces.isEmpty()) {
         interfaces << "can0" << "can1" << "vcan0" << "vcan1";
     }
@@ -431,6 +470,11 @@ void DeviceMainWindow::reinitializeNMEA2000()
         nmea2000 = nullptr;
     }
     
+    // Clear the device table and activity tracking when switching interfaces
+    qDebug() << "Clearing device list for interface switch";
+    m_deviceTable->setRowCount(0);
+    m_deviceActivity.clear();
+    
     // Clear conflict history when changing interface
     clearConflictHistory();
     
@@ -446,7 +490,24 @@ void DeviceMainWindow::verifyCanInterface()
         return;
     }
     
-    // Check via system calls to verify the actual socket binding
+    qDebug() << "=== INTERFACE VERIFICATION ===";
+    qDebug() << "Target interface:" << m_currentInterface;
+    
+    // Check if this is an IPG100 interface
+    if (m_currentInterface.startsWith("IPG100")) {
+        auto* ipg100Interface = dynamic_cast<tNMEA2000_IPG100*>(nmea2000);
+        if (ipg100Interface) {
+            qDebug() << "IPG100 interface detected";
+            qDebug() << "IP Address:" << QString::fromStdString(ipg100Interface->getDiscoveredIP());
+            qDebug() << "Connection status:" << (ipg100Interface->isConnected() ? "Connected" : "Disconnected");
+        } else {
+            qDebug() << "ERROR: Interface claims to be IPG100 but cast failed";
+        }
+        qDebug() << "=== END VERIFICATION ===";
+        return;
+    }
+    
+    // Original SocketCAN verification logic
     QString interfaceCheck;
     
     // Method 1: Check if interface exists in system
@@ -454,8 +515,6 @@ void DeviceMainWindow::verifyCanInterface()
     QFileInfo sysInfo(sysPath);
     bool interfaceExists = sysInfo.exists() && sysInfo.isDir();
     
-    qDebug() << "=== INTERFACE VERIFICATION ===";
-    qDebug() << "Target interface:" << m_currentInterface;
     qDebug() << "System path exists:" << sysPath << "=" << interfaceExists;
     
     // Method 2: Check interface statistics (different for physical vs virtual)
@@ -485,6 +544,65 @@ void DeviceMainWindow::verifyCanInterface()
     qDebug() << "Interface is UP:" << isUp;
     
     qDebug() << "=== END VERIFICATION ===";
+}
+
+void DeviceMainWindow::addManualIPG100()
+{
+    bool ok;
+    QString ipAddress = QInputDialog::getText(this, "Add IPG100 Device", 
+                                            "Enter IPG100 IP Address:", 
+                                            QLineEdit::Normal, 
+                                            "192.168.1.100", &ok);
+    
+    if (!ok || ipAddress.isEmpty()) {
+        return;
+    }
+    
+    // Validate IP address format
+    QHostAddress addr(ipAddress);
+    if (addr.isNull()) {
+        QMessageBox::warning(this, "Invalid IP Address", 
+                           "Please enter a valid IP address (e.g., 192.168.1.100)");
+        return;
+    }
+    
+    // Test connectivity
+    qDebug() << "Testing IPG100 connectivity to" << ipAddress;
+    if (!tNMEA2000_IPG100::isIPG100Available(ipAddress.toUtf8().constData(), 3000)) {
+        int ret = QMessageBox::question(this, "IPG100 Not Responding", 
+                                       QString("Cannot connect to IPG100 at %1.\n\n"
+                                              "This could be because:\n"
+                                              "• The IP address is incorrect\n"
+                                              "• The IPG100 is offline\n"
+                                              "• Network connectivity issues\n"
+                                              "• Firewall blocking the connection\n\n"
+                                              "Add it anyway?").arg(ipAddress),
+                                       QMessageBox::Yes | QMessageBox::No);
+        if (ret != QMessageBox::Yes) {
+            return;
+        }
+    }
+    
+    // Add to interface list
+    QString interfaceName = QString("IPG100 (%1)").arg(ipAddress);
+    
+    // Check if already exists
+    for (int i = 0; i < m_canInterfaceCombo->count(); i++) {
+        if (m_canInterfaceCombo->itemText(i) == interfaceName) {
+            QMessageBox::information(this, "IPG100 Already Added", 
+                                   "This IPG100 device is already in the interface list.");
+            m_canInterfaceCombo->setCurrentIndex(i);
+            return;
+        }
+    }
+    
+    // Add and select the new interface
+    m_canInterfaceCombo->addItem(interfaceName);
+    m_canInterfaceCombo->setCurrentText(interfaceName);
+    
+    QMessageBox::information(this, "IPG100 Added", 
+                           QString("IPG100 at %1 has been added to the interface list.\n\n"
+                                  "The connection will be established when you select this interface.").arg(ipAddress));
 }
 
 // Include all the device table population and conflict detection methods from devicelistdialog.cpp
