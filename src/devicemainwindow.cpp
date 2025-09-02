@@ -6,7 +6,9 @@
 #include "zonelightingdialog.h"
 #include "LumitecPoco.h"
 #include "NMEA2000_SocketCAN.h"
+#ifdef ENABLE_IPG100_SUPPORT
 #include "NMEA2000_IPG100.h"
+#endif
 #include "instanceconflictanalyzer.h"
 #include <NMEA2000.h>
 #include <QDir>
@@ -125,10 +127,12 @@ void DeviceMainWindow::setupUI()
     connect(m_canInterfaceCombo, QOverload<const QString &>::of(&QComboBox::currentTextChanged),
             this, &DeviceMainWindow::onCanInterfaceChanged);
     
+#ifdef ENABLE_IPG100_SUPPORT
     // Add IPG100 button
     QPushButton* addIPG100Btn = new QPushButton("Add IPG100...");
     addIPG100Btn->setMaximumWidth(100);
     connect(addIPG100Btn, &QPushButton::clicked, this, &DeviceMainWindow::addManualIPG100);
+#endif
     
     // Connection control buttons
     m_connectButton = new QPushButton("Connect");
@@ -144,7 +148,9 @@ void DeviceMainWindow::setupUI()
     
     toolbarLayout->addWidget(canLabel);
     toolbarLayout->addWidget(m_canInterfaceCombo);
+#ifdef ENABLE_IPG100_SUPPORT
     toolbarLayout->addWidget(addIPG100Btn);
+#endif
     toolbarLayout->addSpacing(10); // Add some space between interface and buttons
     toolbarLayout->addWidget(m_connectButton);
     toolbarLayout->addWidget(m_disconnectButton);
@@ -280,6 +286,7 @@ void DeviceMainWindow::initNMEA2000()
     
     // Check if this is an IPG100 interface
     if (m_currentInterface.startsWith("IPG100")) {
+#ifdef ENABLE_IPG100_SUPPORT
         // Extract IP address from interface name: "IPG100 (192.168.1.100)"
         QRegExp regex("IPG100 \\(([0-9.]+)\\)");
         if (regex.indexIn(m_currentInterface) != -1) {
@@ -292,6 +299,10 @@ void DeviceMainWindow::initNMEA2000()
             qDebug() << "Invalid IPG100 interface format:" << m_currentInterface;
             return; // Exit early on error
         }
+#else
+        QMessageBox::information(this, "IPG100 Disabled", "IPG100 support has been disabled in this version.");
+        return;
+#endif
     } else {
         // Standard SocketCAN interface
         qDebug() << "Creating SocketCAN interface for:" << can_interface;
@@ -424,6 +435,7 @@ QStringList DeviceMainWindow::getAvailableCanInterfaces()
         }
     }
     
+#ifdef ENABLE_IPG100_SUPPORT
     // Discover IPG100 devices on the network
     qDebug() << "Scanning for IPG100 devices...";
     std::vector<std::string> ipg100DevicesVec = tNMEA2000_IPG100::discoverIPG100Devices(3000);
@@ -432,6 +444,7 @@ QStringList DeviceMainWindow::getAvailableCanInterfaces()
         ipg100Devices << QString("IPG100 (%1)").arg(QString::fromStdString(device));
     }
     interfaces.append(ipg100Devices);
+#endif
     
     // If no interfaces found, add some common ones for testing
     if (interfaces.isEmpty()) {
@@ -495,6 +508,7 @@ void DeviceMainWindow::verifyCanInterface()
     
     // Check if this is an IPG100 interface
     if (m_currentInterface.startsWith("IPG100")) {
+#ifdef ENABLE_IPG100_SUPPORT
         auto* ipg100Interface = dynamic_cast<tNMEA2000_IPG100*>(nmea2000);
         if (ipg100Interface) {
             qDebug() << "IPG100 interface detected";
@@ -503,6 +517,9 @@ void DeviceMainWindow::verifyCanInterface()
         } else {
             qDebug() << "ERROR: Interface claims to be IPG100 but cast failed";
         }
+#else
+        qDebug() << "IPG100 interface verification disabled";
+#endif
         qDebug() << "=== END VERIFICATION ===";
         return;
     }
@@ -546,6 +563,7 @@ void DeviceMainWindow::verifyCanInterface()
     qDebug() << "=== END VERIFICATION ===";
 }
 
+#ifdef ENABLE_IPG100_SUPPORT
 void DeviceMainWindow::addManualIPG100()
 {
     bool ok;
@@ -604,6 +622,7 @@ void DeviceMainWindow::addManualIPG100()
                            QString("IPG100 at %1 has been added to the interface list.\n\n"
                                   "The connection will be established when you select this interface.").arg(ipAddress));
 }
+#endif
 
 // Include all the device table population and conflict detection methods from devicelistdialog.cpp
 void DeviceMainWindow::updateDeviceList()
