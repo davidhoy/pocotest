@@ -7,19 +7,34 @@ IPG100 support is **DISABLED** by default.
 
 ## Building with IPG100 Support
 
-### Disabled (Default)
+### Method 1: Using qmake (Recommended)
+
+#### Disabled (Default)
+```bash
+qmake && make
+```
+
+#### Enabled  
+```bash
+qmake "CONFIG+=ipg100" && make
+```
+
+### Method 2: Using make with CPPFLAGS
+
+#### Disabled (Default)
 ```bash
 make
 ```
 
-### Enabled
+#### Enabled
 ```bash
 make CPPFLAGS="-DENABLE_IPG100_SUPPORT"
 ```
 
-Or you can modify the Makefile to include the define:
-```makefile
-CPPFLAGS += -DENABLE_IPG100_SUPPORT
+### Method 3: Modifying the .pro file permanently
+You can also modify `pocotest.pro` to include the define permanently:
+```qmake
+DEFINES += ENABLE_IPG100_SUPPORT
 ```
 
 ## Features Controlled by ENABLE_IPG100_SUPPORT
