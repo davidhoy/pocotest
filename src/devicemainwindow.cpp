@@ -1,5 +1,7 @@
 #include "devicemainwindow.h"
 #include <cstdint>
+#include <iostream>
+#include <chrono>
 #include "pgnlogdialog.h"
 #include "pgndialog.h"
 #include "pocodevicedialog.h"
@@ -71,6 +73,7 @@ DeviceMainWindow::DeviceMainWindow(QWidget *parent)
     
     // Initialize with the current interface (from command line or default)
     m_currentInterface = QString(can_interface);
+    qDebug() << "Initial interface from can_interface:" << m_currentInterface;
     
     // Populate and set the current interface in the combo box
     populateCanInterfaces();
@@ -324,7 +327,7 @@ void DeviceMainWindow::initNMEA2000()
     m_isConnected = true;
     updateConnectionButtonStates();
     
-    startTimer(100); // Start timer event for regular NMEA2000 processing
+    startTimer(50); // Start timer event for regular NMEA2000 processing (50ms for balanced responsiveness)
 }
 
 void DeviceMainWindow::timerEvent(QTimerEvent *event)
@@ -342,8 +345,94 @@ void DeviceMainWindow::staticN2kMsgHandler(const tN2kMsg &msg) {
 }
 
 void DeviceMainWindow::handleN2kMsg(const tN2kMsg& msg) {
-    // Blink RX indicator for received messages
-    blinkRxIndicator();
+    // Enhanced debugging for IPG100 message analysis
+    static int ipg100_message_count = 0;
+    static bool is_ipg100_interface = false;
+    static bool interface_type_checked = false;
+    
+    // Check interface type on first message
+    if (!interface_type_checked) {
+        is_ipg100_interface = m_currentInterface.startsWith("IPG100");
+        interface_type_checked = true;
+#ifdef IPG100_ENABLE_DEBUG_FEATURES
+        if (is_ipg100_interface) {
+            std::cout << "*** FIRST MESSAGE FROM IPG100 INTERFACE ***" << std::endl;
+        }
+#endif
+    }
+    
+    if (is_ipg100_interface) {
+        ipg100_message_count++;
+        
+#ifdef IPG100_ENABLE_DEBUG_FEATURES
+        // Debug first 20 messages and every 50th message after that
+        bool should_debug = ipg100_message_count <= 20 || (ipg100_message_count % 50 == 0);
+        
+        if (should_debug) {
+            std::cout << "IPG100 Message #" << ipg100_message_count 
+                      << ": PGN=" << msg.PGN << " (0x" << std::hex << msg.PGN << std::dec << ")"
+                      << ", Source=" << (int)msg.Source
+                      << ", Destination=" << (int)msg.Destination
+                      << ", Priority=" << (int)msg.Priority
+                      << ", DataLen=" << (int)msg.DataLen << std::endl;
+            
+            // Show message data
+            if (msg.DataLen > 0) {
+                std::cout << "  Data: ";
+                for (int i = 0; i < msg.DataLen; i++) {
+                    printf("%02x ", msg.Data[i]);
+                }
+                std::cout << std::endl;
+            }
+            
+            // Check if this is a complete message or needs assembly
+            if (msg.DataLen > 8) {
+                std::cout << "  *** COMPLETE MESSAGE (>8 bytes) - IPG100 sends assembled messages! ***" << std::endl;
+            } else if (msg.PGN >= 65280) {
+                // Fast Packet PGN - should need assembly if this is raw CAN
+                std::cout << "  Fast Packet PGN - checking for assembly markers..." << std::endl;
+                if (msg.DataLen >= 2) {
+                    uint8_t seq_byte = msg.Data[0];
+                    uint8_t sequence = seq_byte & 0x1F;
+                    uint8_t frame_counter = (seq_byte >> 5) & 0x07;
+                    std::cout << "    Sequence=" << (int)sequence << ", Frame=" << (int)frame_counter;
+                    if (sequence == 0) {
+                        uint8_t total_len = msg.Data[1];
+                        std::cout << ", Total Length=" << (int)total_len;
+                        if (total_len <= 6) {
+                            std::cout << " *** SINGLE FRAME FAST PACKET - ASSEMBLED! ***";
+                        }
+                    }
+                    std::cout << std::endl;
+                }
+            }
+            
+            // Decode common PGNs
+            switch (msg.PGN) {
+                case 60928: std::cout << "  --> ISO Address Claim" << std::endl; break;
+                case 126992: std::cout << "  --> System Time" << std::endl; break;
+                case 126996: std::cout << "  --> Product Information" << std::endl; break;
+                case 127250: std::cout << "  --> Vessel Heading" << std::endl; break;
+                case 128267: std::cout << "  --> Water Depth" << std::endl; break;
+                case 129025: std::cout << "  --> Position Rapid Update" << std::endl; break;
+                case 129026: std::cout << "  --> COG & SOG Rapid Update" << std::endl; break;
+                case 130306: std::cout << "  --> Wind Data" << std::endl; break;
+                default: break;
+            }
+        }
+#endif
+    }
+    
+    // Blink RX indicator for received messages (rate-limited to avoid constant on state)
+    static auto last_rx_blink = std::chrono::steady_clock::now();
+    auto now = std::chrono::steady_clock::now();
+    auto time_since_last_blink = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_rx_blink).count();
+    
+    // Only blink if it's been at least 100ms since last blink (max 10 blinks per second)
+    if (time_since_last_blink >= 100) {
+        blinkRxIndicator();
+        last_rx_blink = now;
+    }
     
     // Update device activity tracking
     updateDeviceActivity(msg.Source);
@@ -393,11 +482,26 @@ void DeviceMainWindow::populateCanInterfaces()
         m_canInterfaceCombo->addItems(interfaces);
         m_canInterfaceCombo->setEnabled(true);
         
-        // Set current interface if it exists in the list
-        int currentIndex = interfaces.indexOf(m_currentInterface);
-        qDebug() << "Index of current interface in list:" << currentIndex;
-        if (currentIndex >= 0) {
-            m_canInterfaceCombo->setCurrentIndex(currentIndex);
+        // For testing: auto-select IPG100 if available  
+        QString ipg100Interface;
+        for (const QString& interface : interfaces) {
+            if (interface.startsWith("IPG100")) {
+                ipg100Interface = interface;
+                break;
+            }
+        }
+        
+        if (!ipg100Interface.isEmpty()) {
+            qDebug() << "Auto-selecting IPG100 interface for testing:" << ipg100Interface;
+            m_currentInterface = ipg100Interface;
+            m_canInterfaceCombo->setCurrentText(ipg100Interface);
+        } else {
+            // Set current interface if it exists in the list
+            int currentIndex = interfaces.indexOf(m_currentInterface);
+            qDebug() << "Index of current interface in list:" << currentIndex;
+            if (currentIndex >= 0) {
+                m_canInterfaceCombo->setCurrentIndex(currentIndex);
+            }
         }
     }
 }
