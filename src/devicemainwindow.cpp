@@ -1443,8 +1443,8 @@ void DeviceMainWindow::handleGroupFunctionMessage(const tN2kMsg& msg) {
             }
         }
         
-        qDebug() << "Received Group Function ACK from device" << QString("0x%1").arg(msg.Source, 2, 16, QChar('0'))
-                 << "for PGN" << targetPGN << "- Success:" << success;
+        //qDebug() << "Received Group Function ACK from device" << QString("0x%1").arg(msg.Source, 2, 16, QChar('0'))
+        //         << "for PGN" << targetPGN << "- Success:" << success;
         
         // Emit signal to notify waiting dialogs
         emit commandAcknowledged(msg.Source, targetPGN, success);
@@ -1979,6 +1979,13 @@ void DeviceMainWindow::onDisconnectClicked()
             delete m_deviceList;
             m_deviceList = nullptr;
         }
+        
+        // Clear the device table and activity tracking when disconnecting
+        m_deviceTable->setRowCount(0);
+        m_deviceActivity.clear();
+        
+        // Clear conflict history when disconnecting
+        clearConflictHistory();
         
         m_isConnected = false;
         updateConnectionButtonStates();
