@@ -1609,7 +1609,7 @@ bool PGNLogDialog::parseNewerFormatLine(const QString& line, tN2kMsg& msg, QStri
         msg.Priority = priority;
         msg.Source = source;
         msg.Destination = destination;
-        msg.DataLen = qMin(dataLen, (uint8_t)8);
+        msg.DataLen = qMin(dataLen, (uint8_t)tN2kMsg::MaxDataLen);
         
         // Parse data bytes
         for (int i = 0; i < msg.DataLen && i < hexBytes.size(); i++) {
@@ -1659,7 +1659,7 @@ bool PGNLogDialog::parseNewerFormatLine(const QString& line, tN2kMsg& msg, QStri
         msg.Priority = priority;
         msg.Source = source;
         msg.Destination = destination;
-        msg.DataLen = qMin(dataLen, (uint8_t)8);
+        msg.DataLen = qMin(dataLen, (uint8_t)tN2kMsg::MaxDataLen);
         
         // Parse data bytes
         for (int i = 0; i < msg.DataLen && i < hexBytes.size(); i++) {
