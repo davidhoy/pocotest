@@ -192,6 +192,12 @@ private:
     QSet<uint8_t> m_pendingProductInfoRequests; // Track which devices we've requested info from
     QSet<uint8_t> m_pendingConfigInfoRequests; // Track which devices we've requested config info from
     
+    // Retry tracking for Product Information requests
+    QMap<uint8_t, int> m_productInfoRetryCount; // Track retry attempts per device
+    QMap<uint8_t, QTimer*> m_productInfoRetryTimers; // Track retry timers per device
+    static const int MAX_PRODUCT_INFO_RETRIES = 3;
+    static const int PRODUCT_INFO_RETRY_TIMEOUT_MS = 8000; // 8 seconds
+    
     // New device detection tracking
     QSet<uint8_t> m_knownDevices; // Track devices we've seen before
     
@@ -212,6 +218,8 @@ private:
     void scheduleFollowUpQueries();
     void performFollowUpQueries();
     void queryNewDevice(uint8_t sourceAddress);
+    void retryProductInformation(uint8_t targetAddress);
+    void cancelProductInfoRetry(uint8_t targetAddress);
     
 };
 

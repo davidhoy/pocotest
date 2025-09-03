@@ -375,6 +375,11 @@ void DeviceMainWindow::staticN2kMsgHandler(const tN2kMsg &msg) {
 }
 
 void DeviceMainWindow::handleN2kMsg(const tN2kMsg& msg) {
+    // Let the device list handle the message first to update device information
+    if (m_deviceList) {
+        m_deviceList->HandleMsg(msg);
+    }
+    
     // Blink RX indicator for received messages
     blinkRxIndicator();
     
@@ -1154,6 +1159,18 @@ void DeviceMainWindow::requestProductInformation(uint8_t targetAddress)
         // Track that we've requested product info from this device
         m_pendingProductInfoRequests.insert(targetAddress);
         
+        // Cancel any existing retry timer for this device
+        cancelProductInfoRetry(targetAddress);
+        
+        // Start a retry timer for this device
+        QTimer* retryTimer = new QTimer();
+        retryTimer->setSingleShot(true);
+        connect(retryTimer, &QTimer::timeout, [this, targetAddress]() {
+            retryProductInformation(targetAddress);
+        });
+        m_productInfoRetryTimers[targetAddress] = retryTimer;
+        retryTimer->start(PRODUCT_INFO_RETRY_TIMEOUT_MS);
+        
         // Log the sent message to PGN log if it's visible
         if (m_pgnLogDialog && m_pgnLogDialog->isVisible()) {
             m_pgnLogDialog->appendSentMessage(N2kMsg);
@@ -1728,6 +1745,12 @@ void DeviceMainWindow::handleProductInformationResponse(const tN2kMsg& msg) {
     if (showDialog) {
         // Remove from pending requests since we got the response
         m_pendingProductInfoRequests.remove(msg.Source);
+        
+        // Cancel any retry timer for this device
+        cancelProductInfoRetry(msg.Source);
+        
+        // Reset retry count for this device
+        m_productInfoRetryCount.remove(msg.Source);
     }
     
     // Basic parsing of Product Information (PGN 126996)
@@ -1752,6 +1775,12 @@ void DeviceMainWindow::handleProductInformationResponse(const tN2kMsg& msg) {
                           sizeof(ModelVersion), ModelVersion,
                           sizeof(SerialCode), SerialCode,
                           CertificationLevel, LoadEquivalency)) {
+        
+        qDebug() << "Received Product Information from Device"
+                 << QString("0x%1:").arg(msg.Source, 2, 16, QChar('0')).toUpper()
+                 << "Model ID:" << QString::fromLatin1(ModelID)
+                 << "Serial:" << QString::fromLatin1(SerialCode)
+                 << "Software:" << QString::fromLatin1(SoftwareVersion);
         
         // Update device table to reflect the new information
         populateDeviceTable();
@@ -2464,4 +2493,74 @@ void DeviceMainWindow::onRxBlinkTimeout()
         "    border: 1px solid #333;"
         "}"
     );
+}
+
+void DeviceMainWindow::retryProductInformation(uint8_t targetAddress)
+{
+    // Check if we've reached max retries
+    int currentRetries = m_productInfoRetryCount.value(targetAddress, 0);
+    if (currentRetries >= MAX_PRODUCT_INFO_RETRIES) {
+        qDebug() << "Max retries reached for Product Information from device"
+                 << QString("0x%1").arg(targetAddress, 2, 16, QChar('0')).toUpper()
+                 << "- giving up";
+        
+        // Clean up tracking
+        m_pendingProductInfoRequests.remove(targetAddress);
+        m_productInfoRetryCount.remove(targetAddress);
+        cancelProductInfoRetry(targetAddress);
+        return;
+    }
+    
+    // Check if device is still pending (no response received yet)
+    if (!m_pendingProductInfoRequests.contains(targetAddress)) {
+        // Response was already received, cancel retry
+        cancelProductInfoRetry(targetAddress);
+        return;
+    }
+    
+    // Increment retry count and resend request
+    m_productInfoRetryCount[targetAddress] = currentRetries + 1;
+    
+    qDebug() << "Retrying Product Information request to device"
+             << QString("0x%1").arg(targetAddress, 2, 16, QChar('0')).toUpper()
+             << "(attempt" << (currentRetries + 2) << "of" << (MAX_PRODUCT_INFO_RETRIES + 1) << ")";
+    
+    // Send the request again
+    if (nmea2000) {
+        tN2kMsg N2kMsg;
+        SetN2kPGN59904(N2kMsg, targetAddress, N2kPGNProductInformation);
+        
+        if (nmea2000->SendMsg(N2kMsg)) {
+            blinkTxIndicator();
+            
+            // Start another retry timer
+            QTimer* retryTimer = new QTimer();
+            retryTimer->setSingleShot(true);
+            connect(retryTimer, &QTimer::timeout, [this, targetAddress]() {
+                retryProductInformation(targetAddress);
+            });
+            
+            // Cancel old timer and set new one
+            cancelProductInfoRetry(targetAddress);
+            m_productInfoRetryTimers[targetAddress] = retryTimer;
+            retryTimer->start(PRODUCT_INFO_RETRY_TIMEOUT_MS);
+            
+            // Log the sent message to PGN log if it's visible
+            if (m_pgnLogDialog && m_pgnLogDialog->isVisible()) {
+                m_pgnLogDialog->appendSentMessage(N2kMsg);
+            }
+        }
+    }
+}
+
+void DeviceMainWindow::cancelProductInfoRetry(uint8_t targetAddress)
+{
+    if (m_productInfoRetryTimers.contains(targetAddress)) {
+        QTimer* timer = m_productInfoRetryTimers[targetAddress];
+        if (timer) {
+            timer->stop();
+            timer->deleteLater();
+        }
+        m_productInfoRetryTimers.remove(targetAddress);
+    }
 }
