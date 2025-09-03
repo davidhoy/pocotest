@@ -6,6 +6,7 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QPushButton>
+#include <QCheckBox>
 #include <QTimer>
 #include <QHeaderView>
 #include <QLabel>
@@ -47,8 +48,8 @@ public:
 
 private slots:
     void updateDeviceList();
-        void onConnectClicked();
-        void onDisconnectClicked();
+    void onConnectClicked();
+    void onDisconnectClicked();
     void onRefreshClicked();
     void onRowSelectionChanged();
     void analyzeInstanceConflicts();
@@ -94,11 +95,16 @@ private:
     void showDeviceDetails(int row);
     void queryDeviceConfiguration(uint8_t targetAddress);
     void requestProductInformation(uint8_t targetAddress);
+    void requestSupportedPGNs(uint8_t targetAddress);
+    void requestAllInformation(uint8_t targetAddress);
+    void requestInfoFromAllDevices();
+    void triggerAutomaticDeviceDiscovery();
     void showPGNLogForDevice(uint8_t sourceAddress);
     
     // Lumitec Poco message handling
     void handleLumitecPocoMessage(const tN2kMsg& msg);
     void handleProductInformationResponse(const tN2kMsg& msg);
+    void handleConfigurationInformationResponse(const tN2kMsg& msg);
     void handleGroupFunctionMessage(const tN2kMsg& msg);
     void displayLumitecMessage(const tN2kMsg& msg, const QString& description);
     
@@ -160,9 +166,10 @@ private:
     
     // NMEA2000 Components
     tN2kDeviceList* m_deviceList;
-        QPushButton *m_connectButton = nullptr;
-        QPushButton *m_disconnectButton = nullptr;
-        tNMEA2000 *m_nmea2000Instance = nullptr;
+    QPushButton *m_connectButton = nullptr;
+    QPushButton *m_disconnectButton = nullptr;
+    QCheckBox *m_autoDiscoveryCheckbox = nullptr;
+    tNMEA2000 *m_nmea2000Instance = nullptr;
     QString m_currentInterface;
     bool m_isConnected;
     
@@ -183,9 +190,28 @@ private:
     
     // Product information request tracking
     QSet<uint8_t> m_pendingProductInfoRequests; // Track which devices we've requested info from
+    QSet<uint8_t> m_pendingConfigInfoRequests; // Track which devices we've requested config info from
+    
+    // New device detection tracking
+    QSet<uint8_t> m_knownDevices; // Track devices we've seen before
+    
+    // Automatic device discovery tracking
+    bool m_hasSeenValidTraffic;
+    bool m_autoDiscoveryTriggered;
+    QDateTime m_interfaceStartTime;
+    int m_messagesReceived;
+    static const int AUTO_DISCOVERY_DELAY_MS = 5000; // Wait 5 seconds after first traffic
+    static const int MIN_MESSAGES_FOR_DISCOVERY = 10; // Require at least 10 messages
+    
+    // Follow-up device query tracking
+    bool m_followUpQueriesScheduled;
+    static const int FOLLOWUP_QUERY_DELAY_MS = 5000; // Wait 5 seconds after auto-discovery
     
     // Helper methods
     void updatePGNDialogDeviceList();
+    void scheduleFollowUpQueries();
+    void performFollowUpQueries();
+    void queryNewDevice(uint8_t sourceAddress);
     
 };
 

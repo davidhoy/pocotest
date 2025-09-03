@@ -11,6 +11,7 @@
 #endif
 #include "instanceconflictanalyzer.h"
 #include <NMEA2000.h>
+#include <N2kGroupFunction.h>
 #include <QDir>
 #include <QProcess>
 #include <QMessageBox>
@@ -62,6 +63,10 @@ DeviceMainWindow::DeviceMainWindow(QWidget *parent)
     , m_isConnected(false)
     , m_pgnLogDialog(nullptr)
     , m_conflictAnalyzer(nullptr)
+    , m_hasSeenValidTraffic(false)
+    , m_autoDiscoveryTriggered(false)
+    , m_messagesReceived(0)
+    , m_followUpQueriesScheduled(false)
 {
     DeviceMainWindow::instance = this;  // Capture 'this' for static callback
     
@@ -140,6 +145,11 @@ void DeviceMainWindow::setupUI()
     connect(m_connectButton, &QPushButton::clicked, this, &DeviceMainWindow::onConnectClicked);
     connect(m_disconnectButton, &QPushButton::clicked, this, &DeviceMainWindow::onDisconnectClicked);
     
+    // Auto-discovery checkbox
+    m_autoDiscoveryCheckbox = new QCheckBox("Auto-discover devices");
+    m_autoDiscoveryCheckbox->setChecked(true); // Default to enabled
+    m_autoDiscoveryCheckbox->setToolTip("Automatically request device information when interface comes online");
+    
     // Set initial button states
     updateConnectionButtonStates();
     
@@ -154,6 +164,8 @@ void DeviceMainWindow::setupUI()
     toolbarLayout->addSpacing(10); // Add some space between interface and buttons
     toolbarLayout->addWidget(m_connectButton);
     toolbarLayout->addWidget(m_disconnectButton);
+    toolbarLayout->addSpacing(10);
+    toolbarLayout->addWidget(m_autoDiscoveryCheckbox);
     toolbarLayout->addStretch(); // Push activity indicators to the right
     toolbarLayout->addWidget(new QLabel("RX:"));
     toolbarLayout->addWidget(m_rxIndicator);
@@ -244,6 +256,8 @@ void DeviceMainWindow::setupMenuBar()
     toolsMenu->addAction("&Send PGN...", this, &DeviceMainWindow::showSendPGNDialog);
     toolsMenu->addAction("Show PGN &Log", this, &DeviceMainWindow::showPGNLog);
     toolsMenu->addSeparator();
+    toolsMenu->addAction("&Request Info from All Devices", this, &DeviceMainWindow::requestInfoFromAllDevices);
+    toolsMenu->addSeparator();
     toolsMenu->addAction("&Analyze Instance Conflicts", this, &DeviceMainWindow::analyzeInstanceConflicts);
     toolsMenu->addAction("&Clear Conflict History", this, &DeviceMainWindow::clearConflictHistory);
     
@@ -274,6 +288,14 @@ void DeviceMainWindow::setupMenuBar()
 void DeviceMainWindow::initNMEA2000()
 {
     qDebug() << "initNMEA2000() called with interface:" << m_currentInterface;
+    
+    // Reset automatic discovery tracking
+    m_hasSeenValidTraffic = false;
+    m_autoDiscoveryTriggered = false;
+    m_messagesReceived = 0;
+    m_followUpQueriesScheduled = false;
+    m_knownDevices.clear();
+    m_interfaceStartTime = QDateTime::currentDateTime();
     
     if (nmea2000 != nullptr) {
         delete nmea2000;
@@ -356,6 +378,29 @@ void DeviceMainWindow::handleN2kMsg(const tN2kMsg& msg) {
     // Blink RX indicator for received messages
     blinkRxIndicator();
     
+    // Track traffic for automatic device discovery
+    m_messagesReceived++;
+    if (!m_hasSeenValidTraffic) {
+        m_hasSeenValidTraffic = true;
+        qDebug() << "First valid NMEA2000 traffic detected, will trigger automatic discovery in" << AUTO_DISCOVERY_DELAY_MS << "ms";
+    }
+    
+    // Check if we should trigger automatic device discovery
+    if (!m_autoDiscoveryTriggered && m_hasSeenValidTraffic && 
+        m_autoDiscoveryCheckbox && m_autoDiscoveryCheckbox->isChecked() &&
+        m_messagesReceived >= MIN_MESSAGES_FOR_DISCOVERY &&
+        m_interfaceStartTime.msecsTo(QDateTime::currentDateTime()) >= AUTO_DISCOVERY_DELAY_MS) {
+        
+        m_autoDiscoveryTriggered = true;
+        qDebug() << "Triggering automatic device discovery after" << m_messagesReceived << "messages";
+        
+        // Trigger discovery with a short delay to let current message processing complete
+        QTimer::singleShot(500, this, &DeviceMainWindow::triggerAutomaticDeviceDiscovery);
+        
+        // Schedule follow-up queries to check for devices with missing information
+        scheduleFollowUpQueries();
+    }
+    
     // Update device activity tracking
     updateDeviceActivity(msg.Source);
     
@@ -370,6 +415,11 @@ void DeviceMainWindow::handleN2kMsg(const tN2kMsg& msg) {
     // Handle Product Information responses (PGN 126996)
     if (msg.PGN == N2kPGNProductInformation) {
         handleProductInformationResponse(msg);
+    }
+    
+    // Handle Configuration Information responses (PGN 126998)
+    if (msg.PGN == N2kPGNConfigurationInformation) {
+        handleConfigurationInformationResponse(msg);
     }
     
     // Handle Group Function messages (PGN 126208) - including acknowledgments
@@ -676,6 +726,9 @@ void DeviceMainWindow::populateDeviceTable()
                 updateDeviceTableRow(row, source, device, isActive);
                 m_deviceActivity[source].tableRow = row;
                 deviceCount++;
+                
+                // Add to known devices if not already there
+                m_knownDevices.insert(source);
             } else {
                 // New device - add to end
                 int newRow = m_deviceTable->rowCount();
@@ -683,6 +736,18 @@ void DeviceMainWindow::populateDeviceTable()
                 updateDeviceTableRow(newRow, source, device, isActive);
                 m_deviceActivity[source].tableRow = newRow;
                 deviceCount++;
+                
+                // Check if this is truly a new device (not just a reconnection)
+                if (!m_knownDevices.contains(source)) {
+                    m_knownDevices.insert(source);
+                    qDebug() << "New device detected:" << QString("0x%1").arg(source, 2, 16, QChar('0')).toUpper() 
+                             << "- scheduling information query";
+                    
+                    // Schedule query for this new device with a short delay to let it settle
+                    QTimer::singleShot(1000, [this, source]() {
+                        queryNewDevice(source);
+                    });
+                }
             }
         }
     }
@@ -797,17 +862,35 @@ void DeviceMainWindow::showDeviceContextMenu(const QPoint& position)
     
     contextMenu->addSeparator();
     
+    // Device Information Requests submenu
+    QMenu* requestMenu = contextMenu->addMenu("Request Device Information");
+    
+    // Request Product Information action
+    QAction* productInfoAction = requestMenu->addAction("Product Information (PGN 126996)");
+    connect(productInfoAction, &QAction::triggered, [this, sourceAddress]() {
+        requestProductInformation(sourceAddress);
+    });
+    
     // Query Device Configuration action
-    QAction* queryConfigAction = contextMenu->addAction("Query Device Configuration");
+    QAction* queryConfigAction = requestMenu->addAction("Configuration Information (PGN 126998)");
     connect(queryConfigAction, &QAction::triggered, [this, sourceAddress]() {
         queryDeviceConfiguration(sourceAddress);
     });
     
-    // Request Product Information action
-    QAction* productInfoAction = contextMenu->addAction("Request Product Information");
-    connect(productInfoAction, &QAction::triggered, [this, sourceAddress]() {
-        requestProductInformation(sourceAddress);
+    // Request Supported PGNs action
+    QAction* supportedPGNsAction = requestMenu->addAction("Supported PGNs (PGN 126464)");
+    connect(supportedPGNsAction, &QAction::triggered, [this, sourceAddress]() {
+        requestSupportedPGNs(sourceAddress);
     });
+    
+    requestMenu->addSeparator();
+    
+    // Request All Information action
+    QAction* requestAllAction = requestMenu->addAction("Request All Information...");
+    connect(requestAllAction, &QAction::triggered, [this, sourceAddress]() {
+        requestAllInformation(sourceAddress);
+    });
+    requestAllAction->setIcon(QIcon(":/icons/refresh.png"));  // Add icon if available
     
     // Add Lumitec-specific menu items if this is a Lumitec device
     if (manufacturer == "Lumitec") {
@@ -1024,24 +1107,33 @@ void DeviceMainWindow::showDeviceDetails(int row)
 
 void DeviceMainWindow::queryDeviceConfiguration(uint8_t targetAddress)
 {
-    // Send PGN 126996 (Product Information) request to the device
     if (!nmea2000) {
         QMessageBox::warning(this, "Error", "NMEA2000 interface not available");
         return;
     }
     
-    // TODO: Implement sending of configuration query PGNs
-    // This would typically involve sending PGN 59904 (ISO Request) 
-    // to request specific PGNs like 126996, 126998, etc.
+    // Send ISO Request for Configuration Information (PGN 126998)
+    tN2kMsg N2kMsg;
+    SetN2kPGN59904(N2kMsg, targetAddress, N2kPGNConfigurationInformation);
     
-    QMessageBox::information(this, "Query Configuration", 
-                            QString("Sending configuration query to device 0x%1...\n\n"
-                                   "This feature will send standard NMEA2000 requests for:\n"
-                                   "• Product Information (PGN 126996)\n"
-                                   "• Configuration Information (PGN 126998)\n"
-                                   "• Supported PGNs (PGN 126464)\n\n"
-                                   "Implementation coming soon!")
-                            .arg(targetAddress, 2, 16, QChar('0')).toUpper());
+    if (nmea2000->SendMsg(N2kMsg)) {
+        // Track this request so we can show details when we get the response
+        m_pendingConfigInfoRequests.insert(targetAddress);
+        
+        // Blink TX indicator for transmitted messages
+        blinkTxIndicator();
+        
+        // Log the sent message to PGN log if it's visible
+        if (m_pgnLogDialog && m_pgnLogDialog->isVisible()) {
+            m_pgnLogDialog->appendSentMessage(N2kMsg);
+        }
+        
+        qDebug() << "Configuration information request sent to device" << 
+                   QString("0x%1").arg(targetAddress, 2, 16, QChar('0')).toUpper();
+    } else {
+        qDebug() << "Failed to send configuration information request to device" << 
+                   QString("0x%1").arg(targetAddress, 2, 16, QChar('0')).toUpper();
+    }
 }
 
 void DeviceMainWindow::requestProductInformation(uint8_t targetAddress)
@@ -1067,18 +1159,320 @@ void DeviceMainWindow::requestProductInformation(uint8_t targetAddress)
             m_pgnLogDialog->appendSentMessage(N2kMsg);
         }
         
-        QMessageBox::information(this, "Request Sent", 
-                                QString("Product information request sent to device 0x%1\n\n"
-                                       "Sent ISO Request (PGN 59904) requesting:\n"
-                                       "• Product Information (PGN 126996)\n\n"
-                                       "The device should respond with its product details.\n"
-                                       "A dialog will show the response when received.")
-                                .arg(targetAddress, 2, 16, QChar('0')).toUpper());
+        qDebug() << "Product information request sent to device" << 
+                   QString("0x%1").arg(targetAddress, 2, 16, QChar('0')).toUpper();
     } else {
-        QMessageBox::warning(this, "Send Failed", 
-                            QString("Failed to send product information request to device 0x%1")
-                            .arg(targetAddress, 2, 16, QChar('0')).toUpper());
+        qDebug() << "Failed to send product information request to device" << 
+                   QString("0x%1").arg(targetAddress, 2, 16, QChar('0')).toUpper();
     }
+}
+
+void DeviceMainWindow::requestSupportedPGNs(uint8_t targetAddress)
+{
+    if (!nmea2000) {
+        QMessageBox::warning(this, "Error", "NMEA2000 interface not available");
+        return;
+    }
+    
+    // Send ISO Request for Supported PGNs (PGN 126464)
+    tN2kMsg N2kMsg;
+    SetN2kPGN59904(N2kMsg, targetAddress, 126464L);
+    
+    if (nmea2000->SendMsg(N2kMsg)) {
+        blinkTxIndicator();
+        
+        if (m_pgnLogDialog && m_pgnLogDialog->isVisible()) {
+            m_pgnLogDialog->appendSentMessage(N2kMsg);
+        }
+        
+        qDebug() << "Supported PGNs request sent to device" << 
+                   QString("0x%1").arg(targetAddress, 2, 16, QChar('0')).toUpper();
+    } else {
+        qDebug() << "Failed to send supported PGNs request to device" << 
+                   QString("0x%1").arg(targetAddress, 2, 16, QChar('0')).toUpper();
+    }
+}
+
+void DeviceMainWindow::requestAllInformation(uint8_t targetAddress)
+{
+    if (!nmea2000) {
+        qDebug() << "Cannot request information: NMEA2000 interface not available";
+        return;
+    }
+    
+    qDebug() << "Sending comprehensive information requests to device"
+             << QString("0x%1").arg(targetAddress, 2, 16, QChar('0')).toUpper();
+    
+    // Send Product Information request
+    requestProductInformation(targetAddress);
+    
+    // Schedule Configuration Information request after a short delay
+    QTimer::singleShot(500, [this, targetAddress]() {
+        queryDeviceConfiguration(targetAddress);
+    });
+    
+    // Schedule Supported PGNs request after another delay
+    QTimer::singleShot(1000, [this, targetAddress]() {
+        requestSupportedPGNs(targetAddress);
+    });
+    
+    qDebug() << "Scheduled all information requests for device"
+             << QString("0x%1").arg(targetAddress, 2, 16, QChar('0')).toUpper()
+             << "- monitor device table and PGN log for responses";
+}
+
+void DeviceMainWindow::requestInfoFromAllDevices()
+{
+    if (!nmea2000) {
+        qDebug() << "Cannot request information from all devices: NMEA2000 interface not available";
+        return;
+    }
+    
+    qDebug() << "Requesting information from all devices";
+    
+    int confirmedDevices = 0;
+    
+    // Count devices that have responded to anything
+    for (int row = 0; row < m_deviceTable->rowCount(); ++row) {
+        QTableWidgetItem* sourceItem = m_deviceTable->item(row, 0);
+        if (sourceItem) {
+            uint8_t sourceAddress = sourceItem->text().toUInt();
+            
+            // Check if this device has shown any activity or has any known information
+            if (m_deviceActivity.contains(sourceAddress) && m_deviceActivity[sourceAddress].isActive) {
+                confirmedDevices++;
+            }
+        }
+    }
+    
+    if (confirmedDevices == 0) {
+        qDebug() << "No active devices found for information requests";
+        return;
+    }
+    
+    qDebug() << "Requesting information from" << confirmedDevices << "active device(s)";
+    
+    // Request information from all active devices
+    int requestsSent = 0;
+    for (int row = 0; row < m_deviceTable->rowCount(); ++row) {
+        QTableWidgetItem* sourceItem = m_deviceTable->item(row, 0);
+        if (sourceItem) {
+            uint8_t sourceAddress = sourceItem->text().toUInt();
+            
+            // Only request from devices that are currently active
+            if (m_deviceActivity.contains(sourceAddress) && m_deviceActivity[sourceAddress].isActive) {
+                // Send Product Information request
+                requestProductInformation(sourceAddress);
+                
+                // Schedule Configuration Information request with delay based on device index
+                int delay = (requestsSent * 1500) + 500; // Stagger requests
+                QTimer::singleShot(delay, [this, sourceAddress]() {
+                    queryDeviceConfiguration(sourceAddress);
+                });
+                
+                // Schedule Supported PGNs request with additional delay
+                QTimer::singleShot(delay + 500, [this, sourceAddress]() {
+                    requestSupportedPGNs(sourceAddress);
+                });
+                
+                requestsSent++;
+            }
+        }
+    }
+    
+    if (requestsSent > 0) {
+        statusBar()->showMessage(QString("Sent information requests to %1 device(s) - responses will appear over the next few seconds").arg(requestsSent), 10000);
+        qDebug() << "Sent information requests to" << requestsSent << "device(s)";
+    }
+}
+
+void DeviceMainWindow::triggerAutomaticDeviceDiscovery()
+{
+    if (!nmea2000) {
+        qDebug() << "Cannot trigger automatic discovery - NMEA2000 interface not available";
+        return;
+    }
+    
+    qDebug() << "Triggering automatic device discovery - sending wake-up broadcast";
+    
+    // Count current devices
+    int currentDevices = m_deviceTable->rowCount();
+    
+    statusBar()->showMessage("Sending network wake-up broadcast to discover quiet devices...", 5000);
+    
+    // Send a single "wake-up" broadcast request for Product Information
+    // This serves as a network knock to get quiet devices to identify themselves
+    // Individual enumeration and follow-up queries will handle detailed information gathering
+    if (m_deviceList) {
+        qDebug() << "Sending wake-up broadcast for Product Information to discover quiet devices";
+        tN2kMsg msg;
+        SetN2kPGN59904(msg, 0xFF, N2kPGNProductInformation); // 0xFF = broadcast
+        nmea2000->SendMsg(msg);
+        
+        // Blink TX indicator for transmitted messages
+        blinkTxIndicator();
+    }
+    
+    // Show completion message after a short delay to let responses come in
+    QTimer::singleShot(2000, [this, currentDevices]() {
+        int newDevices = m_deviceTable->rowCount();
+        QString message;
+        if (newDevices > currentDevices) {
+            message = QString("Wake-up broadcast completed. %1 new device(s) responded and will be queried individually")
+                     .arg(newDevices - currentDevices);
+        } else {
+            message = "Wake-up broadcast completed. Individual device queries will handle information gathering.";
+        }
+        
+        statusBar()->showMessage(message, 5000);
+        qDebug() << message;
+    });
+}
+
+void DeviceMainWindow::scheduleFollowUpQueries()
+{
+    if (m_followUpQueriesScheduled) {
+        return; // Already scheduled
+    }
+    
+    m_followUpQueriesScheduled = true;
+    qDebug() << "Scheduling follow-up queries for devices with missing information in" << FOLLOWUP_QUERY_DELAY_MS << "ms";
+    
+    // Schedule follow-up queries after the initial discovery has had time to complete
+    QTimer::singleShot(FOLLOWUP_QUERY_DELAY_MS, this, &DeviceMainWindow::performFollowUpQueries);
+}
+
+void DeviceMainWindow::performFollowUpQueries()
+{
+    if (!nmea2000 || !m_autoDiscoveryCheckbox || !m_autoDiscoveryCheckbox->isChecked()) {
+        qDebug() << "Skipping follow-up queries - interface or auto-discovery not available";
+        return;
+    }
+    
+    qDebug() << "Performing follow-up queries for devices with missing information";
+    
+    QStringList devicesWithMissingInfo;
+    int queriesSent = 0;
+    
+    // Check each device in the table for missing information
+    for (int row = 0; row < m_deviceTable->rowCount(); ++row) {
+        QTableWidgetItem* sourceItem = m_deviceTable->item(row, 0);
+        if (!sourceItem) continue;
+        
+        uint8_t sourceAddress = sourceItem->text().toUInt();
+        
+        // Check if this device is still active
+        if (!m_deviceActivity.contains(sourceAddress) || !m_deviceActivity[sourceAddress].isActive) {
+            continue;
+        }
+        
+        // Check for missing critical information: Manufacturer (column 1), Model ID (column 2) and Serial Number (column 3)
+        QTableWidgetItem* manufacturerItem = m_deviceTable->item(row, 1);
+        QTableWidgetItem* modelItem = m_deviceTable->item(row, 2);
+        QTableWidgetItem* serialItem = m_deviceTable->item(row, 3);
+        
+        bool needsQuery = false;
+        QString deviceDesc = QString("0x%1").arg(sourceAddress, 2, 16, QChar('0')).toUpper();
+        QStringList missingFields;
+        
+        if (!manufacturerItem || manufacturerItem->text().isEmpty() || 
+            manufacturerItem->text() == "Unknown" || manufacturerItem->text().contains("Unknown (")) {
+            needsQuery = true;
+            missingFields << "Manufacturer";
+        }
+        
+        if (!modelItem || modelItem->text().isEmpty() || modelItem->text() == "Unknown") {
+            needsQuery = true;
+            missingFields << "Model ID";
+        }
+        
+        if (!serialItem || serialItem->text().isEmpty() || serialItem->text() == "Unknown") {
+            needsQuery = true;
+            missingFields << "Serial Number";
+        }
+        
+        if (needsQuery) {
+            deviceDesc += QString(" (missing %1)").arg(missingFields.join(", "));
+            devicesWithMissingInfo << deviceDesc;
+            
+            // Send targeted requests with delays to avoid network flooding
+            int delay = queriesSent * 800; // 800ms between devices
+            
+            QTimer::singleShot(delay, [this, sourceAddress]() {
+                if (nmea2000) {
+                    qDebug() << "Sending follow-up Product Information request to device" << 
+                               QString("0x%1").arg(sourceAddress, 2, 16, QChar('0')).toUpper();
+                    requestProductInformation(sourceAddress);
+                }
+            });
+            
+            QTimer::singleShot(delay + 400, [this, sourceAddress]() {
+                if (nmea2000) {
+                    qDebug() << "Sending follow-up Configuration Information request to device" << 
+                               QString("0x%1").arg(sourceAddress, 2, 16, QChar('0')).toUpper();
+                    queryDeviceConfiguration(sourceAddress);
+                }
+            });
+            
+            queriesSent++;
+        }
+    }
+    
+    if (queriesSent > 0) {
+        QString statusMessage = QString("Requesting missing information from %1 device(s)").arg(queriesSent);
+        statusBar()->showMessage(statusMessage, 8000);
+        qDebug() << "Follow-up queries sent to" << queriesSent << "devices:" << devicesWithMissingInfo;
+        
+        // Show completion message
+        int totalDelay = (queriesSent * 800) + 2000;
+        QTimer::singleShot(totalDelay, [this, queriesSent]() {
+            QString message = QString("Follow-up information requests completed for %1 device(s)").arg(queriesSent);
+            statusBar()->showMessage(message, 5000);
+            qDebug() << message;
+        });
+    } else {
+        qDebug() << "No devices found with missing critical information";
+    }
+}
+
+void DeviceMainWindow::queryNewDevice(uint8_t sourceAddress)
+{
+    if (!nmea2000 || !m_autoDiscoveryCheckbox || !m_autoDiscoveryCheckbox->isChecked()) {
+        qDebug() << "Skipping new device query - interface or auto-discovery not available";
+        return;
+    }
+    
+    qDebug() << "Querying new device" << QString("0x%1").arg(sourceAddress, 2, 16, QChar('0')).toUpper() 
+             << "for device information";
+    
+    // Check if device is still active before querying
+    if (!m_deviceActivity.contains(sourceAddress) || !m_deviceActivity[sourceAddress].isActive) {
+        qDebug() << "Device" << QString("0x%1").arg(sourceAddress, 2, 16, QChar('0')).toUpper() 
+                 << "is no longer active, skipping query";
+        return;
+    }
+    
+    QString deviceDesc = QString("0x%1").arg(sourceAddress, 2, 16, QChar('0')).toUpper();
+    statusBar()->showMessage(QString("Requesting information from new device %1").arg(deviceDesc), 5000);
+    
+    // Send Product Information request
+    requestProductInformation(sourceAddress);
+    
+    // Send Configuration Information request with a delay
+    QTimer::singleShot(500, [this, sourceAddress]() {
+        if (nmea2000 && m_deviceActivity.contains(sourceAddress) && m_deviceActivity[sourceAddress].isActive) {
+            queryDeviceConfiguration(sourceAddress);
+        }
+    });
+    
+    // Send Supported PGNs request with additional delay
+    QTimer::singleShot(1000, [this, sourceAddress]() {
+        if (nmea2000 && m_deviceActivity.contains(sourceAddress) && m_deviceActivity[sourceAddress].isActive) {
+            requestSupportedPGNs(sourceAddress);
+        }
+    });
+    
+    qDebug() << "Information requests sent to new device" << deviceDesc;
 }
 
 void DeviceMainWindow::showPGNLogForDevice(uint8_t sourceAddress)
@@ -1342,108 +1736,101 @@ void DeviceMainWindow::handleProductInformationResponse(const tN2kMsg& msg) {
         return;
     }
     
-    int Index = 0;
-    uint16_t N2kVersion = msg.Get2ByteUInt(Index);
-    uint16_t ProductCode = msg.Get2ByteUInt(Index);
+    uint16_t N2kVersion = 0;
+    uint16_t ProductCode = 0;
     char ModelID[33] = {0}; // Max 32 chars + null terminator
     char SoftwareVersion[33] = {0};
     char ModelVersion[33] = {0};
     char SerialCode[33] = {0};
+    uint8_t CertificationLevel = 0;
+    uint8_t LoadEquivalency = 0;
     
-    // Read strings with length prefixes
-    int len;
-    
-    // Model ID
-    len = msg.GetByte(Index);
-    if (len > 32) len = 32; // Prevent buffer overflow
-    for (int i = 0; i < len && Index < msg.DataLen; i++) {
-        ModelID[i] = msg.GetByte(Index);
-    }
-    
-    // Software Version
-    if (Index < msg.DataLen) {
-        len = msg.GetByte(Index);
-        if (len > 32) len = 32;
-        for (int i = 0; i < len && Index < msg.DataLen; i++) {
-            SoftwareVersion[i] = msg.GetByte(Index);
-        }
-    }
-    
-    // Model Version
-    if (Index < msg.DataLen) {
-        len = msg.GetByte(Index);
-        if (len > 32) len = 32;
-        for (int i = 0; i < len && Index < msg.DataLen; i++) {
-            ModelVersion[i] = msg.GetByte(Index);
-        }
-    }
-    
-    // Serial Code
-    if (Index < msg.DataLen) {
-        len = msg.GetByte(Index);
-        if (len > 32) len = 32;
-        for (int i = 0; i < len && Index < msg.DataLen; i++) {
-            SerialCode[i] = msg.GetByte(Index);
-        }
-    }
-    
-    if (showDialog) {
-        // Show detailed dialog for responses to our explicit requests
-        QString productInfo = QString(
-            "Product Information Response from Device 0x%1:\n\n"
-            "• N2K Version: %2\n"
-            "• Product Code: %3\n"
-            "• Model ID: %4\n"
-            "• Software Version: %5\n"
-            "• Model Version: %6\n"
-            "• Serial Code: %7"
-        ).arg(msg.Source, 2, 16, QChar('0'))
-         .arg(N2kVersion)
-         .arg(ProductCode)
-         .arg(QString::fromLatin1(ModelID))
-         .arg(QString::fromLatin1(SoftwareVersion))
-         .arg(QString::fromLatin1(ModelVersion))
-         .arg(QString::fromLatin1(SerialCode));
+    // Use the official NMEA2000 parsing function for proper string handling
+    if (ParseN2kPGN126996(msg, N2kVersion, ProductCode,
+                          sizeof(ModelID), ModelID,
+                          sizeof(SoftwareVersion), SoftwareVersion,
+                          sizeof(ModelVersion), ModelVersion,
+                          sizeof(SerialCode), SerialCode,
+                          CertificationLevel, LoadEquivalency)) {
         
-        QMessageBox::information(this, "Product Information Response", productInfo);
+        // Update device table to reflect the new information
+        populateDeviceTable();
+        
+        if (showDialog) {
+            // Log detailed response for explicit requests
+            qDebug() << "Product Information Response from Device"
+                     << QString("0x%1:").arg(msg.Source, 2, 16, QChar('0'))
+                     << "N2K Version:" << N2kVersion
+                     << "Product Code:" << ProductCode
+                     << "Model ID:" << QString::fromLatin1(ModelID)
+                     << "Software Version:" << QString::fromLatin1(SoftwareVersion)
+                     << "Model Version:" << QString::fromLatin1(ModelVersion)
+                     << "Serial Code:" << QString::fromLatin1(SerialCode);
+        }
     }
     // Note: Unsolicited product information is silently ignored
 }
 
-// Group Function Message Handling (PGN 126208)
-void DeviceMainWindow::handleGroupFunctionMessage(const tN2kMsg& msg) {
-    if (msg.PGN != 126208UL || msg.DataLen < 5) {
+// Configuration Information Message Handling (PGN 126998)
+void DeviceMainWindow::handleConfigurationInformationResponse(const tN2kMsg& msg) {
+    if (msg.PGN != N2kPGNConfigurationInformation) {
         return;
     }
     
-    int Index = 0;
-    uint8_t groupFunction = msg.GetByte(Index);
-    uint32_t targetPGN = msg.Get3ByteUInt(Index);
+    // Check if this is a response to a request we made
+    bool showDialog = m_pendingConfigInfoRequests.contains(msg.Source);
+    if (showDialog) {
+        // Remove from pending requests since we got the response
+        m_pendingConfigInfoRequests.remove(msg.Source);
+    }
     
-    // Check if this is an acknowledgment (Group Function code 2)
-    if (groupFunction == 2) { // N2kgfc_Acknowledge
-        msg.GetByte(Index); // Skip priority setting byte
-        uint8_t numberOfParameters = msg.GetByte(Index);
+    char ManufacturerInformation[71] = {0}; // Max 70 chars + null terminator
+    char InstallationDescription1[71] = {0};
+    char InstallationDescription2[71] = {0};
+    size_t ManufacturerInformationSize = sizeof(ManufacturerInformation);
+    size_t InstallationDescription1Size = sizeof(InstallationDescription1);
+    size_t InstallationDescription2Size = sizeof(InstallationDescription2);
+    
+    // Use the official NMEA2000 parsing function
+    if (ParseN2kPGN126998(msg, 
+                          ManufacturerInformationSize, ManufacturerInformation,
+                          InstallationDescription1Size, InstallationDescription1,
+                          InstallationDescription2Size, InstallationDescription2)) {
         
-        // Parse acknowledgment parameters
-        bool success = true;
-        if (numberOfParameters > 0) {
-            // Read the first parameter to check for errors
-            if (Index < msg.DataLen) {
-                msg.GetByte(Index); // Skip parameter index
-                uint8_t errorCode = msg.GetByte(Index);
-                
-                // Error codes: 0=ACK, 1=NAK, 2=Access Denied, etc.
-                (void)errorCode;
-                //success = (errorCode == 0);
-            }
+        // Update device table to reflect the new information
+        populateDeviceTable();
+        
+        if (showDialog) {
+            // Log detailed response for explicit requests
+            qDebug() << "Configuration Information Response from Device"
+                     << QString("0x%1:").arg(msg.Source, 2, 16, QChar('0'))
+                     << "Manufacturer Info:" << QString::fromLatin1(ManufacturerInformation)
+                     << "Install Desc 1:" << QString::fromLatin1(InstallationDescription1)
+                     << "Install Desc 2:" << QString::fromLatin1(InstallationDescription2);
         }
-        
-        //qDebug() << "Received Group Function ACK from device" << QString("0x%1").arg(msg.Source, 2, 16, QChar('0'))
-        //         << "for PGN" << targetPGN << "- Success:" << success;
-        
-        // Emit signal to notify waiting dialogs
-        emit commandAcknowledged(msg.Source, targetPGN, success);
+    }
+    // Note: Unsolicited configuration information is silently ignored
+}
+
+// Group Function Message Handling (PGN 126208)
+void DeviceMainWindow::handleGroupFunctionMessage(const tN2kMsg& msg) {
+    if (msg.PGN != 126208UL) {
+        return;
+    }
+    
+    tN2kGroupFunctionCode GroupFunctionCode;
+    unsigned long PGNForGroupFunction;
+    
+    // Use the official NMEA2000 parsing function
+    if (tN2kGroupFunctionHandler::Parse(msg, GroupFunctionCode, PGNForGroupFunction)) {
+        // Check if this is an acknowledgment
+        if (GroupFunctionCode == N2kgfc_Acknowledge) {
+            qDebug() << "Received Group Function ACK from device" << QString("0x%1").arg(msg.Source, 2, 16, QChar('0'))
+                     << "for PGN" << PGNForGroupFunction;
+            
+            // Emit signal to notify waiting dialogs
+            emit commandAcknowledged(msg.Source, PGNForGroupFunction, true);
+        }
     }
 }
 
