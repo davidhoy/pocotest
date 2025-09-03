@@ -68,9 +68,9 @@ void InstanceConflictAnalyzer::detectConflicts()
     
     // Log summary only if conflicts found
     if (!m_instanceConflicts.isEmpty()) {
-        qDebug() << "Instance conflicts detected:" 
-                 << m_instanceConflicts.size() << "conflicts affecting" 
-                 << m_conflictingSources.size() << "sources";
+        //qDebug() << "Instance conflicts detected:" 
+        //         << m_instanceConflicts.size() << "conflicts affecting" 
+        //         << m_conflictingSources.size() << "sources";
     }
 }
 
