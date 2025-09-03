@@ -1776,11 +1776,11 @@ void DeviceMainWindow::handleProductInformationResponse(const tN2kMsg& msg) {
                           sizeof(SerialCode), SerialCode,
                           CertificationLevel, LoadEquivalency)) {
         
-        qDebug() << "Received Product Information from Device"
-                 << QString("0x%1:").arg(msg.Source, 2, 16, QChar('0')).toUpper()
-                 << "Model ID:" << QString::fromLatin1(ModelID)
-                 << "Serial:" << QString::fromLatin1(SerialCode)
-                 << "Software:" << QString::fromLatin1(SoftwareVersion);
+        //qDebug() << "Received Product Information from Device"
+        //         << QString("0x%1:").arg(msg.Source, 2, 16, QChar('0')).toUpper()
+        //         << "Model ID:" << QString::fromLatin1(ModelID)
+        //         << "Serial:" << QString::fromLatin1(SerialCode)
+        //         << "Software:" << QString::fromLatin1(SoftwareVersion);
         
         // Update device table to reflect the new information
         populateDeviceTable();
