@@ -4,16 +4,35 @@
             "name": "Linux",
             "includePath": [
                 "${workspaceFolder}/**",
+                "${workspaceFolder}/src",
+                "${workspaceFolder}/components/external/NMEA2000/src",
+                "${workspaceFolder}/components/external/NMEA2000_socketCAN",
+                "${workspaceFolder}/components/external/NMEA2000_IPG100",
                 "/usr/include/x86_64-linux-gnu/qt5/QtWidgets",
                 "/usr/include/x86_64-linux-gnu/qt5/QtCore",
                 "/usr/include/x86_64-linux-gnu/qt5",
-                "/usr/include/x86_64-linux-gnu/qt5/QtNetwork"
+                "/usr/include/x86_64-linux-gnu/qt5/QtNetwork",
+                "/usr/include/x86_64-linux-gnu/qt5/QtGui"
             ],
-            "defines": [],
+            "defines": [
+                "QT_WIDGETS_LIB",
+                "QT_GUI_LIB", 
+                "QT_NETWORK_LIB",
+                "QT_CORE_LIB",
+                "DEBUG"
+            ],
             "cStandard": "c17",
-            "cppStandard": "gnu++17",
+            "cppStandard": "gnu++11",
             "intelliSenseMode": "linux-gcc-x64",
-            "configurationProvider": "ms-vscode.makefile-tools"
+            "configurationProvider": "ms-vscode.makefile-tools",
+            "compilerPath": "/usr/bin/g++",
+            "browse": {
+                "path": [
+                    "${workspaceFolder}",
+                    "/usr/include/x86_64-linux-gnu/qt5"
+                ],
+                "limitSymbolsToIncludedHeaders": true
+            }
         }
     ],
     "version": 4

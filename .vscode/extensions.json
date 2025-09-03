@@ -1,0 +1,12 @@
+{
+    "recommendations": [
+        "ms-vscode.cpptools",
+        "ms-vscode.cpptools-extension-pack",
+        "ms-vscode.makefile-tools",
+        "ms-vscode.cmake-tools",
+        "vadimcn.vscode-lldb",
+        "ms-vscode.hexeditor",
+        "ms-vscode.live-server",
+        "mhutchie.git-graph"
+    ]
+}

@@ -66,5 +66,14 @@
         "thread": "cpp",
         "typeinfo": "cpp",
         "variant": "cpp"
-    }
+    },
+    "cmake.configureOnOpen": false,
+    "C_Cpp.default.configurationProvider": "ms-vscode.makefile-tools",
+    "C_Cpp.default.intelliSenseMode": "linux-gcc-x64",
+    "debug.allowBreakpointsEverywhere": true,
+    "debug.showBreakpointsInOverviewRuler": true,
+    "debug.console.fontSize": 12,
+    "terminal.integrated.fontSize": 12,
+    "makefile.extensionOutputFolder": "./.vscode",
+    "makefile.extensionLog": "Verbose"
 }

@@ -1,0 +1,207 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build-debug",
+            "type": "shell",
+            "command": "qmake",
+            "args": [
+                "CONFIG+=debug",
+                "CONFIG-=release",
+                "QMAKE_CXXFLAGS_DEBUG+=-g3",
+                "QMAKE_CXXFLAGS_DEBUG+=-O0",
+                "QMAKE_CXXFLAGS_DEBUG+=-DDEBUG"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": "$gcc",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "dependsOn": "make-debug"
+        },
+        {
+            "label": "make-debug",
+            "type": "shell",
+            "command": "make",
+            "args": [
+                "clean"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": "$gcc",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "dependsOrder": "sequence",
+            "dependsOn": "make-build"
+        },
+        {
+            "label": "make-build",
+            "type": "shell",
+            "command": "make",
+            "args": [
+                "-j$(nproc)"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": "$gcc",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
+        },
+        {
+            "label": "build-debug-ipg100",
+            "type": "shell",
+            "command": "qmake",
+            "args": [
+                "CONFIG+=debug",
+                "CONFIG+=ipg100",
+                "CONFIG-=release",
+                "QMAKE_CXXFLAGS_DEBUG+=-g3",
+                "QMAKE_CXXFLAGS_DEBUG+=-O0",
+                "QMAKE_CXXFLAGS_DEBUG+=-DDEBUG"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": "$gcc",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "dependsOn": "make-debug"
+        },
+        {
+            "label": "build-release",
+            "type": "shell",
+            "command": "qmake",
+            "args": [
+                "CONFIG+=release",
+                "CONFIG-=debug"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": "$gcc",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "dependsOn": "make-release"
+        },
+        {
+            "label": "make-release",
+            "type": "shell",
+            "command": "make",
+            "args": [
+                "clean"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": "$gcc",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "dependsOrder": "sequence",
+            "dependsOn": "make-build-release"
+        },
+        {
+            "label": "make-build-release",
+            "type": "shell",
+            "command": "make",
+            "args": [
+                "-j$(nproc)"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": "$gcc",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
+        },
+        {
+            "label": "clean",
+            "type": "shell",
+            "command": "make",
+            "args": ["clean"],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": "$gcc",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
+        },
+        {
+            "label": "qmake",
+            "type": "shell",
+            "command": "qmake",
+            "args": [],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
+            },
+            "problemMatcher": "$gcc",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
+        }
+    ]
+}
