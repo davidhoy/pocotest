@@ -171,11 +171,11 @@ void DeviceMainWindow::setupUI()
     
     // Device table
     m_deviceTable = new QTableWidget();
-    m_deviceTable->setColumnCount(9);
+    m_deviceTable->setColumnCount(8);
     
     QStringList headers;
     headers << "Node Address" << "Manufacturer" << "Model ID" << "Serial Number" 
-            << "Instance" << "Type" << "Current Software" << "Installation 1" << "Installation 2";
+            << "Instance" << "Current Software" << "Installation 1" << "Installation 2";
     m_deviceTable->setHorizontalHeaderLabels(headers);
     
     // Configure table
@@ -754,7 +754,6 @@ void DeviceMainWindow::showDeviceContextMenu(const QPoint& position)
     QTableWidgetItem* nodeAddressItem = m_deviceTable->item(row, 0); // Node Address column
     QTableWidgetItem* manufacturerItem = m_deviceTable->item(row, 1); // Manufacturer column
     QTableWidgetItem* modelItem = m_deviceTable->item(row, 2);        // Model ID column
-    QTableWidgetItem* typeItem = m_deviceTable->item(row, 5);         // Type column
     
     if (!nodeAddressItem) {
         return;
@@ -763,7 +762,6 @@ void DeviceMainWindow::showDeviceContextMenu(const QPoint& position)
     QString nodeAddress = nodeAddressItem->text();
     QString manufacturer = manufacturerItem ? manufacturerItem->text() : "Unknown";
     QString model = modelItem ? modelItem->text() : "Unknown";
-    QString type = typeItem ? typeItem->text() : "Unknown";
     
     // Convert hex node address to decimal for PGN sending
     bool ok;
@@ -974,10 +972,9 @@ void DeviceMainWindow::showDeviceDetails(int row)
     QString modelId = m_deviceTable->item(row, 2) ? m_deviceTable->item(row, 2)->text() : "Unknown";
     QString serialNumber = m_deviceTable->item(row, 3) ? m_deviceTable->item(row, 3)->text() : "Unknown";
     QString instance = m_deviceTable->item(row, 4) ? m_deviceTable->item(row, 4)->text() : "Unknown";
-    QString type = m_deviceTable->item(row, 5) ? m_deviceTable->item(row, 5)->text() : "Unknown";
-    QString software = m_deviceTable->item(row, 6) ? m_deviceTable->item(row, 6)->text() : "Unknown";
-    QString installDesc1 = m_deviceTable->item(row, 7) ? m_deviceTable->item(row, 7)->text() : "Unknown";
-    QString installDesc2 = m_deviceTable->item(row, 8) ? m_deviceTable->item(row, 8)->text() : "Unknown";
+    QString software = m_deviceTable->item(row, 5) ? m_deviceTable->item(row, 5)->text() : "Unknown";
+    QString installDesc1 = m_deviceTable->item(row, 6) ? m_deviceTable->item(row, 6)->text() : "Unknown";
+    QString installDesc2 = m_deviceTable->item(row, 7) ? m_deviceTable->item(row, 7)->text() : "Unknown";
     
     // Get additional device details from the device list
     bool ok;
@@ -1011,12 +1008,11 @@ void DeviceMainWindow::showDeviceDetails(int row)
         "Model ID: %3\n"
         "Serial Number: %4\n"
         "Device Instance: %5\n"
-        "Type: %6\n"
-        "Software Version: %7\n"
-        "Installation 1: %8\n"
-        "Installation 2: %9\n\n"
-        "Additional Info:\n%10"
-    ).arg(nodeAddress, manufacturer, modelId, serialNumber, instance, type, software, installDesc1, installDesc2, additionalInfo);
+        "Software Version: %6\n"
+        "Installation 1: %7\n"
+        "Installation 2: %8\n\n"
+        "Additional Info:\n%9"
+    ).arg(nodeAddress, manufacturer, modelId, serialNumber, instance, software, installDesc1, installDesc2, additionalInfo);
     
     QMessageBox msgBox(this);
     msgBox.setWindowTitle(QString("Device Details - 0x%1").arg(nodeAddress));
@@ -1729,23 +1725,13 @@ void DeviceMainWindow::updateDeviceTableRow(int row, uint8_t source, const tNMEA
     instanceItem->setTextAlignment(Qt::AlignCenter);
     m_deviceTable->setItem(row, 4, instanceItem);
     
-    // Type - create based on device function and class
-    QString type = getDeviceFunctionName(device->GetDeviceFunction());
-    if (type.startsWith("Unknown")) {
-        type = getDeviceClassName(device->GetDeviceClass());
-    }
-    if (type.startsWith("Unknown")) {
-        type = QString("Device %1").arg(source, 2, 16, QChar('0')).toUpper();
-    }
-    m_deviceTable->setItem(row, 5, new QTableWidgetItem(type));
-    
     // Current Software - use virtual method
     QString softwareVersion = "-";
     const char* swCodeStr = device->GetSwCode();
     if (swCodeStr && strlen(swCodeStr) > 0) {
         softwareVersion = QString(swCodeStr);
     }
-    m_deviceTable->setItem(row, 6, new QTableWidgetItem(softwareVersion));
+    m_deviceTable->setItem(row, 5, new QTableWidgetItem(softwareVersion));
     
     // Installation Description 1 and 2 - separate columns for PGN 126998 fields
     QString installDesc1 = "-";
@@ -1760,8 +1746,8 @@ void DeviceMainWindow::updateDeviceTableRow(int row, uint8_t source, const tNMEA
         installDesc2 = QString(installDesc2Ptr);
     }
     
-    m_deviceTable->setItem(row, 7, new QTableWidgetItem(installDesc1));
-    m_deviceTable->setItem(row, 8, new QTableWidgetItem(installDesc2));
+    m_deviceTable->setItem(row, 6, new QTableWidgetItem(installDesc1));
+    m_deviceTable->setItem(row, 7, new QTableWidgetItem(installDesc2));
     
     // Set text color based on activity status
     QColor textColor = isActive ? QColor(Qt::black) : QColor(Qt::gray);
