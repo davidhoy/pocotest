@@ -64,6 +64,7 @@ private slots:
     void onAddCommonNoisyPgns();
     void onTableContextMenu(const QPoint& position);
     void onPgnFilteringToggled(bool enabled);
+    void onScrollPositionChanged();
 
 public:
     enum TimestampMode {
@@ -84,6 +85,10 @@ private:
     bool messagePassesFilter(const tN2kMsg& msg);
     void addLoadedMessage(const tN2kMsg& msg, const QString& originalTimestamp);
     void refreshTableFilter(); // Re-apply filters to existing table rows
+    
+    // Auto-scrolling helper methods
+    bool isScrolledToBottom() const;
+    void scrollToBottom();
     
     // Format parsing helpers for loading logs
     bool parseOlderFormatLine(const QString& line, tN2kMsg& msg, QString& timestamp);
@@ -120,6 +125,10 @@ private:
     bool m_showingLoadedLog;  // Track if we're displaying a loaded log file
     QString m_loadedLogFileName; // Name of loaded log file for title display
     
+    // Auto-scrolling control
+    bool m_autoScrollEnabled;    // Whether to auto-scroll to bottom on new messages
+    bool m_userInteracting;      // Track if user is manually scrolling/selecting
+    
     // Original DBC Decoder - stable and fast
     DBCDecoder* m_dbcDecoder;
     
@@ -141,6 +150,9 @@ private:
     void removePgnFromIgnoreList(uint32_t pgn);
     void setIgnoredPgns(const QSet<uint32_t>& pgns);
     QSet<uint32_t> getIgnoredPgns() const { return m_ignoredPgns; }
+    
+    // Decode details dialog
+    void showDecodeDetails(int row);
     
     // Settings persistence
     void saveSettings();

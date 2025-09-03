@@ -5,6 +5,14 @@
 #include <QFileDialog>
 #include <QTextStream>
 #include <QApplication>
+#include <QScrollBar>
+#include <QTextEdit>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QPushButton>
+#include <QLabel>
+#include <QFont>
+#include <QClipboard>
 
 PGNLogDialog::PGNLogDialog(QWidget *parent)
     : QDialog(parent)
@@ -30,6 +38,8 @@ PGNLogDialog::PGNLogDialog(QWidget *parent)
     , m_logStopped(false)
     , m_showingLoadedLog(false)  // Initially showing live log
     , m_loadedLogFileName("")    // No loaded log initially
+    , m_autoScrollEnabled(true)  // Start with auto-scrolling enabled
+    , m_userInteracting(false)   // User not initially interacting
     , m_dbcDecoder(nullptr)      // Will be initialized in constructor body
     , m_pgnIgnoreEdit(nullptr)
     , m_addPgnIgnoreButton(nullptr)
@@ -254,6 +264,10 @@ void PGNLogDialog::setupUI()
     // Connect table click signal
     connect(m_logTable, &QTableWidget::cellClicked, this, &PGNLogDialog::onTableItemClicked);
     
+    // Monitor scroll position to detect when user scrolls to bottom
+    connect(m_logTable->verticalScrollBar(), &QScrollBar::valueChanged, 
+            this, &PGNLogDialog::onScrollPositionChanged);
+    
     // Enable context menu for right-click to add PGN to filter
     m_logTable->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_logTable, &QTableWidget::customContextMenuRequested, 
@@ -300,10 +314,13 @@ void PGNLogDialog::setupUI()
 
 void PGNLogDialog::appendMessage(const tN2kMsg& msg)
 {
-    // Check if logging is stopped or paused
-    if (m_logStopped || m_logPaused) {
-        return; // Don't add new messages
+    // Check if logging is stopped - if so, don't add new messages
+    if (m_logStopped) {
+        return; 
     }
+    
+    // If paused, continue adding messages but don't scroll (for examination)
+    // If user is interacting, continue logging but don't auto-scroll
     
     // Apply filters
     if (!messagePassesFilter(msg)) {
@@ -403,16 +420,18 @@ void PGNLogDialog::appendMessage(const tN2kMsg& msg)
     decodedItem->setFont(QFont("Consolas, Monaco, monospace", 9));
     m_logTable->setItem(row, 8, decodedItem);
 
-    // Auto-scroll to bottom
-    m_logTable->scrollToBottom();
+    // Auto-scroll to bottom if enabled
+    scrollToBottom();
 }
 
 void PGNLogDialog::appendSentMessage(const tN2kMsg& msg)
 {
-    // Check if logging is stopped or paused
-    if (m_logStopped || m_logPaused) {
-        return; // Don't add new messages
+    // Check if logging is stopped - if so, don't add new messages
+    if (m_logStopped) {
+        return; 
     }
+    
+    // If paused or user is interacting, continue adding messages but don't scroll
     
     // Apply filters (sent messages should also be filtered)
     if (!messagePassesFilter(msg)) {
@@ -522,8 +541,8 @@ void PGNLogDialog::appendSentMessage(const tN2kMsg& msg)
     decodedItem->setForeground(QBrush(blueColor));
     m_logTable->setItem(row, 8, decodedItem);
     
-    // Auto-scroll to bottom
-    m_logTable->scrollToBottom();
+    // Auto-scroll to bottom if enabled
+    scrollToBottom();
 }
 
 void PGNLogDialog::clearLog()
@@ -534,6 +553,10 @@ void PGNLogDialog::clearLog()
     // Reset to running state when clearing
     m_logPaused = false;
     m_logStopped = false;
+    
+    // Re-enable auto-scrolling when clearing
+    m_autoScrollEnabled = true;
+    m_userInteracting = false;
     
     // Update button states
     m_startButton->setEnabled(false);
@@ -1312,10 +1335,9 @@ void PGNLogDialog::onTableItemClicked(int row, int column)
     Q_UNUSED(column);
     Q_UNUSED(row);
     
-    // When user clicks on a table row, pause the logging to allow review
-    if (!m_logPaused && !m_logStopped) {
-        onPauseClicked();
-    }
+    // User clicked on a row - disable auto-scrolling to let them examine the message
+    m_autoScrollEnabled = false;
+    m_userInteracting = true;
 }
 
 void PGNLogDialog::onPauseClicked()
@@ -1337,6 +1359,10 @@ void PGNLogDialog::onStartClicked()
 {
     m_logPaused = false;
     m_logStopped = false;
+    
+    // Re-enable auto-scrolling when starting
+    m_autoScrollEnabled = true;
+    m_userInteracting = false;
     
     // Update button states
     m_startButton->setEnabled(false);
@@ -1739,6 +1765,21 @@ void PGNLogDialog::onTableContextMenu(const QPoint& position)
     // Create context menu
     QMenu* contextMenu = new QMenu(this);
     
+    // Add decode details option first
+    QString detailsText = QString("Show decode details for PGN %1").arg(pgn);
+    if (!messageName.isEmpty() && !messageName.startsWith("PGN")) {
+        detailsText += QString(" (%1)").arg(messageName);
+    }
+    
+    QAction* detailsAction = contextMenu->addAction(detailsText);
+    connect(detailsAction, &QAction::triggered, [this, row]() {
+        showDecodeDetails(row);
+    });
+    
+    // Add separator
+    contextMenu->addSeparator();
+    
+    // Add existing filter option
     QString menuText;
     if (m_ignoredPgns.contains(pgn)) {
         // PGN is already in ignore list - offer to remove it
@@ -1837,7 +1878,231 @@ void PGNLogDialog::loadSettings()
     settings.endGroup();
 }
 
+void PGNLogDialog::onScrollPositionChanged()
+{
+    // Check if user has scrolled to the bottom
+    if (isScrolledToBottom()) {
+        // Re-enable auto-scrolling when user scrolls to bottom
+        m_autoScrollEnabled = true;
+        m_userInteracting = false;
+    } else {
+        // User has scrolled away from bottom - disable auto-scrolling
+        if (!m_userInteracting) {
+            m_autoScrollEnabled = false;
+            m_userInteracting = true;
+        }
+    }
+}
+
+bool PGNLogDialog::isScrolledToBottom() const
+{
+    QScrollBar* scrollBar = m_logTable->verticalScrollBar();
+    // Consider it "at bottom" if within a few pixels of the maximum
+    return (scrollBar->value() >= scrollBar->maximum() - 3);
+}
+
+void PGNLogDialog::scrollToBottom()
+{
+    if (m_autoScrollEnabled && !m_logStopped && !m_logPaused) {
+        m_logTable->scrollToBottom();
+    }
+}
+
 void PGNLogDialog::setDeviceNameResolver(DeviceNameResolver resolver)
 {
     m_deviceNameResolver = resolver;
+}
+
+void PGNLogDialog::showDecodeDetails(int row)
+{
+    if (row < 0 || row >= m_logTable->rowCount()) {
+        return; // Invalid row
+    }
+    
+    // Extract message data from the table row
+    QString timestamp = m_logTable->item(row, 0) ? m_logTable->item(row, 0)->text() : "";
+    QString pgnText = m_logTable->item(row, 1) ? m_logTable->item(row, 1)->text() : "";
+    QString messageName = m_logTable->item(row, 2) ? m_logTable->item(row, 2)->text() : "";
+    QString priority = m_logTable->item(row, 3) ? m_logTable->item(row, 3)->text() : "";
+    QString source = m_logTable->item(row, 4) ? m_logTable->item(row, 4)->text() : "";
+    QString destination = m_logTable->item(row, 5) ? m_logTable->item(row, 5)->text() : "";
+    QString length = m_logTable->item(row, 6) ? m_logTable->item(row, 6)->text() : "";
+    QString rawData = m_logTable->item(row, 7) ? m_logTable->item(row, 7)->text() : "";
+    QString decodedData = m_logTable->item(row, 8) ? m_logTable->item(row, 8)->text() : "";
+    
+    // Clean up PGN field (remove "Sent:" prefix if present)
+    QString pgn = pgnText;
+    if (pgn.startsWith("Sent: ")) {
+        pgn = pgn.mid(6);
+    }
+    
+    // Create the details dialog
+    QDialog* detailsDialog = new QDialog(this);
+    detailsDialog->setWindowTitle(QString("Message Details - PGN %1").arg(pgn));
+    detailsDialog->setMinimumSize(600, 400);
+    detailsDialog->resize(700, 500);
+    
+    // Create layout
+    QVBoxLayout* layout = new QVBoxLayout(detailsDialog);
+    
+    // Create text display area
+    QTextEdit* textDisplay = new QTextEdit(detailsDialog);
+    textDisplay->setReadOnly(true);
+    textDisplay->setFont(QFont("Courier", 10)); // Monospace font for better alignment
+    
+    // Build the detailed information text
+    QString detailsText;
+    
+    // Header information
+    detailsText += "NMEA2000 Message Details\n";
+    detailsText += "========================\n\n";
+    
+    // Basic message information
+    detailsText += "Message Information:\n";
+    detailsText += "-------------------\n";
+    detailsText += QString("Timestamp:    %1\n").arg(timestamp);
+    detailsText += QString("PGN:          %1").arg(pgn);
+    if (!messageName.isEmpty() && messageName != QString("PGN %1").arg(pgn)) {
+        detailsText += QString(" (%1)").arg(messageName);
+    }
+    detailsText += "\n";
+    detailsText += QString("Priority:     %1\n").arg(priority);
+    detailsText += QString("Source:       0x%1").arg(source);
+    detailsText += QString("Destination:  0x%1").arg(destination);
+    detailsText += QString("Length:       %1 bytes\n").arg(length);
+    
+    // Add device name information if available
+    if (m_deviceNameResolver) {
+        bool ok;
+        uint8_t srcAddr = source.toUInt(&ok, 16);
+        if (ok) {
+            QString sourceName = m_deviceNameResolver(srcAddr);
+            if (!sourceName.isEmpty()) {
+                detailsText += QString("Source Device: %1\n").arg(sourceName);
+            }
+        }
+        
+        uint8_t destAddr = destination.toUInt(&ok, 16);
+        if (ok) {
+            QString destName = m_deviceNameResolver(destAddr);
+            if (destAddr == 255) {
+                destName = "Broadcast";
+            }
+            if (!destName.isEmpty()) {
+                detailsText += QString("Dest Device:   %1\n").arg(destName);
+            }
+        }
+    }
+    
+    detailsText += "\n";
+    
+    // Raw data section
+    detailsText += "Raw Data:\n";
+    detailsText += "---------\n";
+    if (!rawData.isEmpty() && rawData != "(no data)") {
+        // Format raw data with better spacing
+        QStringList hexBytes = rawData.split(" ", Qt::SkipEmptyParts);
+        QString formattedRawData;
+        for (int i = 0; i < hexBytes.size(); i++) {
+            if (i > 0 && i % 8 == 0) {
+                formattedRawData += "\n          ";
+            }
+            formattedRawData += hexBytes[i].rightJustified(2, '0').toUpper() + " ";
+        }
+        detailsText += QString("Hex:      %1\n").arg(formattedRawData.trimmed());
+        
+        // Add byte positions for reference
+        QString bytePositions;
+        for (int i = 0; i < hexBytes.size(); i++) {
+            if (i > 0 && i % 8 == 0) {
+                bytePositions += "\n          ";
+            }
+            bytePositions += QString("%1  ").arg(i, 2);
+        }
+        detailsText += QString("Positions:%1\n").arg(bytePositions);
+    } else {
+        detailsText += "No data\n";
+    }
+    
+    detailsText += "\n";
+    
+    // Decoded data section
+    detailsText += "Decoded Information:\n";
+    detailsText += "-------------------\n";
+    
+    // Try to get enhanced decoded data if decoder is available
+    if (m_dbcDecoder && m_decodingEnabled->isChecked() && !rawData.isEmpty() && rawData != "(no data)") {
+        bool ok;
+        uint32_t pgnNum = pgn.toUInt(&ok);
+        if (ok && m_dbcDecoder->canDecode(pgnNum)) {
+            // Reconstruct the message for detailed decoding
+            QStringList hexBytes = rawData.split(" ", Qt::SkipEmptyParts);
+            uint8_t dataLen = length.toUInt(&ok);
+            if (ok) {
+                tN2kMsg reconstructedMsg;
+                reconstructedMsg.PGN = pgnNum;
+                reconstructedMsg.Priority = priority.toUInt(&ok) ? priority.toUInt() : 6;
+                reconstructedMsg.Source = source.toUInt(&ok, 16) ? source.toUInt(nullptr, 16) : 0;
+                reconstructedMsg.Destination = destination.toUInt(&ok, 16) ? destination.toUInt(nullptr, 16) : 255;
+                reconstructedMsg.DataLen = qMin(dataLen, (uint8_t)hexBytes.size());
+                
+                // Parse hex data into byte array
+                for (int i = 0; i < reconstructedMsg.DataLen && i < hexBytes.size(); i++) {
+                    bool hexOk;
+                    uint8_t byteVal = hexBytes[i].toUInt(&hexOk, 16);
+                    if (hexOk) {
+                        reconstructedMsg.Data[i] = byteVal;
+                    } else {
+                        reconstructedMsg.Data[i] = 0;
+                    }
+                }
+                
+                // Get detailed decoded information
+                QString detailedDecoded = m_dbcDecoder->getFormattedDecodedForSave(reconstructedMsg);
+                if (!detailedDecoded.isEmpty() && detailedDecoded != "Raw data" && detailedDecoded != "(not decoded)") {
+                    // Format the decoded data with better line breaks
+                    QStringList decodedParts = detailedDecoded.split(", ");
+                    for (const QString& part : decodedParts) {
+                        detailsText += QString("  %1\n").arg(part);
+                    }
+                } else {
+                    detailsText += "Message structure recognized but no decoded data available\n";
+                }
+            }
+        } else {
+            detailsText += "No decoder available for this PGN\n";
+        }
+    } else {
+        if (!decodedData.isEmpty() && decodedData != "(not decoded)" && decodedData != "Raw data") {
+            detailsText += QString("%1\n").arg(decodedData);
+        } else {
+            detailsText += "No decoded information available\n";
+        }
+    }
+    
+    // Set the text in the display
+    textDisplay->setPlainText(detailsText);
+    
+    // Add to layout
+    layout->addWidget(textDisplay);
+    
+    // Create button layout
+    QHBoxLayout* buttonLayout = new QHBoxLayout();
+    buttonLayout->addStretch();
+    
+    QPushButton* copyButton = new QPushButton("Copy to Clipboard", detailsDialog);
+    connect(copyButton, &QPushButton::clicked, [textDisplay]() {
+        QApplication::clipboard()->setText(textDisplay->toPlainText());
+    });
+    buttonLayout->addWidget(copyButton);
+    
+    QPushButton* closeButton = new QPushButton("Close", detailsDialog);
+    connect(closeButton, &QPushButton::clicked, detailsDialog, &QDialog::accept);
+    buttonLayout->addWidget(closeButton);
+    
+    layout->addLayout(buttonLayout);
+    
+    // Show the dialog
+    detailsDialog->exec();
+    detailsDialog->deleteLater();
 }
