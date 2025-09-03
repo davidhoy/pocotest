@@ -845,7 +845,13 @@ void PGNLogDialog::onLoadLogClicked()
         }
         
         if (parseSuccess) {
-            // Add message to table (similar to appendMessage but without filtering)
+            // Apply filtering to loaded messages (same as live messages)
+            if (!messagePassesFilter(reconstructedMsg)) {
+                skippedMessages++;
+                continue; // Skip this message if it doesn't pass filters
+            }
+            
+            // Add message to table
             addLoadedMessage(reconstructedMsg, timestamp);
             loadedMessages++;
         } else {
