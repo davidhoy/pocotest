@@ -6,3 +6,5 @@ moc*.*
 /Makefile
 pocotest
 *.pgnlog
+.vscode/*.log
+.vscode/Verbose
