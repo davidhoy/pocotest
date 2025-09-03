@@ -6,3 +6,6 @@
         path = components/external/NMEA2000_socketCAN
         url = https://github.com/davidhoy/NMEA2000_socketCAN.git
         branch = master
+[submodule "components/external/NMEA2000_IPG100"]
+	path = components/external/NMEA2000_IPG100
+	url = git@github.com:davidhoy/NMEA2000_IPG100.git
