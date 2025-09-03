@@ -13,6 +13,7 @@
 #include <QLabel>
 #include <QFont>
 #include <QClipboard>
+#include <QTimer>
 
 PGNLogDialog::PGNLogDialog(QWidget *parent)
     : QDialog(parent)
@@ -324,6 +325,14 @@ void PGNLogDialog::appendMessage(const tN2kMsg& msg)
     
     // Apply filters
     if (!messagePassesFilter(msg)) {
+        // Debug: Log when messages are filtered out
+#if 0
+        static int filteredCount = 0;
+        filteredCount++;
+        if (filteredCount % 10 == 0) { // Log every 10th filtered message to avoid spam
+            qDebug() << "Message PGN" << msg.PGN << "filtered out (" << filteredCount << "total filtered)";
+        }
+#endif
         return; // Skip this message
     }
     
@@ -1243,24 +1252,46 @@ void PGNLogDialog::refreshTableFilter()
         return;
     }
     
+    qDebug() << "refreshTableFilter() called - starting filter update";
+    
     int filteredCount = 0;
     int totalRows = m_logTable->rowCount();
+    int visibleCount = 0;
     
+    qDebug() << "Total rows to process:" << totalRows;
+    
+    // Temporarily disable updates to avoid flicker
+    m_logTable->setUpdatesEnabled(false);
+    
+    // Track which rows are currently visible to minimize changes
+    QVector<bool> currentlyVisible(totalRows);
+    QVector<bool> shouldBeVisible(totalRows);
+    
+    // First pass: determine current visibility and calculate what should be visible
     for (int row = 0; row < totalRows; ++row) {
-        bool shouldShow = true;
+        currentlyVisible[row] = !m_logTable->isRowHidden(row);
+        shouldBeVisible[row] = true;
         
         // Get PGN from column 1
         QTableWidgetItem* pgnItem = m_logTable->item(row, 1);
         if (pgnItem) {
             bool ok;
             uint32_t pgn = pgnItem->text().toUInt(&ok);
-            if (ok && m_pgnFilteringEnabled && m_pgnFilteringEnabled->isChecked() && m_ignoredPgns.contains(pgn)) {
-                shouldShow = false;
+            bool pgnFilteringEnabled = m_pgnFilteringEnabled && m_pgnFilteringEnabled->isChecked();
+            bool pgnShouldBeFiltered = ok && pgnFilteringEnabled && m_ignoredPgns.contains(pgn);
+            
+            if (row < 3) { // Debug first few rows
+                qDebug() << "Row" << row << "PGN:" << pgn << "filtering enabled:" << pgnFilteringEnabled 
+                         << "should filter:" << pgnShouldBeFiltered << "ignored PGNs:" << m_ignoredPgns;
+            }
+            
+            if (pgnShouldBeFiltered) {
+                shouldBeVisible[row] = false;
             }
         }
         
         // If PGN filtering passes, check source/destination filters
-        if (shouldShow) {
+        if (shouldBeVisible[row]) {
             // Create a minimal tN2kMsg structure for filter checking
             tN2kMsg testMsg;
             
@@ -1268,7 +1299,7 @@ void PGNLogDialog::refreshTableFilter()
             QTableWidgetItem* srcItem = m_logTable->item(row, 4);
             if (srcItem) {
                 bool ok;
-                testMsg.Source = srcItem->text().toUInt(&ok);
+                testMsg.Source = srcItem->text().toUInt(&ok, 16); // Parse as hex
                 if (!ok) testMsg.Source = 255; // Default to broadcast
             }
             
@@ -1276,7 +1307,7 @@ void PGNLogDialog::refreshTableFilter()
             QTableWidgetItem* destItem = m_logTable->item(row, 5);
             if (destItem) {
                 bool ok;
-                testMsg.Destination = destItem->text().toUInt(&ok);
+                testMsg.Destination = destItem->text().toUInt(&ok, 16); // Parse as hex
                 if (!ok) testMsg.Destination = 255; // Default to broadcast
             }
             
@@ -1302,29 +1333,61 @@ void PGNLogDialog::refreshTableFilter()
             // Apply logic
             if (m_useAndLogic) {
                 if (m_sourceFilterActive && m_destinationFilterActive) {
-                    shouldShow = sourceMatch && destMatch;
+                    shouldBeVisible[row] = sourceMatch && destMatch;
                 } else if (m_sourceFilterActive) {
-                    shouldShow = sourceMatch;
+                    shouldBeVisible[row] = sourceMatch;
                 } else if (m_destinationFilterActive) {
-                    shouldShow = destMatch;
+                    shouldBeVisible[row] = destMatch;
                 }
             } else {
                 if (m_sourceFilterActive && m_destinationFilterActive) {
-                    shouldShow = sourceMatch || destMatch;
+                    shouldBeVisible[row] = sourceMatch || destMatch;
                 } else if (m_sourceFilterActive) {
-                    shouldShow = sourceMatch;
+                    shouldBeVisible[row] = sourceMatch;
                 } else if (m_destinationFilterActive) {
-                    shouldShow = destMatch;
+                    shouldBeVisible[row] = destMatch;
                 }
             }
         }
         
-        // Hide or show the row
-        m_logTable->setRowHidden(row, !shouldShow);
-        
-        if (!shouldShow) {
+        if (shouldBeVisible[row]) {
+            visibleCount++;
+        } else {
             filteredCount++;
         }
+    }
+    
+    qDebug() << "Filter analysis: " << visibleCount << " rows should be visible, " << filteredCount << " should be hidden";
+    
+    // Second pass: only change visibility for rows that need it
+    int changedRows = 0;
+    for (int row = 0; row < totalRows; ++row) {
+        if (currentlyVisible[row] != shouldBeVisible[row]) {
+            m_logTable->setRowHidden(row, !shouldBeVisible[row]);
+            changedRows++;
+        }
+    }
+    
+    qDebug() << "Visibility changes: " << changedRows << " rows changed";
+    
+    // Re-enable updates with a proper repaint
+    m_logTable->setUpdatesEnabled(true);
+    
+    // Force a viewport update to ensure proper rendering
+    if (changedRows > 0) {
+        m_logTable->viewport()->update();
+        
+        // If we have visible rows, make sure scrolling still works
+        if (visibleCount > 0 && m_autoScrollEnabled) {
+            QTimer::singleShot(0, this, &PGNLogDialog::scrollToBottom);
+        }
+    }
+    
+    // Update status to show filtering information
+    if (filteredCount > 0) {
+        qDebug() << "PGN filtering: " << filteredCount << " messages hidden from view (out of " << totalRows << " total)";
+    } else {
+        qDebug() << "PGN filtering: No messages filtered (all" << totalRows << "messages visible)";
     }
     
     updateStatusLabel();
@@ -1675,7 +1738,12 @@ void PGNLogDialog::onAddCommonNoisyPgns()
 
 void PGNLogDialog::addPgnToIgnoreList(uint32_t pgn)
 {
+    qDebug() << "addPgnToIgnoreList() called for PGN:" << pgn;
+    qDebug() << "Current ignored PGNs before adding:" << m_ignoredPgns;
+    
     m_ignoredPgns.insert(pgn);
+    
+    qDebug() << "Current ignored PGNs after adding:" << m_ignoredPgns;
     
     QString displayText = QString::number(pgn);
     if (m_dbcDecoder && m_dbcDecoder->canDecode(pgn)) {
@@ -1687,9 +1755,12 @@ void PGNLogDialog::addPgnToIgnoreList(uint32_t pgn)
     m_pgnIgnoreList->addItem(displayText);
     m_pgnIgnoreList->sortItems();
     
+    qDebug() << "About to call updateStatusLabel() and refreshTableFilter()";
     updateStatusLabel();
     refreshTableFilter(); // Apply new filter to existing table rows
+    qDebug() << "Filter refresh completed, about to save settings";
     saveSettings(); // Persist the change
+    qDebug() << "addPgnToIgnoreList() completed";
 }
 
 void PGNLogDialog::removePgnFromIgnoreList(uint32_t pgn)
@@ -1801,6 +1872,7 @@ void PGNLogDialog::onTableContextMenu(const QPoint& position)
         
         QAction* addAction = contextMenu->addAction(menuText);
         connect(addAction, &QAction::triggered, [this, pgn]() {
+            qDebug() << "Context menu: User selected to exclude PGN" << pgn;
             addPgnToIgnoreList(pgn);
         });
     }
@@ -1856,7 +1928,12 @@ void PGNLogDialog::loadSettings()
     bool pgnFilteringEnabled = settings.value("pgnFilteringEnabled", true).toBool();
     if (m_pgnFilteringEnabled) {
         m_pgnFilteringEnabled->setChecked(pgnFilteringEnabled);
-        onPgnFilteringToggled(pgnFilteringEnabled); // Apply the initial state
+        // Apply the initial state without triggering save
+        m_pgnIgnoreEdit->setEnabled(pgnFilteringEnabled);
+        m_addPgnIgnoreButton->setEnabled(pgnFilteringEnabled);
+        m_removePgnIgnoreButton->setEnabled(pgnFilteringEnabled);
+        m_pgnIgnoreList->setEnabled(pgnFilteringEnabled);
+        refreshTableFilter();
     }
     
     // Load ignored PGNs list
