@@ -196,7 +196,8 @@ void DeviceMainWindow::setupUI()
     m_deviceTable->horizontalHeader()->setStretchLastSection(true);
     m_deviceTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
     m_deviceTable->verticalHeader()->setVisible(false);
-    m_deviceTable->setSortingEnabled(false); // Disable sorting to maintain device order
+    m_deviceTable->setSortingEnabled(true); // Enable sorting by clicking column headers
+    m_deviceTable->sortByColumn(0, Qt::AscendingOrder); // Default sort by Node Address (source address)
     
     // Set smaller font for the table
     QFont tableFont = m_deviceTable->font();
@@ -702,6 +703,13 @@ void DeviceMainWindow::populateDeviceTable()
         return;
     }
     
+    // Save current sort state
+    int sortColumn = m_deviceTable->horizontalHeader()->sortIndicatorSection();
+    Qt::SortOrder sortOrder = m_deviceTable->horizontalHeader()->sortIndicatorOrder();
+    // Disable sorting during update
+    m_deviceTable->setSortingEnabled(false);
+    // Clear the table to prevent duplicates
+    m_deviceTable->setRowCount(0);
     // Create a map to track existing devices and their table positions
     QMap<uint8_t, int> existingDeviceRows;
     
@@ -786,7 +794,9 @@ void DeviceMainWindow::populateDeviceTable()
     
     // Resize columns to content
     m_deviceTable->resizeColumnsToContents();
-    
+    // Restore previous sort
+    m_deviceTable->setSortingEnabled(true);
+    m_deviceTable->sortByColumn(sortColumn, sortOrder);
     // Update PGN dialog device list if it exists
     updatePGNDialogDeviceList();
 }
