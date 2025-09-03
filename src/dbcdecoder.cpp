@@ -987,7 +987,19 @@ DecodedMessage DBCDecoder::decodePGN130563(const tN2kMsg& msg)
     DecodedSignal sigDeviceCapabilities;
     sigDeviceCapabilities.name = "Device Capabilities";
     sigDeviceCapabilities.isValid = true;
-    sigDeviceCapabilities.value = QString::number(deviceCapabilities);
+    // Device Capabilities bitfield decoding
+    QStringList capabilities;
+    if (deviceCapabilities & 0x01) capabilities << "Dimmable";
+    if (deviceCapabilities & 0x02) capabilities << "Programmable";
+    if (deviceCapabilities & 0x04) capabilities << "Color Configurable";
+    // Bits 3-7 are reserved for future use
+    //if (deviceCapabilities & 0x08) capabilities << "Reserved (0x08)";
+    //if (deviceCapabilities & 0x10) capabilities << "Reserved (0x10)";
+    //if (deviceCapabilities & 0x20) capabilities << "Reserved (0x20)";
+    //if (deviceCapabilities & 0x40) capabilities << "Reserved (0x40)";
+    //if (deviceCapabilities & 0x80) capabilities << "Reserved (0x80)";
+    if (capabilities.isEmpty()) capabilities << "Default";
+    sigDeviceCapabilities.value = QString("%1 (0x%2)").arg(capabilities.join(", ")).arg(deviceCapabilities, 2, 16, QChar('0')).toUpper();
     decoded.signalList.append(sigDeviceCapabilities);
 
     // Field 3 - Color Capabilities (0-0xff)
@@ -995,7 +1007,20 @@ DecodedMessage DBCDecoder::decodePGN130563(const tN2kMsg& msg)
     DecodedSignal sigColorCapabilities;
     sigColorCapabilities.name = "Color Capabilities";
     sigColorCapabilities.isValid = true;
-    sigColorCapabilities.value = QString::number(colorCapabilities);
+    QStringList capDesc;
+    if (colorCapabilities == 0) {
+        capDesc << "Not Changeable";
+    } else {
+        if (colorCapabilities & 0x01) capDesc << "R";
+        if (colorCapabilities & 0x02) capDesc << "G";
+        if (colorCapabilities & 0x04) capDesc << "B";
+        if (colorCapabilities & 0x08) capDesc << "K";
+        if (colorCapabilities & 0x10) capDesc << "Daylight (~65XXK)";
+        if (colorCapabilities & 0x20) capDesc << "Warm (~35XXK)";
+        //if (colorCapabilities & 0x40) capDesc << "Reserved (future)";
+        //if (colorCapabilities & 0x80) capDesc << "Reserved (future)";
+    }
+    sigColorCapabilities.value = QString("%1 (0x%2)").arg(capDesc.join(", ")).arg(colorCapabilities, 2, 16, QChar('0')).toUpper();
     decoded.signalList.append(sigColorCapabilities);
 
     // Field 4 - Zone Index (0-255)
