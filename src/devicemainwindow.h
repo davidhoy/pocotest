@@ -63,6 +63,7 @@ private:
     void setupUI();
     void setupMenuBar();
     void populateDeviceTable();
+    void sendInitialBroadcastRequest();
     void highlightInstanceConflicts();
     QString getDeviceClassName(unsigned char deviceClass);
     QString getDeviceFunctionName(unsigned char deviceFunction);

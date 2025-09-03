@@ -358,6 +358,10 @@ void DeviceMainWindow::initNMEA2000()
     m_isConnected = true;
     updateConnectionButtonStates();
     
+    // Schedule a broadcast ISO request for product information shortly after coming online
+    // This helps trigger responses from all devices on the network
+    QTimer::singleShot(2000, this, &DeviceMainWindow::sendInitialBroadcastRequest);
+    
     startTimer(100); // Start timer event for regular NMEA2000 processing
 }
 
@@ -706,6 +710,17 @@ void DeviceMainWindow::populateDeviceTable()
     // Save current sort state
     int sortColumn = m_deviceTable->horizontalHeader()->sortIndicatorSection();
     Qt::SortOrder sortOrder = m_deviceTable->horizontalHeader()->sortIndicatorOrder();
+    
+    // Save current selection (if any)
+    QString selectedDeviceAddress;
+    int currentRow = m_deviceTable->currentRow();
+    if (currentRow >= 0 && currentRow < m_deviceTable->rowCount()) {
+        QTableWidgetItem* nodeItem = m_deviceTable->item(currentRow, 0);
+        if (nodeItem) {
+            selectedDeviceAddress = nodeItem->text();
+        }
+    }
+    
     // Disable sorting during update
     m_deviceTable->setSortingEnabled(false);
     // Clear the table to prevent duplicates
@@ -797,6 +812,18 @@ void DeviceMainWindow::populateDeviceTable()
     // Restore previous sort
     m_deviceTable->setSortingEnabled(true);
     m_deviceTable->sortByColumn(sortColumn, sortOrder);
+    
+    // Restore previous selection (if any)
+    if (!selectedDeviceAddress.isEmpty()) {
+        for (int row = 0; row < m_deviceTable->rowCount(); row++) {
+            QTableWidgetItem* nodeItem = m_deviceTable->item(row, 0);
+            if (nodeItem && nodeItem->text() == selectedDeviceAddress) {
+                m_deviceTable->selectRow(row);
+                break;
+            }
+        }
+    }
+    
     // Update PGN dialog device list if it exists
     updatePGNDialogDeviceList();
 }
@@ -1310,6 +1337,30 @@ void DeviceMainWindow::requestInfoFromAllDevices()
     if (requestsSent > 0) {
         statusBar()->showMessage(QString("Sent information requests to %1 device(s) - responses will appear over the next few seconds").arg(requestsSent), 10000);
         qDebug() << "Sent information requests to" << requestsSent << "device(s)";
+    }
+}
+
+void DeviceMainWindow::sendInitialBroadcastRequest()
+{
+    if (!nmea2000) {
+        qDebug() << "Cannot send initial broadcast request - NMEA2000 interface not available";
+        return;
+    }
+    
+    qDebug() << "Sending initial broadcast ISO request for Product Information (PGN 126996)";
+    
+    // Send broadcast ISO request for Product Information to wake up all devices
+    tN2kMsg msg;
+    SetN2kPGN59904(msg, 0xFF, N2kPGNProductInformation); // 0xFF = broadcast
+    
+    if (nmea2000->SendMsg(msg)) {
+        // Blink TX indicator for transmitted message
+        blinkTxIndicator();
+        
+        qDebug() << "Initial broadcast request sent successfully";
+        statusBar()->showMessage("Sent initial broadcast request for device discovery...", 3000);
+    } else {
+        qDebug() << "Failed to send initial broadcast request";
     }
 }
 
