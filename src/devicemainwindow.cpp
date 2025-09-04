@@ -51,7 +51,6 @@ DeviceMainWindow::DeviceMainWindow(QWidget *parent)
     : QMainWindow(parent)
     , m_centralWidget(nullptr)
     , m_deviceTable(nullptr)
-    , m_refreshButton(nullptr)
     , m_analyzeButton(nullptr)
     , m_pgnLogButton(nullptr)
     , m_sendPGNButton(nullptr)
@@ -222,19 +221,16 @@ void DeviceMainWindow::setupUI()
     // Buttons
     QHBoxLayout* buttonLayout = new QHBoxLayout();
     
-    m_refreshButton = new QPushButton("Refresh Devices");
     m_analyzeButton = new QPushButton("Analyze Instance Conflicts");
     m_pgnLogButton = new QPushButton("Show PGN Log");
     m_sendPGNButton = new QPushButton("Send PGN");
     m_clearConflictsButton = new QPushButton("Clear Conflict History");
     
-    connect(m_refreshButton, &QPushButton::clicked, this, &DeviceMainWindow::onRefreshClicked);
     connect(m_analyzeButton, &QPushButton::clicked, this, &DeviceMainWindow::analyzeInstanceConflicts);
     connect(m_pgnLogButton, &QPushButton::clicked, this, &DeviceMainWindow::showPGNLog);
     connect(m_sendPGNButton, &QPushButton::clicked, this, &DeviceMainWindow::showSendPGNDialog);
     connect(m_clearConflictsButton, &QPushButton::clicked, this, &DeviceMainWindow::clearConflictHistory);
     
-    buttonLayout->addWidget(m_refreshButton);
     buttonLayout->addWidget(m_analyzeButton);
     buttonLayout->addWidget(m_pgnLogButton);
     buttonLayout->addWidget(m_sendPGNButton);
@@ -833,16 +829,6 @@ void DeviceMainWindow::populateDeviceTable()
 }
 
 // Slot implementations
-void DeviceMainWindow::onRefreshClicked()
-{
-    // Clear the device table and activity tracking
-    m_deviceTable->setRowCount(0);
-    m_deviceActivity.clear();
-    
-    // Force update the device list
-    updateDeviceList();
-}
-
 void DeviceMainWindow::onRowSelectionChanged()
 {
     // Implementation similar to DeviceListDialog::onRowSelectionChanged()
@@ -2669,12 +2655,65 @@ void DeviceMainWindow::updateDeviceActivity(uint8_t sourceAddress) {
 
 void DeviceMainWindow::checkDeviceTimeouts() {
     QDateTime now = QDateTime::currentDateTime();
+    QList<uint8_t> devicesToRemove;
     
     for (auto it = m_deviceActivity.begin(); it != m_deviceActivity.end(); ++it) {
         qint64 msSinceLastSeen = it->lastSeen.msecsTo(now);
-        if (msSinceLastSeen > DEVICE_TIMEOUT_MS) {
+        
+        if (msSinceLastSeen > DEVICE_REMOVAL_TIMEOUT_MS) {
+            // Device has been inactive for removal timeout - mark for removal
+            devicesToRemove.append(it.key());
+        } else if (msSinceLastSeen > DEVICE_TIMEOUT_MS) {
+            // Device has been inactive for timeout - mark as inactive but don't remove yet
             it->isActive = false;
         }
+    }
+    
+    // Remove devices that have been inactive too long
+    for (uint8_t deviceAddress : devicesToRemove) {
+        removeInactiveDevice(deviceAddress);
+    }
+}
+
+void DeviceMainWindow::removeInactiveDevice(uint8_t deviceAddress) {
+    // Find and remove the device from the table
+    for (int row = 0; row < m_deviceTable->rowCount(); ++row) {
+        QTableWidgetItem* item = m_deviceTable->item(row, 0);
+        if (item) {
+            bool ok;
+            uint8_t tableAddress = item->text().toUInt(&ok, 16);
+            if (ok && tableAddress == deviceAddress) {
+                m_deviceTable->removeRow(row);
+                qDebug() << "Removed inactive device" << QString("0x%1").arg(deviceAddress, 2, 16, QChar('0')).toUpper() 
+                         << "from device table after timeout";
+                break;
+            }
+        }
+    }
+    
+    // Remove from activity tracking
+    m_deviceActivity.remove(deviceAddress);
+    
+    // Remove from known devices (so it can be rediscovered if it comes back)
+    m_knownDevices.remove(deviceAddress);
+    
+    // Cancel any pending product info requests/timers for this device
+    if (m_productInfoRetryTimers.contains(deviceAddress)) {
+        QTimer* timer = m_productInfoRetryTimers[deviceAddress];
+        if (timer) {
+            timer->stop();
+            timer->deleteLater();
+        }
+        m_productInfoRetryTimers.remove(deviceAddress);
+    }
+    m_pendingProductInfoRequests.remove(deviceAddress);
+    m_pendingConfigInfoRequests.remove(deviceAddress);
+    m_productInfoRetryCount.remove(deviceAddress);
+    
+    // Update table row indices for remaining devices
+    for (auto it = m_deviceActivity.begin(); it != m_deviceActivity.end(); ++it) {
+        // Reset table row indices - they'll be updated on next population
+        it->tableRow = -1;
     }
 }
 

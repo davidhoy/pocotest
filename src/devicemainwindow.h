@@ -50,7 +50,6 @@ private slots:
     void updateDeviceList();
     void onConnectClicked();
     void onDisconnectClicked();
-    void onRefreshClicked();
     void onRowSelectionChanged();
     void analyzeInstanceConflicts();
     void showPGNLog();
@@ -88,6 +87,7 @@ private:
     // Device activity tracking methods
     void updateDeviceActivity(uint8_t sourceAddress);
     void checkDeviceTimeouts();
+    void removeInactiveDevice(uint8_t deviceAddress);
     void grayOutInactiveDevices();
     void updateDeviceTableRow(int row, uint8_t source, const tNMEA2000::tDevice* device, bool isActive);
     
@@ -157,7 +157,6 @@ private:
     // UI Components
     QWidget* m_centralWidget;
     QTableWidget* m_deviceTable;
-    QPushButton* m_refreshButton;
     QPushButton* m_analyzeButton;
     QPushButton* m_pgnLogButton;
     QPushButton* m_sendPGNButton;
@@ -195,6 +194,7 @@ private:
     };
     QMap<uint8_t, DeviceActivity> m_deviceActivity; // key: source address
     static const int DEVICE_TIMEOUT_MS = 30000; // 30 seconds
+    static const int DEVICE_REMOVAL_TIMEOUT_MS = 120000; // 2 minutes - remove inactive devices
     
     // Product information request tracking
     QSet<uint8_t> m_pendingProductInfoRequests; // Track which devices we've requested info from
