@@ -67,7 +67,7 @@ private:
     void highlightInstanceConflicts();
     QString getDeviceClassName(unsigned char deviceClass);
     QString getDeviceFunctionName(unsigned char deviceFunction);
-    QString getManufacturerName(uint16_t manufacturerCode);
+    QString getManufacturerName(uint16_t manufacturerCode) const;
     QString getPGNName(unsigned long pgn);
     
     // NMEA2000 and PGN handling
@@ -94,6 +94,8 @@ private:
     // Context menu methods
     void showSendPGNToDevice(uint8_t targetAddress, const QString& nodeAddress);
     void showDeviceDetails(int row);
+    void showInstanceConflictDetails(uint8_t sourceAddress, const QString& nodeAddress);
+    QString getDeviceDisplayName(uint8_t sourceAddress) const;
     void queryDeviceConfiguration(uint8_t targetAddress);
     void requestProductInformation(uint8_t targetAddress);
     void requestSupportedPGNs(uint8_t targetAddress);

@@ -968,6 +968,16 @@ void DeviceMainWindow::showDeviceContextMenu(const QPoint& position)
 
     contextMenu->addSeparator();
 
+    // Instance Conflict Details (only show if device has conflicts)
+    if (m_conflictAnalyzer && m_conflictAnalyzer->hasConflictForSource(sourceAddress)) {
+        QAction* conflictDetailsAction = contextMenu->addAction("Show Instance Conflicts...");
+        conflictDetailsAction->setIcon(QIcon(":/icons/warning.png")); // Warning icon if available
+        connect(conflictDetailsAction, &QAction::triggered, [this, sourceAddress, nodeAddress]() {
+            showInstanceConflictDetails(sourceAddress, nodeAddress);
+        });
+        contextMenu->addSeparator();
+    }
+
     // Copy Node Address action
     QAction* copyAddressAction = contextMenu->addAction("Copy Node Address");
     connect(copyAddressAction, &QAction::triggered, [nodeAddress]() {
@@ -985,6 +995,185 @@ void DeviceMainWindow::showDeviceContextMenu(const QPoint& position)
 
     // Clean up
     delete contextMenuBar;
+}
+
+void DeviceMainWindow::showInstanceConflictDetails(uint8_t sourceAddress, const QString& nodeAddress)
+{
+    if (!m_conflictAnalyzer) {
+        QMessageBox::information(this, "Instance Conflicts", "Instance conflict analyzer is not available.");
+        return;
+    }
+    
+    QList<InstanceConflict> conflicts = m_conflictAnalyzer->getConflictDetailsForSource(sourceAddress);
+    
+    if (conflicts.isEmpty()) {
+        QMessageBox::information(this, "Instance Conflicts", 
+                                QString("No instance conflicts found for device 0x%1").arg(nodeAddress));
+        return;
+    }
+    
+    // Create dialog to show conflict details
+    QDialog dialog(this);
+    dialog.setWindowTitle(QString("Instance Conflicts - Device 0x%1").arg(nodeAddress));
+    dialog.setModal(true);
+    dialog.resize(600, 400);
+    
+    QVBoxLayout* layout = new QVBoxLayout(&dialog);
+    
+    // Header info
+    QLabel* headerLabel = new QLabel(QString("Instance conflicts detected for device 0x%1:").arg(nodeAddress));
+    QFont headerFont = headerLabel->font();
+    headerFont.setBold(true);
+    headerLabel->setFont(headerFont);
+    layout->addWidget(headerLabel);
+    
+    // Explanation
+    QLabel* explanationLabel = new QLabel(
+        "The following PGN+Instance combinations are being transmitted by multiple devices,\n"
+        "which violates NMEA2000 protocol and causes ambiguity for listeners:"
+    );
+    explanationLabel->setWordWrap(true);
+    explanationLabel->setStyleSheet("color: #666; margin: 10px 0px;");
+    layout->addWidget(explanationLabel);
+    
+    // Table showing conflicts
+    QTableWidget* conflictTable = new QTableWidget();
+    conflictTable->setColumnCount(3);
+    conflictTable->setHorizontalHeaderLabels({"PGN", "Instance", "Description"});
+    
+    // Calculate total rows needed (one row per conflict, plus device rows for each conflict)
+    int totalRows = 0;
+    for (const InstanceConflict& conflict : conflicts) {
+        totalRows += 1 + conflict.conflictingSources.size(); // Header row + device rows
+    }
+    
+    conflictTable->setRowCount(totalRows);
+    conflictTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    conflictTable->setAlternatingRowColors(true);
+    
+    // Populate table with conflicts and devices
+    int currentRow = 0;
+    for (const InstanceConflict& conflict : conflicts) {
+        // Conflict header row
+        QTableWidgetItem* pgnItem = new QTableWidgetItem(QString::number(conflict.pgn));
+        pgnItem->setTextAlignment(Qt::AlignCenter);
+        pgnItem->setFont(QFont(pgnItem->font().family(), pgnItem->font().pointSize(), QFont::Bold));
+        conflictTable->setItem(currentRow, 0, pgnItem);
+        
+        QTableWidgetItem* instanceItem = new QTableWidgetItem(QString::number(conflict.instance));
+        instanceItem->setTextAlignment(Qt::AlignCenter);
+        instanceItem->setFont(QFont(instanceItem->font().family(), instanceItem->font().pointSize(), QFont::Bold));
+        conflictTable->setItem(currentRow, 1, instanceItem);
+        
+        QString pgnName = InstanceConflictAnalyzer::getPGNName(conflict.pgn);
+        QTableWidgetItem* descItem = new QTableWidgetItem(pgnName);
+        descItem->setFont(QFont(descItem->font().family(), descItem->font().pointSize(), QFont::Bold));
+        conflictTable->setItem(currentRow, 2, descItem);
+        
+        // Set background color for header row
+        for (int col = 0; col < 3; ++col) {
+            QTableWidgetItem* item = conflictTable->item(currentRow, col);
+            if (item) {
+                item->setBackground(QBrush(QColor(240, 240, 240))); // Light gray header
+            }
+        }
+        
+        currentRow++;
+        
+        // Device rows
+        for (uint8_t addr : conflict.conflictingSources) {
+            // Empty PGN and Instance columns for device rows
+            conflictTable->setItem(currentRow, 0, new QTableWidgetItem(""));
+            conflictTable->setItem(currentRow, 1, new QTableWidgetItem(""));
+            
+            // Device name in description column
+            QString deviceName = getDeviceDisplayName(addr);
+            QTableWidgetItem* deviceItem = new QTableWidgetItem(QString("    • %1").arg(deviceName));
+            conflictTable->setItem(currentRow, 2, deviceItem);
+            
+            // Highlight current device's row
+            if (addr == sourceAddress) {
+                for (int col = 0; col < 3; ++col) {
+                    QTableWidgetItem* item = conflictTable->item(currentRow, col);
+                    if (item) {
+                        item->setBackground(QBrush(QColor(255, 200, 200))); // Light red
+                    }
+                }
+            }
+            
+            currentRow++;
+        }
+    }
+    
+    // Auto-resize columns
+    conflictTable->resizeColumnsToContents();
+    conflictTable->horizontalHeader()->setStretchLastSection(true);
+    
+    layout->addWidget(conflictTable);
+    
+    // Resolution advice
+    QLabel* adviceLabel = new QLabel(
+        "<b>Resolution:</b> Each device should use a unique instance number for each PGN type. "
+        "Consult your device documentation to configure different instance numbers."
+    );
+    adviceLabel->setWordWrap(true);
+    adviceLabel->setStyleSheet("background-color: #fff3cd; border: 1px solid #ffeaa7; padding: 10px; border-radius: 5px; margin: 10px 0px;");
+    layout->addWidget(adviceLabel);
+    
+    // Close button
+    QHBoxLayout* buttonLayout = new QHBoxLayout();
+    buttonLayout->addStretch();
+    QPushButton* closeButton = new QPushButton("Close");
+    connect(closeButton, &QPushButton::clicked, &dialog, &QDialog::accept);
+    buttonLayout->addWidget(closeButton);
+    layout->addLayout(buttonLayout);
+    
+    dialog.exec();
+}
+
+QString DeviceMainWindow::getDeviceDisplayName(uint8_t sourceAddress) const
+{
+    if (!m_deviceList) {
+        return QString("0x%1").arg(sourceAddress, 2, 16, QChar('0')).toUpper();
+    }
+    
+    const tNMEA2000::tDevice* device = m_deviceList->FindDeviceBySource(sourceAddress);
+    if (!device) {
+        return QString("0x%1 (Unknown)").arg(sourceAddress, 2, 16, QChar('0')).toUpper();
+    }
+    
+    // Get manufacturer name
+    uint16_t manufacturerCode = device->GetManufacturerCode();
+    QString manufacturerName = getManufacturerName(manufacturerCode);
+    
+    // Get model ID
+    QString modelId = "Unknown";
+    const char* modelIdStr = device->GetModelID();
+    if (modelIdStr && strlen(modelIdStr) > 0) {
+        modelId = QString(modelIdStr);
+    }
+    
+    // Get installation description 1 (device name/location)
+    QString installDesc = "";
+    const char* installDesc1Ptr = device->GetInstallationDescription1();
+    if (installDesc1Ptr && strlen(installDesc1Ptr) > 0) {
+        installDesc = QString(installDesc1Ptr);
+    }
+    
+    // Format the display name
+    QString displayName = QString("0x%1").arg(sourceAddress, 2, 16, QChar('0')).toUpper();
+    
+    if (manufacturerName != "Unknown" && modelId != "Unknown") {
+        displayName += QString(" (%1 %2)").arg(manufacturerName, modelId);
+    } else if (manufacturerName != "Unknown") {
+        displayName += QString(" (%1)").arg(manufacturerName);
+    }
+    
+    if (!installDesc.isEmpty()) {
+        displayName += QString(" - %1").arg(installDesc);
+    }
+    
+    return displayName;
 }
 
 // Dialog for selecting switch ID and action for Lumitec Poco
@@ -1608,7 +1797,7 @@ QString DeviceMainWindow::getDeviceFunctionName(unsigned char deviceFunction) {
     return QString("Function %1").arg(deviceFunction);
 }
 
-QString DeviceMainWindow::getManufacturerName(uint16_t manufacturerCode) {
+QString DeviceMainWindow::getManufacturerName(uint16_t manufacturerCode) const {
     switch(manufacturerCode) {
         case 126:  return "Furuno";
         case 130:  return "Raymarine";

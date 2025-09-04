@@ -248,16 +248,50 @@ bool InstanceConflictAnalyzer::isPGNWithInstance(unsigned long pgn)
 QSet<unsigned long> InstanceConflictAnalyzer::getInstancePGNSet()
 {
     static QSet<unsigned long> instancePGNs = {
+        // Engine
         127488, // Engine Parameters, Rapid
         127489, // Engine Parameters, Dynamic
+        127493, // Transmission Parameters, Dynamic
+        127497, // Trip Parameters, Engine
+        127498, // Engine Parameters, Static
+        
+        // Electrical
         127502, // Binary Switch Bank Control
+        127503, // AC Input Status
+        127504, // AC Output Status
         127505, // Fluid Level
+        127506, // DC Detailed Status
+        127507, // Charger Status
         127508, // Battery Status
         127509, // Inverter Status
         127513, // Battery Configuration Status
+        
+        // Environmental
         130312, // Temperature
+        130313, // Humidity
         130314, // Actual Pressure
+        130315, // Set Pressure
         130316, // Temperature, Extended Range
+        
+        // Navigation
+        128259, // Speed
+        128267, // Water Depth
+        129283, // Cross Track Error
+        129284, // Navigation Data
+        129285, // Navigation - Route/WP Information
+        
+        // Communications
+        129538, // GNSS Control Status
+        129539, // GNSS DOPs
+        129540, // GNSS Sats in View
+        
+        // Lighting (if applicable)
+        130563, // Lighting Device
+        
+        // Thruster
+        128006, // Thruster Information
+        128007, // Thruster Motor Events
+        128008, // Thruster Motor Commands
     };
     return instancePGNs;
 }
@@ -329,4 +363,52 @@ QString InstanceConflictAnalyzer::getPGNName(unsigned long pgn) {
         case 61184: return "Lumitec Poco Proprietary";
         default: return QString("PGN %1").arg(pgn);
     }
+}
+
+QList<InstanceConflict> InstanceConflictAnalyzer::getConflictDetailsForSource(uint8_t sourceAddress) const
+{
+    QList<InstanceConflict> conflicts;
+    
+    // Group PGN instances by PGN and instance number to find conflicts involving this source
+    QMap<QString, QList<PGNInstanceData>> groupedInstances;
+    
+    for (auto it = m_pgnInstances.constBegin(); it != m_pgnInstances.constEnd(); ++it) {
+        const PGNInstanceData& data = it.value();
+        QString instanceKey = createInstanceKey(data.pgn, data.instance);
+        groupedInstances[instanceKey].append(data);
+    }
+    
+    // Check for conflicts involving this source
+    for (auto it = groupedInstances.constBegin(); it != groupedInstances.constEnd(); ++it) {
+        const QList<PGNInstanceData>& instances = it.value();
+        
+        if (instances.size() > 1) {
+            // Check if this source is involved in the conflict
+            bool sourceInvolved = false;
+            QSet<uint8_t> conflictingSources;
+            
+            for (const PGNInstanceData& instance : instances) {
+                conflictingSources.insert(instance.sourceAddress);
+                if (instance.sourceAddress == sourceAddress) {
+                    sourceInvolved = true;
+                }
+            }
+            
+            if (sourceInvolved) {
+                // Create conflict record
+                InstanceConflict conflict;
+                conflict.pgn = instances.first().pgn;
+                conflict.instance = instances.first().instance;
+                conflict.conflictingSources = conflictingSources;
+                
+                // Use current time as conflict detection time
+                // (We could enhance this later to track first conflict detection)
+                conflict.firstDetected = QDateTime::currentDateTime();
+                
+                conflicts.append(conflict);
+            }
+        }
+    }
+    
+    return conflicts;
 }
