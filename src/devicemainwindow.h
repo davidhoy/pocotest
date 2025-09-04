@@ -95,6 +95,11 @@ private:
     void showSendPGNToDevice(uint8_t targetAddress, const QString& nodeAddress);
     void showDeviceDetails(int row);
     void showInstanceConflictDetails(uint8_t sourceAddress, const QString& nodeAddress);
+    void showConflictTableContextMenu(QTableWidget* table, const QPoint& position, QDialog* parentDialog);
+    void changeDeviceInstance(uint8_t deviceAddress, unsigned long pgn, uint8_t currentInstance, QDialog* parentDialog);
+    bool sendInstanceChangeCommand(uint8_t deviceAddress, unsigned long pgn, uint8_t newInstance);
+    uint8_t getInstanceFieldNumber(unsigned long pgn) const;
+    uint8_t suggestAvailableInstance(unsigned long pgn, uint8_t excludeDeviceAddress = 255) const;
     QString getDeviceDisplayName(uint8_t sourceAddress) const;
     void queryDeviceConfiguration(uint8_t targetAddress);
     void requestProductInformation(uint8_t targetAddress);

@@ -55,6 +55,7 @@ public:
     bool hasConflictForSource(uint8_t sourceAddress) const;
     QString getConflictInfoForSource(uint8_t sourceAddress) const;
     QList<InstanceConflict> getConflictDetailsForSource(uint8_t sourceAddress) const;
+    QSet<uint8_t> getUsedInstancesForPGN(unsigned long pgn, uint8_t excludeDeviceAddress = 255) const;
     
     // Static utility methods
     static bool isPGNWithInstance(unsigned long pgn);

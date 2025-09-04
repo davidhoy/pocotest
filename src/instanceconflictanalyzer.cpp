@@ -412,3 +412,24 @@ QList<InstanceConflict> InstanceConflictAnalyzer::getConflictDetailsForSource(ui
     
     return conflicts;
 }
+
+QSet<uint8_t> InstanceConflictAnalyzer::getUsedInstancesForPGN(unsigned long pgn, uint8_t excludeDeviceAddress) const
+{
+    QSet<uint8_t> usedInstances;
+    
+    for (auto it = m_pgnInstances.constBegin(); it != m_pgnInstances.constEnd(); ++it) {
+        const PGNInstanceData& data = it.value();
+        
+        // Check if this is for the PGN we're interested in
+        if (data.pgn == pgn) {
+            // Skip the device we're changing (if specified)
+            if (excludeDeviceAddress != 255 && data.sourceAddress == excludeDeviceAddress) {
+                continue;
+            }
+            
+            usedInstances.insert(data.instance);
+        }
+    }
+    
+    return usedInstances;
+}

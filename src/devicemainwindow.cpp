@@ -18,6 +18,10 @@
 #include <QInputDialog>
 #include <QHostAddress>
 #include <QLabel>
+#include <QSpinBox>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QPushButton>
 #include <QDebug>
 #include <QHBoxLayout>
 #include <QWidget>
@@ -1091,6 +1095,11 @@ void DeviceMainWindow::showInstanceConflictDetails(uint8_t sourceAddress, const 
             QTableWidgetItem* deviceItem = new QTableWidgetItem(QString("    • %1").arg(deviceName));
             conflictTable->setItem(currentRow, 2, deviceItem);
             
+            // Store device information in the item data for context menu
+            deviceItem->setData(Qt::UserRole, addr);  // Device address
+            deviceItem->setData(Qt::UserRole + 1, static_cast<qulonglong>(conflict.pgn));  // PGN
+            deviceItem->setData(Qt::UserRole + 2, conflict.instance);  // Current instance
+            
             // Highlight current device's row
             if (addr == sourceAddress) {
                 for (int col = 0; col < 3; ++col) {
@@ -1104,6 +1113,13 @@ void DeviceMainWindow::showInstanceConflictDetails(uint8_t sourceAddress, const 
             currentRow++;
         }
     }
+    
+    // Enable context menu for the conflict table
+    conflictTable->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(conflictTable, &QTableWidget::customContextMenuRequested,
+            [this, conflictTable, &dialog](const QPoint& position) {
+                showConflictTableContextMenu(conflictTable, position, &dialog);
+            });
     
     // Auto-resize columns
     conflictTable->resizeColumnsToContents();
@@ -1174,6 +1190,327 @@ QString DeviceMainWindow::getDeviceDisplayName(uint8_t sourceAddress) const
     }
     
     return displayName;
+}
+
+void DeviceMainWindow::showConflictTableContextMenu(QTableWidget* table, const QPoint& position, QDialog* parentDialog)
+{
+    QTableWidgetItem* item = table->itemAt(position);
+    if (!item) {
+        return; // No item clicked
+    }
+    
+    // Check if this is a device row (has device address data)
+    QVariant deviceAddressVar = item->data(Qt::UserRole);
+    if (!deviceAddressVar.isValid()) {
+        return; // This is a header row or empty row
+    }
+    
+    uint8_t deviceAddress = deviceAddressVar.toUInt();
+    unsigned long pgn = item->data(Qt::UserRole + 1).toULongLong();
+    uint8_t currentInstance = item->data(Qt::UserRole + 2).toUInt();
+    
+    // Create context menu
+    QMenu contextMenu(table);
+    
+    // Add device info header (non-clickable)
+    QString deviceName = getDeviceDisplayName(deviceAddress);
+    QAction* headerAction = contextMenu.addAction(QString("Device: %1").arg(deviceName));
+    headerAction->setEnabled(false);
+    QFont boldFont = headerAction->font();
+    boldFont.setBold(true);
+    headerAction->setFont(boldFont);
+    
+    contextMenu.addSeparator();
+    
+    // Change Instance action
+    QAction* changeInstanceAction = contextMenu.addAction(QString("Change Instance (currently %1)...").arg(currentInstance));
+    connect(changeInstanceAction, &QAction::triggered, [this, deviceAddress, pgn, currentInstance, parentDialog]() {
+        changeDeviceInstance(deviceAddress, pgn, currentInstance, parentDialog);
+    });
+    
+    contextMenu.addSeparator();
+    
+    // Show Device Details action
+    QAction* deviceDetailsAction = contextMenu.addAction("Show Device Details...");
+    connect(deviceDetailsAction, &QAction::triggered, [this, deviceAddress]() {
+        // Find the device in the main table to get the row
+        for (int row = 0; row < m_deviceTable->rowCount(); ++row) {
+            QTableWidgetItem* nodeItem = m_deviceTable->item(row, 0);
+            if (nodeItem) {
+                bool ok;
+                uint8_t tableAddress = nodeItem->text().toUInt(&ok, 16);
+                if (ok && tableAddress == deviceAddress) {
+                    showDeviceDetails(row);
+                    break;
+                }
+            }
+        }
+    });
+    
+    // Show context menu at the clicked position
+    contextMenu.exec(table->mapToGlobal(position));
+}
+
+void DeviceMainWindow::changeDeviceInstance(uint8_t deviceAddress, unsigned long pgn, uint8_t currentInstance, QDialog* parentDialog)
+{
+    // Create dialog for instance change
+    QDialog dialog(parentDialog);
+    dialog.setWindowTitle(QString("Change Instance - Device 0x%1").arg(deviceAddress, 2, 16, QChar('0')).toUpper());
+    dialog.setModal(true);
+    dialog.setFixedSize(400, 250);
+    
+    QVBoxLayout* layout = new QVBoxLayout(&dialog);
+    
+    // Device information
+    QString deviceName = getDeviceDisplayName(deviceAddress);
+    QLabel* deviceLabel = new QLabel(QString("<b>Device:</b> %1").arg(deviceName));
+    deviceLabel->setWordWrap(true);
+    layout->addWidget(deviceLabel);
+    
+    // PGN information
+    QString pgnName = InstanceConflictAnalyzer::getPGNName(pgn);
+    QLabel* pgnLabel = new QLabel(QString("<b>PGN:</b> %1 (%2)").arg(pgn).arg(pgnName));
+    layout->addWidget(pgnLabel);
+    
+    layout->addSpacing(10);
+    
+    // Current instance
+    QLabel* currentLabel = new QLabel(QString("<b>Current Instance:</b> %1").arg(currentInstance));
+    layout->addWidget(currentLabel);
+    
+    // New instance input
+    QLabel* newLabel = new QLabel("<b>New Instance:</b>");
+    layout->addWidget(newLabel);
+    
+    // Get suggested instance
+    uint8_t suggestedInstance = suggestAvailableInstance(pgn, deviceAddress);
+    
+    QSpinBox* instanceSpinBox = new QSpinBox();
+    instanceSpinBox->setRange(0, 253); // Valid NMEA2000 instance range
+    instanceSpinBox->setValue(suggestedInstance); // Start with suggestion instead of current
+    instanceSpinBox->setToolTip("Enter a new instance number (0-253) that doesn't conflict with other devices");
+    
+    // Add a horizontal layout for the spinbox and suggestion button
+    QHBoxLayout* instanceLayout = new QHBoxLayout();
+    instanceLayout->addWidget(instanceSpinBox);
+    
+    QPushButton* useSuggestionButton = new QPushButton(QString("Use %1").arg(suggestedInstance));
+    useSuggestionButton->setToolTip("Use the suggested conflict-free instance number");
+    useSuggestionButton->setMaximumWidth(80);
+    connect(useSuggestionButton, &QPushButton::clicked, [instanceSpinBox, suggestedInstance]() {
+        instanceSpinBox->setValue(suggestedInstance);
+    });
+    instanceLayout->addWidget(useSuggestionButton);
+    
+    layout->addLayout(instanceLayout);
+    
+    // Suggestion info label
+    QLabel* suggestionLabel = new QLabel(
+        QString("<font color='green'><b>💡 Suggestion:</b></font> Instance %1 is available and conflict-free for this PGN.")
+        .arg(suggestedInstance)
+    );
+    suggestionLabel->setWordWrap(true);
+    suggestionLabel->setStyleSheet("background-color: #d4edda; border: 1px solid #c3e6cb; padding: 8px; border-radius: 5px; margin: 5px 0px;");
+    layout->addWidget(suggestionLabel);
+    
+    // Warning label
+    QLabel* warningLabel = new QLabel(
+        "<font color='red'><b>Warning:</b></font> This will send a configuration command to the device. "
+        "Make sure the new instance number is unique and the device supports remote configuration."
+    );
+    warningLabel->setWordWrap(true);
+    warningLabel->setStyleSheet("background-color: #fff3cd; border: 1px solid #ffeaa7; padding: 8px; border-radius: 5px; margin: 10px 0px;");
+    layout->addWidget(warningLabel);
+    
+    // Buttons
+    QHBoxLayout* buttonLayout = new QHBoxLayout();
+    buttonLayout->addStretch();
+    
+    QPushButton* cancelButton = new QPushButton("Cancel");
+    connect(cancelButton, &QPushButton::clicked, &dialog, &QDialog::reject);
+    buttonLayout->addWidget(cancelButton);
+    
+    QPushButton* changeButton = new QPushButton("Change Instance");
+    changeButton->setDefault(true);
+    connect(changeButton, &QPushButton::clicked, [this, &dialog, instanceSpinBox, currentInstance, pgn, deviceAddress, suggestedInstance]() {
+        uint8_t newInstance = instanceSpinBox->value();
+        
+        if (newInstance == currentInstance) {
+            QMessageBox::information(&dialog, "No Change", "The new instance is the same as the current instance. No change needed.");
+            return;
+        }
+        
+        // Check if the selected instance would create a conflict
+        QSet<uint8_t> usedInstances = m_conflictAnalyzer->getUsedInstancesForPGN(pgn, deviceAddress);
+        if (usedInstances.contains(newInstance)) {
+            QMessageBox::StandardButton reply = QMessageBox::question(&dialog, 
+                "Potential Conflict", 
+                QString("Instance %1 is already used by another device for this PGN.\n"
+                       "This will create a conflict.\n\n"
+                       "Suggested conflict-free instance: %2\n\n"
+                       "Do you want to proceed anyway?")
+                .arg(newInstance)
+                .arg(suggestedInstance),
+                QMessageBox::Yes | QMessageBox::No,
+                QMessageBox::No);
+                
+            if (reply == QMessageBox::No) {
+                return;
+            }
+        }
+        
+        dialog.accept();
+    });
+    buttonLayout->addWidget(changeButton);
+    
+    layout->addLayout(buttonLayout);
+    
+    if (dialog.exec() == QDialog::Accepted) {
+        uint8_t newInstance = instanceSpinBox->value();
+        
+        // Send the actual NMEA2000 instance change command
+        if (sendInstanceChangeCommand(deviceAddress, pgn, newInstance)) {
+            QMessageBox::information(parentDialog, "Instance Change", 
+                                    QString("Instance change command sent to device 0x%1:\n"
+                                           "PGN: %2 (%3)\n"
+                                           "Old Instance: %4\n"
+                                           "New Instance: %5\n\n"
+                                           "The command has been sent. The device should acknowledge "
+                                           "the change if it supports remote configuration.\n\n"
+                                           "Conflict analysis will automatically refresh in a few seconds "
+                                           "to show the updated status.")
+                                    .arg(deviceAddress, 2, 16, QChar('0')).toUpper()
+                                    .arg(pgn)
+                                    .arg(InstanceConflictAnalyzer::getPGNName(pgn))
+                                    .arg(currentInstance)
+                                    .arg(newInstance));
+        } else {
+            QMessageBox::warning(parentDialog, "Command Failed", 
+                                QString("Failed to send instance change command to device 0x%1.\n"
+                                       "Please check that NMEA2000 is connected and the device "
+                                       "supports remote configuration.")
+                                .arg(deviceAddress, 2, 16, QChar('0')).toUpper());
+        }
+    }
+}
+
+bool DeviceMainWindow::sendInstanceChangeCommand(uint8_t deviceAddress, unsigned long pgn, uint8_t newInstance)
+{
+    if (!nmea2000) {
+        qDebug() << "NMEA2000 not initialized, cannot send instance change command";
+        return false;
+    }
+
+    // Get the field number for the instance in this PGN
+    uint8_t instanceFieldNumber = getInstanceFieldNumber(pgn);
+    if (instanceFieldNumber == 0) {
+        qDebug() << "Unknown instance field number for PGN" << pgn;
+        return false;
+    }
+
+    tN2kMsg msg;
+    msg.SetPGN(126208UL);  // Group Function PGN
+    msg.Priority = 3;      // Standard priority for commands
+    msg.Destination = deviceAddress;
+    
+    // Group Function Header
+    msg.AddByte(1);  // N2kgfc_Command - Command Group Function
+    msg.Add3ByteInt(pgn);  // Target PGN for instance change
+    msg.AddByte(0x08);  // Priority Setting (standard value for commands)
+    msg.AddByte(1);  // Number of parameter pairs (we're changing 1 field)
+    
+    // Parameter pair: Field number and new value
+    msg.AddByte(instanceFieldNumber);  // Field number for instance
+    msg.AddByte(newInstance);  // New instance value
+    
+    bool success = nmea2000->SendMsg(msg);
+    if (success) {
+        qDebug() << "Sent instance change command to device" 
+                 << QString("0x%1").arg(deviceAddress, 2, 16, QChar('0'))
+                 << "for PGN" << pgn << "- field" << instanceFieldNumber 
+                 << "set to instance" << newInstance;
+        
+        // Schedule automatic conflict re-analysis after a delay
+        // This gives the device time to process the command and start sending data with new instance
+        QTimer::singleShot(3000, [this, deviceAddress, pgn, newInstance]() {
+            if (m_conflictAnalyzer) {
+                qDebug() << "Performing automatic conflict re-analysis after instance change";
+                m_conflictAnalyzer->updateConflictAnalysis();
+                
+                // Update the device table to refresh conflict highlighting
+                populateDeviceTable();
+                
+                // Show updated status
+                QString statusMessage;
+                if (m_conflictAnalyzer->hasConflicts()) {
+                    statusMessage = QString("Instance change complete. %1 conflict(s) still detected.")
+                                   .arg(m_conflictAnalyzer->getConflictCount());
+                } else {
+                    statusMessage = "Instance change complete. No conflicts detected!";
+                }
+                
+                if (m_statusLabel) {
+                    m_statusLabel->setText(statusMessage);
+                    m_statusLabel->setStyleSheet(m_conflictAnalyzer->hasConflicts() ? 
+                                               "color: orange;" : "color: green;");
+                    
+                    // Reset status color after 5 seconds
+                    QTimer::singleShot(5000, [this]() {
+                        if (m_statusLabel) {
+                            m_statusLabel->setStyleSheet("");
+                        }
+                    });
+                }
+                
+                qDebug() << statusMessage;
+            }
+        });
+        
+        // Blink TX indicator for transmitted messages
+        if (m_txIndicator) {
+            m_txIndicator->setStyleSheet("background-color: red; border-radius: 10px;");
+            QTimer::singleShot(200, [this]() {
+                if (m_txIndicator) {
+                    m_txIndicator->setStyleSheet("background-color: darkred; border-radius: 10px;");
+                }
+            });
+        }
+    } else {
+        qDebug() << "Failed to send instance change command to device" 
+                 << QString("0x%1").arg(deviceAddress, 2, 16, QChar('0'));
+    }
+    
+    return success;
+}
+
+uint8_t DeviceMainWindow::getInstanceFieldNumber(unsigned long pgn) const
+{
+    // Return the field number for the instance in various PGNs
+    // Based on NMEA2000 standard and common practice
+    switch (pgn) {
+        // Most PGNs have instance as field 1 (first field after SID if present)
+        case 127488: // Engine Parameters, Rapid
+        case 127489: // Engine Parameters, Dynamic
+        case 127505: // Fluid Level
+        case 127508: // Battery Status
+        case 127509: // Inverter Status
+        case 127513: // Battery Configuration Status
+        case 130561: // Poco Zone Control
+            return 1;  // Instance is typically field 1
+            
+        case 127502: // Binary Switch Bank Control
+            return 2;  // Instance is field 2 (after switch bank indicator)
+            
+        case 130312: // Temperature
+        case 130314: // Actual Pressure
+        case 130316: // Temperature, Extended Range
+            return 2;  // Instance is field 2 (after SID)
+            
+        default:
+            // For unknown PGNs, assume instance is field 1
+            // This is the most common case
+            return 1;
+    }
 }
 
 // Dialog for selecting switch ID and action for Lumitec Poco
@@ -2813,4 +3150,24 @@ void DeviceMainWindow::cancelProductInfoRetry(uint8_t targetAddress)
         }
         m_productInfoRetryTimers.remove(targetAddress);
     }
+}
+
+uint8_t DeviceMainWindow::suggestAvailableInstance(unsigned long pgn, uint8_t excludeDeviceAddress) const
+{
+    if (!m_conflictAnalyzer) {
+        return 0; // Default fallback
+    }
+    
+    // Get all used instances for this PGN (excluding the device we're changing)
+    QSet<uint8_t> usedInstances = m_conflictAnalyzer->getUsedInstancesForPGN(pgn, excludeDeviceAddress);
+    
+    // Find the first available instance starting from 0
+    for (uint8_t instance = 0; instance <= 253; ++instance) {
+        if (!usedInstances.contains(instance)) {
+            return instance;
+        }
+    }
+    
+    // If all instances are somehow used (highly unlikely), return 253
+    return 253;
 }
