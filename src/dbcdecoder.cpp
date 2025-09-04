@@ -964,7 +964,7 @@ DecodedMessage DBCDecoder::decodePGN130563(const tN2kMsg& msg)
     decoded.description = "NMEA2000 Lighting Device Status Message";
     decoded.isDecoded = true;
 
-    if (msg.DataLen < 3) {
+    if (msg.DataLen < 19) {
         DecodedSignal sig;
         sig.name = "Error";
         sig.value = "Message too short for PGN 130563";
@@ -1017,6 +1017,8 @@ DecodedMessage DBCDecoder::decodePGN130563(const tN2kMsg& msg)
         if (colorCapabilities & 0x08) capDesc << "K";
         if (colorCapabilities & 0x10) capDesc << "Daylight (~65XXK)";
         if (colorCapabilities & 0x20) capDesc << "Warm (~35XXK)";
+        // Join with comma separator
+        capDesc = QStringList{capDesc.join(", ")};
         //if (colorCapabilities & 0x40) capDesc << "Reserved (future)";
         //if (colorCapabilities & 0x80) capDesc << "Reserved (future)";
     }
