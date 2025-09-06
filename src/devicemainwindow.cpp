@@ -5,7 +5,13 @@
 #include "pocodevicedialog.h"
 #include "zonelightingdialog.h"
 #include "LumitecPoco.h"
+
+#ifdef WASM_BUILD
+#include "NMEA2000_WASM.h"
+#else
 #include "NMEA2000_SocketCAN.h"
+#endif
+
 #ifdef ENABLE_IPG100_SUPPORT
 #include "NMEA2000_IPG100.h"
 #endif
@@ -13,7 +19,9 @@
 #include <NMEA2000.h>
 #include <N2kGroupFunction.h>
 #include <QDir>
+#ifndef WASM_BUILD
 #include <QProcess>
+#endif
 #include <QMessageBox>
 #include <QInputDialog>
 #include <QHostAddress>
@@ -26,7 +34,7 @@
 #include <QHBoxLayout>
 #include <QWidget>
 #include <QDebug>
-#include <QRegExp>
+#include <QRegularExpression>
 #include <QToolBar>
 #include <QPushButton>
 #include <QDateTime>
@@ -311,9 +319,10 @@ void DeviceMainWindow::initNMEA2000()
     if (m_currentInterface.startsWith("IPG100")) {
 #ifdef ENABLE_IPG100_SUPPORT
         // Extract IP address from interface name: "IPG100 (192.168.1.100)"
-        QRegExp regex("IPG100 \\(([0-9.]+)\\)");
-        if (regex.indexIn(m_currentInterface) != -1) {
-            QString ipAddress = regex.cap(1);
+        QRegularExpression regex("IPG100 \\(([0-9.]+)\\)");
+        QRegularExpressionMatch match = regex.match(m_currentInterface);
+        if (match.hasMatch()) {
+            QString ipAddress = match.captured(1);
             qDebug() << "Creating IPG100 interface for IP:" << ipAddress;
             
             auto* ipg100Interface = new tNMEA2000_IPG100(ipAddress.toUtf8().constData());
@@ -327,9 +336,14 @@ void DeviceMainWindow::initNMEA2000()
         return;
 #endif
     } else {
-        // Standard SocketCAN interface
+        // Standard SocketCAN interface (or WASM stub)
+#ifdef WASM_BUILD
+        qDebug() << "Creating WASM stub interface for:" << can_interface;
+        nmea2000 = new tNMEA2000_WASM(can_interface);
+#else
         qDebug() << "Creating SocketCAN interface for:" << can_interface;
         nmea2000 = new tNMEA2000_SocketCAN(can_interface);
+#endif
     }
     
     // Verify the actual interface being used
@@ -613,12 +627,18 @@ void DeviceMainWindow::verifyCanInterface()
     }
     
     // Method 4: Show which interfaces are currently UP
+#ifndef WASM_BUILD
     QProcess process;
     process.start("ip", QStringList() << "link" << "show" << "up");
     process.waitForFinished();
     QString output = process.readAllStandardOutput();
     bool isUp = output.contains(m_currentInterface);
     qDebug() << "Interface is UP:" << isUp;
+#else
+    // WASM: Network interface checking not available in browser
+    bool isUp = false;
+    qDebug() << "Interface is UP: N/A (WASM build)";
+#endif
     
     qDebug() << "=== END VERIFICATION ===";
 }
@@ -2136,6 +2156,7 @@ QString DeviceMainWindow::getManufacturerName(uint16_t manufacturerCode) const {
         case 504:  return "Vesper";
         case 1084: return "ShadowCaster";
         case 1403: return "Arco";
+        case 1440: return "Egis Mobile";
         case 1512: return "Lumitec";
         case 1857: return "Simrad";
         default:   return QString("Unknown (%1)").arg(manufacturerCode);

@@ -552,7 +552,7 @@ QString DBCDecoder::getFormattedDecoded(const tN2kMsg& msg)
         if (signal.isValid && signal.value.toString() != "N/A") {
             QString part = QString("%1: %2").arg(signal.name);
             
-            if (signal.value.type() == QVariant::Double) {
+            if (signal.value.typeId() == QMetaType::Double) {
                 part = part.arg(signal.value.toDouble(), 0, 'f', 2);
             } else {
                 part = part.arg(signal.value.toString());
@@ -587,7 +587,7 @@ QString DBCDecoder::getFormattedDecodedForSave(const tN2kMsg& msg)
         if (signal.isValid && signal.value.toString() != "N/A") {
             QString part = QString("%1: %2").arg(signal.name);
             
-            if (signal.value.type() == QVariant::Double) {
+            if (signal.value.typeId() == QMetaType::Double) {
                 part = part.arg(signal.value.toDouble(), 0, 'f', 2);
             } else {
                 part = part.arg(signal.value.toString());
@@ -634,7 +634,7 @@ QString DBCDecoder::formatSignalValue(const DecodedSignal& signal)
         return "N/A";
     }
     
-    if (signal.value.type() == QVariant::Double) {
+    if (signal.value.typeId() == QMetaType::Double) {
         return QString("%1 %2").arg(signal.value.toDouble(), 0, 'f', 2).arg(signal.unit);
     }
     

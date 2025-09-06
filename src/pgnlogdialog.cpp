@@ -1,6 +1,6 @@
 #include "pgnlogdialog.h"
 #include <QMessageBox>
-#include <QRegExp>
+#include <QRegularExpression>
 #include <QDebug>
 #include <QFileDialog>
 #include <QTextStream>
@@ -973,8 +973,8 @@ void PGNLogDialog::setSourceFilter(uint8_t sourceAddress)
     for (int i = 0; i < m_sourceFilterCombo->count(); i++) {
         QString itemText = m_sourceFilterCombo->itemText(i);
         QString addressPattern = QString("0[xX]%1").arg(sourceAddress, 2, 16, QChar('0'));
-        QRegExp regex(addressPattern, Qt::CaseInsensitive);
-        if (regex.indexIn(itemText) >= 0) {
+        QRegularExpression regex(addressPattern, QRegularExpression::CaseInsensitiveOption);
+        if (regex.match(itemText).hasMatch()) {
             m_sourceFilterCombo->setCurrentIndex(i);
             break;
         }
@@ -995,8 +995,8 @@ void PGNLogDialog::setDestinationFilter(uint8_t destinationAddress)
     for (int i = 0; i < m_destinationFilterCombo->count(); i++) {
         QString itemText = m_destinationFilterCombo->itemText(i);
         QString addressPattern = QString("0[xX]%1").arg(destinationAddress, 2, 16, QChar('0'));
-        QRegExp regex(addressPattern, Qt::CaseInsensitive);
-        if (regex.indexIn(itemText) >= 0) {
+        QRegularExpression regex(addressPattern, QRegularExpression::CaseInsensitiveOption);
+        if (regex.match(itemText).hasMatch()) {
             m_destinationFilterCombo->setCurrentIndex(i);
             break;
         }
@@ -1061,10 +1061,11 @@ void PGNLogDialog::onSourceFilterChanged()
         m_sourceFilterActive = false; // Disable filtering when "Any" is selected
     } else {
         // Extract address from text (format: "0xXX (nnn)" or "Device Name (0xXX)")
-        QRegExp regex("0[xX]([0-9A-F]{2})", Qt::CaseInsensitive);
-        if (regex.indexIn(text) >= 0) {
+        QRegularExpression regex("0[xX]([0-9A-F]{2})", QRegularExpression::CaseInsensitiveOption);
+        QRegularExpressionMatch match = regex.match(text);
+        if (match.hasMatch()) {
             bool ok;
-            uint8_t newFilter = regex.cap(1).toUInt(&ok, 16);
+            uint8_t newFilter = match.captured(1).toUInt(&ok, 16);
             if (ok) {
                 m_sourceFilter = newFilter;
                 m_sourceFilterActive = true;
@@ -1093,10 +1094,11 @@ void PGNLogDialog::onDestinationFilterChanged()
         //qDebug() << "Set destination filter to broadcast (255)";
     } else {
         // Extract address from text (format: "0xXX (nnn)" or "Device Name (0xXX)")
-        QRegExp regex("0[xX]([0-9A-F]{2})", Qt::CaseInsensitive);
-        if (regex.indexIn(text) >= 0) {
+        QRegularExpression regex("0[xX]([0-9A-F]{2})", QRegularExpression::CaseInsensitiveOption);
+        QRegularExpressionMatch match = regex.match(text);
+        if (match.hasMatch()) {
             bool ok;
-            uint8_t newFilter = regex.cap(1).toUInt(&ok, 16);
+            uint8_t newFilter = match.captured(1).toUInt(&ok, 16);
             //qDebug() << "Extracted address from combo:" << QString("0x%1").arg(newFilter, 2, 16, QChar('0')).toUpper() << "ok:" << ok;
             if (ok) {
                 m_destinationFilter = newFilter;
@@ -1270,8 +1272,8 @@ void PGNLogDialog::refreshTableFilter()
     m_logTable->setUpdatesEnabled(false);
     
     // Track which rows are currently visible to minimize changes
-    QVector<bool> currentlyVisible(totalRows);
-    QVector<bool> shouldBeVisible(totalRows);
+    QList<bool> currentlyVisible(totalRows);
+    QList<bool> shouldBeVisible(totalRows);
     
     // First pass: determine current visibility and calculate what should be visible
     for (int row = 0; row < totalRows; ++row) {
@@ -1521,9 +1523,10 @@ bool PGNLogDialog::parseOlderFormatLine(const QString& line, tN2kMsg& msg, QStri
     QString hexDataStr = "";
     
     // Find hex data in brackets at the end
-    QRegExp hexPattern(R"(\[([0-9A-Fa-f\s]+)\])");
-    if (hexPattern.indexIn(dataField) >= 0) {
-        hexDataStr = hexPattern.cap(1).trimmed();
+    QRegularExpression hexPattern(R"(\[([0-9A-Fa-f\s]+)\])");
+    QRegularExpressionMatch hexMatch = hexPattern.match(dataField);
+    if (hexMatch.hasMatch()) {
+        hexDataStr = hexMatch.captured(1).trimmed();
     }
     
     // Validate and convert data
@@ -1544,7 +1547,7 @@ bool PGNLogDialog::parseOlderFormatLine(const QString& line, tN2kMsg& msg, QStri
     if (!ok) dataLen = 0;
     
     // Parse hex data
-    QStringList hexBytes = hexDataStr.split(QRegExp("\\s+"), Qt::SkipEmptyParts);
+    QStringList hexBytes = hexDataStr.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
     
     // Build the message
     msg.PGN = pgn;

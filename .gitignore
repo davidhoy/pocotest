@@ -8,3 +8,8 @@ pocotest
 *.pgnlog
 .vscode/*.log
 .vscode/Verbose
+
+# WASM build outputs (regenerated from source)
+wasm-deploy/
+*.pro.user
+*.qt5-backup

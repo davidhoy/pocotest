@@ -11,7 +11,7 @@
 #include <QComboBox>
 #include <QCheckBox>
 #include <QDateTime>
-#include <QVector>
+#include <QList>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QGroupBox>
@@ -77,7 +77,7 @@ public:
 private:
     TimestampMode m_timestampMode = Absolute;
     QDateTime m_lastTimestamp;
-    QVector<QDateTime> m_messageTimestamps;
+    QList<QDateTime> m_messageTimestamps;
     QCheckBox* m_timestampModeCheck = nullptr; // Absolute/Relative toggle
     void setupUI();
     void updateStatusLabel();

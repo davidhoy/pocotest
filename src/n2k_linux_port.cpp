@@ -1,3 +1,4 @@
+#ifndef WASM_BUILD
 #include <chrono>
 
 unsigned long millis() {
@@ -5,3 +6,4 @@ unsigned long millis() {
     static steady_clock::time_point start = steady_clock::now();
     return duration_cast<milliseconds>(steady_clock::now() - start).count();
 }
+#endif
