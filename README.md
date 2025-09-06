@@ -2,6 +2,13 @@
 
 A professional Qt-based NMEA2000 network diagnostic tool featuring real-time device discovery, PGN instance conflict detection, comprehensive network analysis capabilities, and specialized Lumitec Poco protocol support.
 
+## Recent Updates
+
+- **Qt6 Migration**: Upgraded from Qt5 to Qt6 for improved performance and modern API support
+- **WebAssembly Support**: Now includes WASM build configuration for browser-based deployment
+- **Enhanced Build System**: Streamlined build process with comprehensive documentation
+- **Modernized Codebase**: Updated to C++17 with improved template compatibility
+
 ## Features
 
 - **Device-Centric Interface**: Main window focused on discovered NMEA2000 devices
@@ -15,18 +22,75 @@ A professional Qt-based NMEA2000 network diagnostic tool featuring real-time dev
 
 ## Prerequisites
 
-- **Qt 5 or 6** (e.g., `qtbase5-dev` or `qt6-base-dev`)
-- **CMake** (version 3.10+)
-- **C++ Compiler** (e.g., `g++`, `clang`, MSVC)
+### Native Build
+- **Qt 6** (6.4.2 or later) - `qt6-base-dev qt6-widgets-dev qt6-network-dev`
+- **CMake** (version 3.16+) or **qmake**
+- **C++17 Compiler** (e.g., `g++`, `clang`, MSVC)
 - **CAN Interface Drivers** (platform-specific)
 
-## Installation
+### WebAssembly (WASM) Build
+- **Qt 6.9.2+ with WebAssembly support** (via Qt Online Installer)
+- **Emscripten SDK** (version 3.1.70 - must match Qt's requirement)
+- **Python 3** (for local testing server)
 
-### Linux (Ubuntu/Debian)
+## Building
 
-```sh
+### Native Build (Desktop)
+
+#### Linux (Ubuntu/Debian)
+```bash
+# Install dependencies
 sudo apt update
-sudo apt install qtbase5-dev cmake g++ can-utils
+sudo apt install qt6-base-dev qt6-widgets-dev qt6-network-dev cmake g++ can-utils
+
+# Build with qmake
+qmake pocotest.pro
+make -j$(nproc)
+
+# Or build with CMake
+mkdir build && cd build
+cmake ..
+make -j$(nproc)
+```
+
+#### Installation
+```bash
+# Install to system (creates desktop entry)
+sudo ./install.sh
+```
+
+### WebAssembly (WASM) Build
+
+#### Prerequisites Setup
+```bash
+# 1. Install Qt 6.9.2+ with WebAssembly support using Qt Online Installer
+#    - Download from: https://www.qt.io/download
+#    - Select: Qt 6.9.x > WebAssembly (single-threaded) and (multi-threaded)
+
+# 2. Install and configure Emscripten SDK
+git clone https://github.com/emscripten-core/emsdk.git ~/emsdk
+cd ~/emsdk
+./emsdk install 3.1.70
+./emsdk activate 3.1.70
+source ./emsdk_env.sh
+```
+
+#### Build WASM Version
+```bash
+# Configure and build for WebAssembly
+source ~/emsdk/emsdk_env.sh
+~/Qt/6.9.2/wasm_singlethread/bin/qmake -spec wasm-emscripten CONFIG+=wasm pocotest.pro
+make -j$(nproc)
+
+# Files will be generated in wasm-deploy/ directory
+```
+
+#### Deploy and Test
+```bash
+# Serve locally for testing
+cd wasm-deploy/
+python3 -m http.server 8080
+# Open browser to: http://localhost:8080/pocotest.html
 ```
 
 ### Linux (Fedora)

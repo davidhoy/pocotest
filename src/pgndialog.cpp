@@ -1,10 +1,16 @@
 #include "pgndialog.h"
+
+#ifdef WASM_BUILD
+#include "NMEA2000_WASM.h"
+#else
 #include "NMEA2000_SocketCAN.h"
+#endif
+
 #include <QMessageBox>
 #include <QApplication>
 #include <QHeaderView>
 #include <QSplitter>
-#include <QRegExp>
+#include <QRegularExpression>
 #include <QCheckBox>
 #include <QLabel>
 
@@ -349,7 +355,7 @@ tN2kMsg PGNDialog::createMessageFromInputs()
     // Add data from raw data field
     QString dataText = m_dataTextEdit->toPlainText().trimmed();
     if (!dataText.isEmpty()) {
-        QStringList hexValues = dataText.split(QRegExp("\\s+"), Qt::SkipEmptyParts);
+        QStringList hexValues = dataText.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
         
         for (const QString& hexValue : hexValues) {
             bool ok;
