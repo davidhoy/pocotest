@@ -1,0 +1,41 @@
+# NMEA2000 Analyzer Development Configuration
+# Copy this to .dev-config and customize for your environment
+
+# Raspberry Pi target configuration
+PI_HOST=raspberrypi.local
+PI_USER=pi
+
+# Alternative Pi configurations (uncomment as needed)
+#PI_HOST=192.168.1.100
+#PI_HOST=nmea2000-analyzer.local
+#PI_USER=nmea2000
+
+# Build preferences
+DEFAULT_BUILD_TYPE=debug
+AUTO_DEPLOY_WASM=false
+RUN_TESTS_AFTER_BUILD=true
+
+# Development CAN interface
+DEV_CAN_INTERFACE=vcan0
+
+# Deployment preferences
+DEPLOY_TIMEOUT=30
+SSH_KEY_PATH=""  # Leave empty for default SSH key
+
+# WASM build preferences
+WASM_OPTIMIZATION_LEVEL="-O2"
+WASM_ENABLE_DEBUGGING=true
+
+# Bridge daemon preferences
+BRIDGE_PORT=8080
+ENABLE_MESSAGE_FILTERING=false
+
+# Test preferences
+ENABLE_VALGRIND_TESTS=true
+ENABLE_PERFORMANCE_TESTS=false
+TEST_TIMEOUT=30
+
+# Logging preferences
+VERBOSE_LOGGING=false
+LOG_TO_FILE=false
+LOG_FILE_PATH="./dev-workflow.log"

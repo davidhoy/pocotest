@@ -6,6 +6,7 @@ A professional Qt-based NMEA2000 network diagnostic tool featuring real-time dev
 
 - **Qt6 Migration**: Upgraded from Qt5 to Qt6 for improved performance and modern API support
 - **WebAssembly Support**: Now includes WASM build configuration for browser-based deployment
+- **Headless Deployment**: Added SocketCAN-to-WebSocket bridge for Raspberry Pi deployment
 - **Enhanced Build System**: Streamlined build process with comprehensive documentation
 - **Modernized Codebase**: Updated to C++17 with improved template compatibility
 
@@ -89,7 +90,33 @@ make -j$(nproc)
 ```bash
 # Serve locally for testing
 cd wasm-deploy/
-python3 -m http.server 8080
+python3 qtloader.js --name=pocotest --port=8000
+```
+
+## Deployment Options
+
+### Desktop Application
+Build and run natively on Windows, Linux, or macOS with full CAN interface support.
+
+### WebAssembly in Browser  
+Run in any modern browser with simulated CAN data for demonstration purposes.
+
+### Headless Raspberry Pi
+Deploy as a web-accessible service on a Raspberry Pi with CAN HAT:
+
+```bash
+# See bridge-daemon/ directory for complete setup
+cd bridge-daemon
+./install-rpi.sh              # Automated Raspberry Pi setup
+./deploy-to-rpi.sh            # Deploy WASM files
+```
+
+This creates a headless marine network analyzer accessible via web browser:
+- **Hardware**: Raspberry Pi + PiCAN2 HAT connects to NMEA2000 network
+- **Bridge**: SocketCAN-to-WebSocket daemon provides real-time CAN data
+- **Web App**: Browser-based interface with full analysis capabilities
+
+See `bridge-daemon/README_DEPLOYMENT.md` for detailed deployment instructions.
 # Open browser to: http://localhost:8080/pocotest.html
 ```
 
