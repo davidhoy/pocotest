@@ -9,7 +9,23 @@ pocotest
 .vscode/*.log
 .vscode/Verbose
 
+# Development builds
+build-native/
+build-debug/
+build-release/
+
+# Development configuration
+.dev-config
+
 # WASM build outputs (regenerated from source)
 wasm-deploy/
 *.pro.user
 *.qt5-backup
+
+# Bridge daemon build outputs
+bridge-daemon/build/
+bridge-daemon/CMakeCache.txt
+bridge-daemon/CMakeFiles/
+bridge-daemon/cmake_install.cmake
+bridge-daemon/nmea2000_bridge
+bridge-daemon/*.service

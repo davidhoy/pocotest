@@ -1,11 +1,12 @@
 /*
 NMEA2000_WASM.cpp
 
-WebAssembly stub implementation for NMEA2000 SocketCAN interface.
-This provides a non-functional but compilable interface for WASM builds.
+WebAssembly implementation for NMEA2000 interface via WebSocket bridge.
+This connects to a bridge daemon running on the target system (e.g., Raspberry Pi)
+that provides SocketCAN to WebSocket bridging for NMEA2000 communication.
 
-For actual NMEA2000 communication in WASM, you would need to implement
-WebSocket communication to a bridge daemon running on the target system.
+Architecture:
+Browser (WASM) ↔ WebSocket ↔ Bridge Daemon ↔ SocketCAN ↔ NMEA2000 Network
 */
 
 #include "NMEA2000_WASM.h"
@@ -15,6 +16,8 @@ WebSocket communication to a bridge daemon running on the target system.
 #include <iomanip>
 #include <chrono>
 #include <thread>
+#include <emscripten.h>
+#include <emscripten/websocket.h>
 
 //*****************************************************************************
 tNMEA2000_WASM::tNMEA2000_WASM(char* CANport) : tNMEA2000(), m_isOpen(false)

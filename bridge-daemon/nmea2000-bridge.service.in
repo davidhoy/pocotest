@@ -1,0 +1,33 @@
+[Unit]
+Description=NMEA2000 SocketCAN to WebSocket Bridge
+After=network.target can-setup.service
+Wants=can-setup.service
+
+[Service]
+Type=simple
+User=nmea2000
+Group=nmea2000
+WorkingDirectory=@CMAKE_INSTALL_PREFIX@/bin
+ExecStart=@CMAKE_INSTALL_PREFIX@/bin/nmea2000_bridge --can=${CAN_INTERFACE} --port=${WEBSOCKET_PORT}
+EnvironmentFile=-/etc/default/nmea2000-bridge.conf
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Security settings
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadOnlyPaths=/
+ReadWritePaths=/var/log
+
+# Network access
+PrivateNetwork=no
+
+# Allow access to CAN interfaces
+SupplementaryGroups=dialout
+
+[Install]
+WantedBy=multi-user.target
