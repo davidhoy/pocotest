@@ -97,6 +97,10 @@ private:
     DecodedMessage decodePGN130564(const tN2kMsg& msg);  // Lighting Device Enumeration
     DecodedMessage decodePGN130565(const tN2kMsg& msg);  // Lighting Color Sequence
     DecodedMessage decodePGN130566(const tN2kMsg& msg);  // Lighting Program
+    
+    // NMEA2000 Standard PGN decoders
+    DecodedMessage decodePGN126208(const tN2kMsg& msg);  // Group Function
+    DecodedMessage decodePGN126998(const tN2kMsg& msg);  // Configuration Information
 
 private:
     QMap<unsigned long, DBCMessage> m_messages;

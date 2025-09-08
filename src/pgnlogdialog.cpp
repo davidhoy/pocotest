@@ -2097,6 +2097,7 @@ void PGNLogDialog::showDecodeDetails(int row)
         }
         detailsText += QString("Hex:      %1\n").arg(formattedRawData.trimmed());
         
+#if 0
         // Add byte positions for reference
         QString bytePositions;
         for (int i = 0; i < hexBytes.size(); i++) {
@@ -2106,6 +2107,7 @@ void PGNLogDialog::showDecodeDetails(int row)
             bytePositions += QString("%1  ").arg(i, 2);
         }
         detailsText += QString("Positions:%1\n").arg(bytePositions);
+#endif
     } else {
         detailsText += "No data\n";
     }

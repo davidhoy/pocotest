@@ -10,6 +10,7 @@
 #include <QStringList>
 #include <cmath>
 #include "N2kMessages.h"
+#include "NMEA2000.h"
 
 DBCDecoder::DBCDecoder(QObject *parent)
     : QObject(parent)
@@ -250,79 +251,12 @@ DecodedMessage DBCDecoder::decodeMessage(const tN2kMsg& msg)
 
     // Special handling for PGN 126208 (Request/Command/Acknowledge Group Function)
     if (msg.PGN == 126208) {
-        decoded.messageName = "Group Function (126208)";
-        decoded.description = "NMEA2000 Group Function Command/Request/Ack";
-        decoded.isDecoded = true;
+        return decodePGN126208(msg);
+    }
 
-        // Minimum length check - Group Function needs at least 6 bytes
-        // (Function Code + PGN[3] + Priority + Number of Parameters)
-        if (msg.DataLen < 6) {
-            DecodedSignal sig;
-            sig.name = "Error";
-            sig.value = "Too short for 126208 decode (minimum 6 bytes)";
-            sig.isValid = true;
-            decoded.signalList.append(sig);
-            return decoded;
-        }
-
-        // Byte 0: Function Code
-        uint8_t functionCode = msg.Data[0];
-        // Bytes 1-3: Target PGN (little endian)
-        uint32_t targetPGN = msg.Data[1] | (msg.Data[2] << 8) | (msg.Data[3] << 16);
-        // Byte 4: Priority
-        uint8_t priority = msg.Data[4];
-        // Byte 5: Number of parameters
-        uint8_t numParams = msg.Data[5];
-
-        DecodedSignal sigFC;
-        sigFC.name = "Function Code";
-        QString functionCodeDescription;
-        switch (functionCode) {
-            case 0: functionCodeDescription = "Request"; break;
-            case 1: functionCodeDescription = "Command"; break;
-            case 2: functionCodeDescription = "Acknowledge"; break;
-            case 3: functionCodeDescription = "Read Response"; break;
-            case 4: functionCodeDescription = "Read Request"; break;
-            case 5: functionCodeDescription = "Write Request"; break;
-            case 6: functionCodeDescription = "Write Response"; break;
-            default: functionCodeDescription = QString("Unknown (%1)").arg(functionCode); break;
-        }
-        sigFC.value = QString("%1 (%2)").arg(functionCode).arg(functionCodeDescription);
-        sigFC.isValid = true;
-        decoded.signalList.append(sigFC);
-
-        DecodedSignal sigPGN;
-        sigPGN.name = "Target PGN";
-        sigPGN.value = QString("%1").arg(targetPGN);
-        sigPGN.isValid = true;
-        decoded.signalList.append(sigPGN);
-
-        DecodedSignal sigPrio;
-        sigPrio.name = "Priority";
-        sigPrio.value = priority;
-        sigPrio.isValid = true;
-        decoded.signalList.append(sigPrio);
-
-        DecodedSignal sigNumParams;
-        sigNumParams.name = "Number of Parameters";
-        sigNumParams.value = numParams;
-        sigNumParams.isValid = true;
-        decoded.signalList.append(sigNumParams);
-
-        // Each parameter: Byte 6 + 2*i: Field Number, Byte 7 + 2*i: Value
-        int paramStart = 6;
-        for (uint8_t i = 0; i < numParams; ++i) {
-            int fieldIdx = paramStart + i * 2;
-            if (fieldIdx + 1 >= msg.DataLen) break;
-            uint8_t fieldNum = msg.Data[fieldIdx];
-            uint8_t fieldVal = msg.Data[fieldIdx + 1];
-            DecodedSignal sigField;
-            sigField.name = QString("Field %1").arg(fieldNum);
-            sigField.value = fieldVal;
-            sigField.isValid = true;
-            decoded.signalList.append(sigField);
-        }
-        return decoded;
+    // Special handling for PGN 126998 (Configuration Information)
+    if (msg.PGN == 126998) {
+        return decodePGN126998(msg);
     }
 
     // Special handling for lighting PGNs
@@ -1534,5 +1468,161 @@ DecodedMessage DBCDecoder::decodePGN130330(const tN2kMsg& msg)
     sigIdentifyDevice.isValid = true;
     decoded.signalList.append(sigIdentifyDevice);
 
+    return decoded;
+}
+
+// Dedicated function for decoding PGN 126208 (Group Function)
+DecodedMessage DBCDecoder::decodePGN126208(const tN2kMsg& msg)
+{
+    DecodedMessage decoded;
+    decoded.messageName = "Group Function (126208)";
+    decoded.description = "NMEA2000 Group Function Command/Request/Ack";
+    decoded.isDecoded = true;
+
+    // Minimum length check - Group Function needs at least 6 bytes
+    // (Function Code + PGN[3] + Priority + Number of Parameters)
+    if (msg.DataLen < 6) {
+        DecodedSignal sig;
+        sig.name = "Error";
+        sig.value = "Too short for 126208 decode (minimum 6 bytes)";
+        sig.isValid = true;
+        decoded.signalList.append(sig);
+        return decoded;
+    }
+
+    // Byte 0: Function Code
+    uint8_t functionCode = msg.Data[0];
+    // Bytes 1-3: Target PGN (little endian)
+    uint32_t targetPGN = msg.Data[1] | (msg.Data[2] << 8) | (msg.Data[3] << 16);
+    // Byte 4: Priority
+    uint8_t priority = msg.Data[4];
+    // Byte 5: Number of parameters
+    uint8_t numParams = msg.Data[5];
+
+    DecodedSignal sigFC;
+    sigFC.name = "Function Code";
+    QString functionCodeDescription;
+    switch (functionCode) {
+        case 0: functionCodeDescription = "Request"; break;
+        case 1: functionCodeDescription = "Command"; break;
+        case 2: functionCodeDescription = "Acknowledge"; break;
+        case 3: functionCodeDescription = "Read Response"; break;
+        case 4: functionCodeDescription = "Read Request"; break;
+        case 5: functionCodeDescription = "Write Request"; break;
+        case 6: functionCodeDescription = "Write Response"; break;
+        default: functionCodeDescription = QString("Unknown (%1)").arg(functionCode); break;
+    }
+    sigFC.value = QString("%1 (%2)").arg(functionCode).arg(functionCodeDescription);
+    sigFC.isValid = true;
+    decoded.signalList.append(sigFC);
+
+    DecodedSignal sigPGN;
+    sigPGN.name = "Target PGN";
+    sigPGN.value = QString("%1").arg(targetPGN);
+    sigPGN.isValid = true;
+    decoded.signalList.append(sigPGN);
+
+    DecodedSignal sigPrio;
+    sigPrio.name = "Priority";
+    sigPrio.value = priority;
+    sigPrio.isValid = true;
+    decoded.signalList.append(sigPrio);
+
+    DecodedSignal sigNumParams;
+    sigNumParams.name = "Number of Parameters";
+    sigNumParams.value = numParams;
+    sigNumParams.isValid = true;
+    decoded.signalList.append(sigNumParams);
+
+    // Each parameter: Byte 6 + 2*i: Field Number, Byte 7 + 2*i: Value
+    int paramStart = 6;
+    for (uint8_t i = 0; i < numParams; ++i) {
+        int fieldIdx = paramStart + i * 2;
+        if (fieldIdx + 1 >= msg.DataLen) break;
+        uint8_t fieldNum = msg.Data[fieldIdx];
+        uint8_t fieldVal = msg.Data[fieldIdx + 1];
+        DecodedSignal sigField;
+        sigField.name = QString("Field %1").arg(fieldNum);
+        sigField.value = fieldVal;
+        sigField.isValid = true;
+        decoded.signalList.append(sigField);
+    }
+    
+    return decoded;
+}
+
+// Dedicated function for decoding PGN 126998 (Configuration Information)
+DecodedMessage DBCDecoder::decodePGN126998(const tN2kMsg& msg)
+{
+    DecodedMessage decoded;
+    decoded.messageName = "Configuration Information (126998)";
+    decoded.description = "NMEA2000 Device Configuration Information";
+    decoded.isDecoded = true;
+
+    // Parse using the official NMEA2000 library function
+    char ManufacturerInformation[71] = {0};
+    char InstallationDescription1[71] = {0};
+    char InstallationDescription2[71] = {0};
+    size_t ManufacturerInformationSize = sizeof(ManufacturerInformation);
+    size_t InstallationDescription1Size = sizeof(InstallationDescription1);
+    size_t InstallationDescription2Size = sizeof(InstallationDescription2);
+    
+    bool parseSuccess = ParseN2kPGN126998(msg, 
+                          ManufacturerInformationSize, ManufacturerInformation,
+                          InstallationDescription1Size, InstallationDescription1,
+                          InstallationDescription2Size, InstallationDescription2);
+    
+    DecodedSignal parseResult;
+    parseResult.name = "Parse Result";
+    parseResult.value = parseSuccess ? "SUCCESS" : "FAILED";
+    parseResult.isValid = true;
+    decoded.signalList.append(parseResult);
+    
+    if (parseSuccess) {
+        // Helper function to decode NMEA2000 strings (which can be ASCII or Unicode with SOH prefix)
+        auto decodeN2kString = [](const char* rawStr) -> QString {
+            if (!rawStr || rawStr[0] == '\0') {
+                return QString("(empty)");
+            }
+            
+            // Check if string starts with SOH (Start of Header, 0x01) indicating Unicode
+            if (rawStr[0] == '\x01') {
+                // Unicode string - skip SOH and interpret as UTF-8
+                return QString::fromUtf8(rawStr + 1);
+            } else {
+                // ASCII string
+                return QString::fromLatin1(rawStr);
+            }
+        };
+        
+        // Manufacturer Information
+        DecodedSignal sigMfg;
+        sigMfg.name = "Manufacturer Information";
+        sigMfg.value = decodeN2kString(ManufacturerInformation);
+        sigMfg.isValid = true;
+        decoded.signalList.append(sigMfg);
+        
+        // Installation Description 1
+        DecodedSignal sigDesc1;
+        sigDesc1.name = "Installation Description 1";
+        sigDesc1.value = decodeN2kString(InstallationDescription1);
+        sigDesc1.isValid = true;
+        decoded.signalList.append(sigDesc1);
+        
+        // Installation Description 2
+        DecodedSignal sigDesc2;
+        sigDesc2.name = "Installation Description 2";
+        sigDesc2.value = decodeN2kString(InstallationDescription2);
+        sigDesc2.isValid = true;
+        decoded.signalList.append(sigDesc2);
+        
+    } else {
+        DecodedSignal sig;
+        sig.name = "Error";
+        sig.value = "Failed to parse Configuration Information";
+        sig.isValid = true;
+        decoded.signalList.append(sig);
+    }
+    
     return decoded;
 }
