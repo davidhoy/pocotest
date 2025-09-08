@@ -57,6 +57,7 @@ private slots:
     void onCanInterfaceChanged(const QString &interface);
     void clearConflictHistory();
     void showDeviceContextMenu(const QPoint& position);
+    void editInstallationLabels(uint8_t sourceAddress, const QString& nodeAddress);
 
 private:
     void setupUI();
@@ -98,6 +99,7 @@ private:
     void showConflictTableContextMenu(QTableWidget* table, const QPoint& position, QDialog* parentDialog);
     void changeDeviceInstance(uint8_t deviceAddress, unsigned long pgn, uint8_t currentInstance, QDialog* parentDialog);
     bool sendInstanceChangeCommand(uint8_t deviceAddress, unsigned long pgn, uint8_t newInstance);
+    bool sendConfigurationUpdate(uint8_t targetAddress, const QString& installDesc1, const QString& installDesc2, bool useUnicode = true);
     uint8_t getInstanceFieldNumber(unsigned long pgn) const;
     uint8_t suggestAvailableInstance(unsigned long pgn, uint8_t excludeDeviceAddress = 255) const;
     QString getDeviceDisplayName(uint8_t sourceAddress) const;

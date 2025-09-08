@@ -47,6 +47,8 @@
 #include <QSlider>
 #include <QDialog>
 #include <QVBoxLayout>
+#include <QRadioButton>
+#include <QButtonGroup>
 #include <QDateTime>
 
 tNMEA2000* nmea2000;
@@ -988,6 +990,14 @@ void DeviceMainWindow::showDeviceContextMenu(const QPoint& position)
         contextMenu->addSeparator();
     }
 
+    // Edit Installation Labels action
+    QAction* editLabelsAction = contextMenu->addAction("Edit Installation Labels...");
+    connect(editLabelsAction, &QAction::triggered, [this, sourceAddress, nodeAddress]() {
+        editInstallationLabels(sourceAddress, nodeAddress);
+    });
+
+    contextMenu->addSeparator();
+
     // Copy Node Address action
     QAction* copyAddressAction = contextMenu->addAction("Copy Node Address");
     connect(copyAddressAction, &QAction::triggered, [nodeAddress]() {
@@ -1151,6 +1161,281 @@ void DeviceMainWindow::showInstanceConflictDetails(uint8_t sourceAddress, const 
     layout->addLayout(buttonLayout);
     
     dialog.exec();
+}
+
+void DeviceMainWindow::editInstallationLabels(uint8_t sourceAddress, const QString& nodeAddress)
+{
+    Q_UNUSED(sourceAddress); // Currently using nodeAddress to find device in table
+    
+    // Get current installation labels from the device table
+    QString currentLabel1, currentLabel2;
+    
+    // Find the device row in the table
+    for (int row = 0; row < m_deviceTable->rowCount(); ++row) {
+        QTableWidgetItem* nodeAddressItem = m_deviceTable->item(row, 0);
+        if (nodeAddressItem && nodeAddressItem->text() == nodeAddress) {
+            QTableWidgetItem* label1Item = m_deviceTable->item(row, 6); // Installation 1 column
+            QTableWidgetItem* label2Item = m_deviceTable->item(row, 7); // Installation 2 column
+            
+            currentLabel1 = label1Item ? label1Item->text() : "";
+            currentLabel2 = label2Item ? label2Item->text() : "";
+            break;
+        }
+    }
+    
+    // Create dialog for editing installation labels
+    QDialog dialog(this);
+    dialog.setWindowTitle(QString("Edit Installation Labels - Device 0x%1").arg(nodeAddress));
+    dialog.setModal(true);
+    dialog.resize(450, 280);
+    
+    QVBoxLayout* layout = new QVBoxLayout(&dialog);
+    
+    // Header info
+    QLabel* headerLabel = new QLabel(QString("Edit installation labels for device 0x%1").arg(nodeAddress));
+    QFont headerFont = headerLabel->font();
+    headerFont.setBold(true);
+    headerLabel->setFont(headerFont);
+    layout->addWidget(headerLabel);
+    
+    // Explanation
+    QLabel* explanationLabel = new QLabel(
+        "Installation Description fields identify the physical location or purpose of this device."
+    );
+    explanationLabel->setWordWrap(true);
+    explanationLabel->setStyleSheet("color: #666; margin: 10px 0px;");
+    layout->addWidget(explanationLabel);
+    
+    // Encoding selection
+    QLabel* encodingLabel = new QLabel("Text Encoding:");
+    encodingLabel->setStyleSheet("font-weight: bold; margin-top: 10px;");
+    layout->addWidget(encodingLabel);
+    
+    QRadioButton* asciiRadio = new QRadioButton("ASCII (up to 70 characters each field)");
+    QRadioButton* unicodeRadio = new QRadioButton("Unicode UTF-16 (up to 35 characters each field)");
+    
+    // Default to ASCII for simplicity unless we detect non-ASCII characters
+    bool hasNonAscii = false;
+    for (const QString& text : {currentLabel1, currentLabel2}) {
+        for (const QChar& ch : text) {
+            if (ch.unicode() > 127) {
+                hasNonAscii = true;
+                break;
+            }
+        }
+        if (hasNonAscii) break;
+    }
+    
+    if (hasNonAscii) {
+        unicodeRadio->setChecked(true);
+    } else {
+        asciiRadio->setChecked(true);
+    }
+    
+    QButtonGroup* encodingGroup = new QButtonGroup();
+    encodingGroup->addButton(asciiRadio, 0);  // 0 = ASCII
+    encodingGroup->addButton(unicodeRadio, 1); // 1 = Unicode
+    
+    layout->addWidget(asciiRadio);
+    layout->addWidget(unicodeRadio);
+    
+    // Installation Description 1
+    QLabel* label1Label = new QLabel("Installation Description 1:");
+    layout->addWidget(label1Label);
+    
+    QLineEdit* label1Edit = new QLineEdit(currentLabel1);
+    label1Edit->setMaxLength(70); // Will be adjusted based on encoding selection
+    label1Edit->setPlaceholderText("e.g., \"Main Engine Port Side\" or \"Forward Bilge\"");
+    layout->addWidget(label1Edit);
+    
+    // Character count for label 1
+    QLabel* count1Label = new QLabel();
+    count1Label->setAlignment(Qt::AlignRight);
+    count1Label->setStyleSheet("color: #888; font-size: 10px;");
+    layout->addWidget(count1Label);
+    
+    // Installation Description 2
+    QLabel* label2Label = new QLabel("Installation Description 2:");
+    layout->addWidget(label2Label);
+    
+    QLineEdit* label2Edit = new QLineEdit(currentLabel2);
+    label2Edit->setMaxLength(70); // Will be adjusted based on encoding selection
+    label2Edit->setPlaceholderText("e.g., \"Sensor #1\" or \"Additional Notes\"");
+    layout->addWidget(label2Edit);
+    
+    // Character count for label 2
+    QLabel* count2Label = new QLabel();
+    count2Label->setAlignment(Qt::AlignRight);
+    count2Label->setStyleSheet("color: #888; font-size: 10px;");
+    layout->addWidget(count2Label);
+    
+    // Function to update character counts and validation based on encoding
+    auto updateCountsAndLimits = [count1Label, count2Label, label1Edit, label2Edit, encodingGroup]() {
+        bool isUnicode = (encodingGroup->checkedId() == 1);
+        QString text1 = label1Edit->text();
+        QString text2 = label2Edit->text();
+        
+        int limit, count1, count2;
+        QString unit;
+        
+        if (isUnicode) {
+            // Unicode mode: limit is 35 characters (70 bytes in UTF-16)
+            limit = 35;
+            count1 = text1.length();  // Each QChar is one UTF-16 character
+            count2 = text2.length();
+            unit = "characters";
+            label1Edit->setMaxLength(35);
+            label2Edit->setMaxLength(35);
+        } else {
+            // ASCII mode: limit is 70 characters (70 bytes in ASCII)
+            limit = 70;
+            count1 = text1.toUtf8().length();  // Byte count for ASCII
+            count2 = text2.toUtf8().length();
+            unit = "characters";
+            label1Edit->setMaxLength(70);
+            label2Edit->setMaxLength(70);
+            
+            // In ASCII mode, warn about non-ASCII characters
+            bool hasNonAscii1 = false, hasNonAscii2 = false;
+            for (const QChar& ch : text1) {
+                if (ch.unicode() > 127) { hasNonAscii1 = true; break; }
+            }
+            for (const QChar& ch : text2) {
+                if (ch.unicode() > 127) { hasNonAscii2 = true; break; }
+            }
+            
+            if (hasNonAscii1 || hasNonAscii2) {
+                // Show warning about non-ASCII characters in ASCII mode
+                count1Label->setText(QString("%1/%2 %3 (⚠ Non-ASCII detected)").arg(count1).arg(limit).arg(unit));
+                count2Label->setText(QString("%1/%2 %3 (⚠ Non-ASCII detected)").arg(count2).arg(limit).arg(unit));
+                count1Label->setStyleSheet("color: #ff6600; font-size: 10px;");
+                count2Label->setStyleSheet("color: #ff6600; font-size: 10px;");
+                return;
+            }
+        }
+        
+        count1Label->setText(QString("%1/%2 %3").arg(count1).arg(limit).arg(unit));
+        count2Label->setText(QString("%1/%2 %3").arg(count2).arg(limit).arg(unit));
+        
+        // Color coding for limits
+        count1Label->setStyleSheet(QString("color: %1; font-size: 10px;").arg(count1 > limit ? "#d32f2f" : "#888"));
+        count2Label->setStyleSheet(QString("color: %1; font-size: 10px;").arg(count2 > limit ? "#d32f2f" : "#888"));
+    };
+    
+    // Connect signals for real-time updates
+    connect(label1Edit, &QLineEdit::textChanged, updateCountsAndLimits);
+    connect(label2Edit, &QLineEdit::textChanged, updateCountsAndLimits);
+    connect(encodingGroup, QOverload<int>::of(&QButtonGroup::idClicked), updateCountsAndLimits);
+    
+    // Initial count update
+    updateCountsAndLimits();
+    
+    // Validation function
+    auto validateInput = [label1Edit, label2Edit, encodingGroup]() -> bool {
+        bool isUnicode = (encodingGroup->checkedId() == 1);
+        
+        for (QLineEdit* edit : {label1Edit, label2Edit}) {
+            QString text = edit->text();
+            
+            if (isUnicode) {
+                // Unicode mode: 35 character limit
+                if (text.length() > 35) {
+                    return false;
+                }
+            } else {
+                // ASCII mode: 70 byte limit, and check for non-ASCII characters
+                if (text.toUtf8().length() > 70) {
+                    return false;
+                }
+                for (const QChar& ch : text) {
+                    if (ch.unicode() > 127) {
+                        return false; // Non-ASCII character in ASCII mode
+                    }
+                }
+            }
+        }
+        return true;
+    };
+    
+    // Buttons
+    QHBoxLayout* buttonLayout = new QHBoxLayout();
+    buttonLayout->addStretch();
+    
+    QPushButton* cancelButton = new QPushButton("Cancel");
+    connect(cancelButton, &QPushButton::clicked, &dialog, &QDialog::reject);
+    buttonLayout->addWidget(cancelButton);
+    
+    QPushButton* okButton = new QPushButton("OK");
+    okButton->setDefault(true);
+    connect(okButton, &QPushButton::clicked, [&dialog, validateInput, encodingGroup]() {
+        if (validateInput()) {
+            dialog.accept();
+        } else {
+            bool isUnicode = (encodingGroup->checkedId() == 1);
+            QString errorMsg;
+            if (isUnicode) {
+                errorMsg = "One or more fields exceed the 35 character limit.\n"
+                          "Unicode mode: NMEA2000 uses UTF-16 encoding with a 70-byte limit (35 characters max).";
+            } else {
+                errorMsg = "One or more fields exceed the 70 character limit or contain non-ASCII characters.\n"
+                          "ASCII mode: Only standard ASCII characters (0-127) are allowed, up to 70 characters.";
+            }
+            QMessageBox::warning(&dialog, "Invalid Input", errorMsg);
+        }
+    });
+    buttonLayout->addWidget(okButton);
+    
+    layout->addLayout(buttonLayout);
+    
+    // Show dialog and handle result
+    if (dialog.exec() == QDialog::Accepted) {
+        QString newLabel1 = label1Edit->text();
+        QString newLabel2 = label2Edit->text();
+        bool useUnicode = (encodingGroup->checkedId() == 1);
+        
+        // Update the device table
+        for (int row = 0; row < m_deviceTable->rowCount(); ++row) {
+            QTableWidgetItem* nodeAddressItem = m_deviceTable->item(row, 0);
+            if (nodeAddressItem && nodeAddressItem->text() == nodeAddress) {
+                // Update Installation 1
+                QTableWidgetItem* label1Item = m_deviceTable->item(row, 6);
+                if (!label1Item) {
+                    label1Item = new QTableWidgetItem();
+                    m_deviceTable->setItem(row, 6, label1Item);
+                }
+                label1Item->setText(newLabel1);
+                
+                // Update Installation 2
+                QTableWidgetItem* label2Item = m_deviceTable->item(row, 7);
+                if (!label2Item) {
+                    label2Item = new QTableWidgetItem();
+                    m_deviceTable->setItem(row, 7, label2Item);
+                }
+                label2Item->setText(newLabel2);
+                
+                break;
+            }
+        }
+        
+        // Send Group Function command to update device configuration
+        bool updateSent = sendConfigurationUpdate(sourceAddress, newLabel1, newLabel2, useUnicode);
+        
+        // Show confirmation
+        QString confirmMessage;
+        if (updateSent) {
+            confirmMessage = QString("Installation labels for device 0x%1 have been updated in the display "
+                                   "and a configuration update command has been sent to the device.\n\n"
+                                   "The device may take a moment to process the update and respond with "
+                                   "the new configuration information.")
+                           .arg(nodeAddress);
+        } else {
+            confirmMessage = QString("Installation labels for device 0x%1 have been updated in the display.\n\n"
+                                   "Warning: Failed to send configuration update command to the device. "
+                                   "The changes are only visible in this application.")
+                           .arg(nodeAddress);
+        }
+        QMessageBox::information(this, "Labels Updated", confirmMessage);
+    }
 }
 
 QString DeviceMainWindow::getDeviceDisplayName(uint8_t sourceAddress) const
@@ -1484,6 +1769,82 @@ bool DeviceMainWindow::sendInstanceChangeCommand(uint8_t deviceAddress, unsigned
     } else {
         qDebug() << "Failed to send instance change command to device" 
                  << QString("0x%1").arg(deviceAddress, 2, 16, QChar('0'));
+    }
+    
+    return success;
+}
+
+bool DeviceMainWindow::sendConfigurationUpdate(uint8_t targetAddress, const QString& installDesc1, const QString& installDesc2, bool useUnicode)
+{
+    if (!nmea2000) {
+        qDebug() << "Cannot send configuration update: NMEA2000 interface not available";
+        return false;
+    }
+    
+    // Send Group Function command to update PGN 126998 fields
+    tN2kMsg msg;
+    msg.SetPGN(126208UL);  // Group Function PGN
+    msg.Priority = 3;      // Standard priority for commands
+    msg.Destination = targetAddress;
+    
+    // Group Function Header
+    msg.AddByte(1);  // N2kgfc_Command - Command Group Function
+    msg.Add3ByteInt(N2kPGNConfigurationInformation);  // Target PGN 126998
+    msg.AddByte(0x08);  // Priority Setting (standard value for commands)
+    msg.AddByte(2);  // Number of parameter pairs (we're changing 2 fields)
+    
+    // Parameter pair 1: Installation Description 1 (Field 1)
+    msg.AddByte(1);  // Field number for Installation Description 1
+    
+    if (useUnicode) {
+        // Unicode mode: Convert QString to UTF-8 with SOH prefix for Unicode support
+        QByteArray desc1Utf8 = QByteArray("\x01") + installDesc1.toUtf8();
+        msg.AddVarStr(desc1Utf8.constData(), false, 70, 35);
+    } else {
+        // ASCII mode: Convert QString to Latin-1 (ASCII compatible) without prefix
+        QByteArray desc1Ascii = installDesc1.toLatin1();
+        msg.AddVarStr(desc1Ascii.constData(), false, 70, 70);
+    }
+    
+    // Parameter pair 2: Installation Description 2 (Field 2)
+    msg.AddByte(2);  // Field number for Installation Description 2
+    
+    if (useUnicode) {
+        // Unicode mode: Convert QString to UTF-8 with SOH prefix for Unicode support
+        QByteArray desc2Utf8 = QByteArray("\x01") + installDesc2.toUtf8();
+        msg.AddVarStr(desc2Utf8.constData(), false, 70, 35);
+    } else {
+        // ASCII mode: Convert QString to Latin-1 (ASCII compatible) without prefix
+        QByteArray desc2Ascii = installDesc2.toLatin1();
+        msg.AddVarStr(desc2Ascii.constData(), false, 70, 70);
+    }
+    
+    bool success = nmea2000->SendMsg(msg);
+    if (success) {
+        qDebug() << "Sent configuration update command to device" 
+                 << QString("0x%1").arg(targetAddress, 2, 16, QChar('0'))
+                 << "using" << (useUnicode ? "Unicode UTF-16" : "ASCII") << "encoding"
+                 << "- Install Desc 1:" << installDesc1 
+                 << "- Install Desc 2:" << installDesc2;
+        
+        // Blink TX indicator for transmitted messages
+        blinkTxIndicator();
+        
+        // Log the sent message to PGN log if it's visible
+        if (m_pgnLogDialog && m_pgnLogDialog->isVisible()) {
+            m_pgnLogDialog->appendSentMessage(msg);
+        }
+        
+        // Schedule a configuration information request after a delay to get updated values
+        QTimer::singleShot(2000, [this, targetAddress]() {
+            queryDeviceConfiguration(targetAddress);
+            qDebug() << "Requesting updated configuration from device" 
+                     << QString("0x%1").arg(targetAddress, 2, 16, QChar('0'));
+        });
+        
+    } else {
+        qDebug() << "Failed to send configuration update command to device" 
+                 << QString("0x%1").arg(targetAddress, 2, 16, QChar('0'));
     }
     
     return success;
