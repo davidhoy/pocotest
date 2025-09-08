@@ -2781,19 +2781,29 @@ void DeviceMainWindow::handleConfigurationInformationResponse(const tN2kMsg& msg
                           InstallationDescription1Size, InstallationDescription1,
                           InstallationDescription2Size, InstallationDescription2)) {
         
+        // Helper function to decode NMEA2000 strings (which can be ASCII or Unicode with SOH prefix)
+        auto decodeN2kString = [](const char* rawStr) -> QString {
+            if (!rawStr || rawStr[0] == '\0') {
+                return QString("(empty)");
+            }
+            
+            // Check if string starts with SOH (Start of Header, 0x01) indicating Unicode
+            if (rawStr[0] == '\x01') {
+                // Unicode string - skip SOH and interpret as UTF-8
+                return QString::fromUtf8(rawStr + 1);
+            } else {
+                // ASCII string
+                return QString::fromLatin1(rawStr);
+            }
+        };
+        
+        QString decodedMfg = decodeN2kString(ManufacturerInformation);
+        QString decodedDesc1 = decodeN2kString(InstallationDescription1);
+        QString decodedDesc2 = decodeN2kString(InstallationDescription2);
+        
         // Update device table to reflect the new information
         populateDeviceTable();
-        
-        if (showDialog) {
-            // Log detailed response for explicit requests
-            qDebug() << "Configuration Information Response from Device"
-                     << QString("0x%1:").arg(msg.Source, 2, 16, QChar('0'))
-                     << "Manufacturer Info:" << QString::fromLatin1(ManufacturerInformation)
-                     << "Install Desc 1:" << QString::fromLatin1(InstallationDescription1)
-                     << "Install Desc 2:" << QString::fromLatin1(InstallationDescription2);
-        }
     }
-    // Note: Unsolicited configuration information is silently ignored
 }
 
 // Group Function Message Handling (PGN 126208)

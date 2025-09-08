@@ -10,6 +10,7 @@
 #include <QStringList>
 #include <cmath>
 #include "N2kMessages.h"
+#include "NMEA2000.h"
 
 DBCDecoder::DBCDecoder(QObject *parent)
     : QObject(parent)
@@ -250,275 +251,12 @@ DecodedMessage DBCDecoder::decodeMessage(const tN2kMsg& msg)
 
     // Special handling for PGN 126208 (Request/Command/Acknowledge Group Function)
     if (msg.PGN == 126208) {
-        decoded.messageName = "Group Function (126208)";
-        decoded.description = "NMEA2000 Group Function Command/Request/Ack";
-        decoded.isDecoded = true;
+        return decodePGN126208(msg);
+    }
 
-        // Minimum length check - different for Request vs Command
-        if (msg.DataLen < 5) {
-            DecodedSignal sig;
-            sig.name = "Error";
-            sig.value = "Too short for 126208 decode (minimum 5 bytes)";
-            sig.isValid = true;
-            decoded.signalList.append(sig);
-            return decoded;
-        }
-
-        // Field 1 - Function Code
-        int Index = 0;
-        uint8_t functionCode = msg.GetByte(Index);
-        
-        DecodedSignal sigFC;
-        sigFC.name = "Function Code";
-        QString functionCodeDescription;
-        switch (functionCode) {
-            case 0: functionCodeDescription = "Request"; break;
-            case 1: functionCodeDescription = "Command"; break;
-            case 2: functionCodeDescription = "Acknowledge"; break;
-            case 3: functionCodeDescription = "Read Response"; break;
-            case 4: functionCodeDescription = "Read Request"; break;
-            case 5: functionCodeDescription = "Write Request"; break;
-            case 6: functionCodeDescription = "Write Response"; break;
-            default: functionCodeDescription = QString("Unknown (%1)").arg(functionCode); break;
-        }
-        sigFC.value = QString("%1 (%2)").arg(functionCode).arg(functionCodeDescription);
-        sigFC.isValid = true;
-        decoded.signalList.append(sigFC);
-
-        // Field 2 - Commanded PGN
-        uint32_t targetPGN = msg.GetByte(Index) | 
-                             (msg.GetByte(Index) << 8) |
-                             (msg.GetByte(Index) << 16);
-        DecodedSignal sigPGN;
-        sigPGN.name = (functionCode == 0) ? "Requested PGN" : "Commanded PGN";
-        sigPGN.value = QString("%1").arg(targetPGN);
-        sigPGN.isValid = true;
-        decoded.signalList.append(sigPGN);
-
-        if (functionCode == 0) {
-            // REQUEST structure
-            if (msg.DataLen < 11) {
-                DecodedSignal sig;
-                sig.name = "Error";
-                sig.value = "Too short for Request decode (minimum 11 bytes)";
-                sig.isValid = true;
-                decoded.signalList.append(sig);
-                return decoded;
-            }
-            
-            // Field 3 Bytes 4-7: Transmission Interval (4 bytes, little endian)
-            uint32_t transmissionInterval = msg.Get4ByteUInt(Index);
-            DecodedSignal sigInterval;
-            sigInterval.name = "Transmission Interval";
-            if (transmissionInterval == 0xFFFFFFFF) {
-                sigInterval.value = "One-time request";
-            } else {
-                sigInterval.value = QString("%1 ms").arg(transmissionInterval);
-            }
-            sigInterval.isValid = true;
-            decoded.signalList.append(sigInterval);
-            
-            // Bytes 8-9: Transmission Interval Offset (2 bytes, little endian)
-            uint16_t intervalOffset = msg.Data[8] | (msg.Data[9] << 8);
-            DecodedSignal sigOffset;
-            sigOffset.name = "Transmission Interval Offset";
-            sigOffset.value = QString("%1 ms").arg(intervalOffset);
-            sigOffset.isValid = true;
-            decoded.signalList.append(sigOffset);
-            
-            // Byte 10: Number of Parameter Pairs
-            uint8_t numParams = msg.Data[10];
-            DecodedSignal sigNumParams;
-            sigNumParams.name = "Number of Parameter Pairs";
-            if (numParams == 255) {
-                sigNumParams.value = "255 (All Parameters)";
-            } else {
-                sigNumParams.value = numParams;
-            }
-            sigNumParams.isValid = true;
-            decoded.signalList.append(sigNumParams);
-            
-            // Handle parameter pairs for Request
-            if (numParams == 255) {
-                DecodedSignal sigAllParams;
-                sigAllParams.name = "Parameter Specification";
-                sigAllParams.value = "All parameters of target PGN requested";
-                sigAllParams.isValid = true;
-                decoded.signalList.append(sigAllParams);
-            } else {
-                // Parameter pairs start at byte 11
-                int paramStart = 11;
-                for (uint8_t i = 0; i < numParams; ++i) {
-                    int fieldIdx = paramStart + i * 2;
-                    if (fieldIdx + 1 >= msg.DataLen) break;
-                    uint8_t fieldNum = msg.Data[fieldIdx];
-                    uint8_t fieldVal = msg.Data[fieldIdx + 1];
-                    
-                    QString fieldName = getFieldName(targetPGN, fieldNum);
-                    
-                    DecodedSignal sigField;
-                    sigField.name = QString("Field %1 - %2").arg(fieldNum).arg(fieldName);
-                    sigField.value = fieldVal;
-                    sigField.isValid = true;
-                    decoded.signalList.append(sigField);
-                }
-            }
-            
-        } else if (functionCode == 1) {
-            // COMMAND structure
-            if (msg.DataLen < 6) {
-                DecodedSignal sig;
-                sig.name = "Error";
-                sig.value = "Too short for Command decode (minimum 6 bytes)";
-                sig.isValid = true;
-                decoded.signalList.append(sig);
-                return decoded;
-            }
-
-            // Fields 3 & 4: Priority Setting (4 bits) + Reserved (4 bits)
-            uint8_t priorityByte = msg.GetByte(Index);
-            uint8_t prioritySetting = priorityByte & 0x0F;
-            DecodedSignal sigPriority; 
-            sigPriority.name = "Priority Setting";
-            QString priorityDesc;
-            if (prioritySetting <= 0x7) {
-                priorityDesc = QString("Set to %1").arg(prioritySetting);
-            } else if (prioritySetting == 0x8) {
-                priorityDesc = "Do not change";
-            } else if (prioritySetting == 0x9) {
-                priorityDesc = "Return to default";
-            } else {
-                priorityDesc = QString("Reserved (%1)").arg(prioritySetting);
-            }
-            sigPriority.value = QString("%1 (%2)").arg(prioritySetting).arg(priorityDesc);
-            sigPriority.isValid = true;
-            decoded.signalList.append(sigPriority);
-
-            // Field 5: Number of Parameter Pairs
-            uint8_t numParams = msg.GetByte(Index);
-            DecodedSignal sigNumParams;
-            sigNumParams.name = "Number of Parameter Pairs";
-            sigNumParams.value = numParams;
-            sigNumParams.isValid = true;
-            decoded.signalList.append(sigNumParams);
-            
-            // Fields 6 & 7, repeated numParams times
-            for (uint8_t i = 0; i < numParams; ++i) {
-                // Field Number
-                int fieldNum = msg.GetByte(Index);
-                QString fieldName = getFieldName(targetPGN, fieldNum);
-
-                // Field Value - length depends on PGN and field number
-                QString fieldValue;
-                
-                if (targetPGN == 130561) {
-                    // PGN 130561 Zone Lighting Control - handle specific field sizes
-                    switch (fieldNum) {
-                        case 1: { // Zone ID
-                            uint8_t zoneId = msg.GetByte(Index);
-                            if (zoneId == 253) fieldValue = "253 (Broadcast)";
-                            else if (zoneId == 254) fieldValue = "254 (No Zone)";
-                            else if (zoneId == 255) fieldValue = "255 (NULL)";
-                            else fieldValue = QString::number(zoneId);
-                            break;
-                        }
-                        case 2: { // Zone Name - variable length string
-                            char zoneName[80];
-                            size_t zoneNameSize = sizeof(zoneName);
-                            msg.GetVarStr(zoneNameSize, zoneName, Index);
-                            fieldValue = QString("'%1'").arg(QString::fromUtf8(zoneName));
-                            break;
-                        }
-                        case 3: case 4: case 5: { // Red, Green, Blue
-                            uint8_t colorVal = msg.GetByte(Index);
-                            fieldValue = QString("%1 (%2%)").arg(colorVal).arg((colorVal * 100.0 / 255.0), 0, 'f', 1);
-                            break;
-                        }
-                        case 6: { // Color Temperature - 2 bytes
-                            uint16_t colorTemp = msg.Get2ByteUInt(Index);
-                            if (colorTemp == 65535) fieldValue = "65535 (Not Available)";
-                            else fieldValue = QString("%1 K").arg(colorTemp);
-                            break;
-                        }
-                        case 7: { // Intensity
-                            uint8_t intensity = msg.GetByte(Index);
-                            if (intensity <= 200) {
-                                fieldValue = QString("%1 (%2%)").arg(intensity).arg((intensity / 2.0), 0, 'f', 1);
-                            } else {
-                                fieldValue = QString("%1 (Out of range)").arg(intensity);
-                            }
-                            break;
-                        }
-                        case 8: { // Program ID
-                            uint8_t programId = msg.GetByte(Index);
-                            if (programId >= 252) fieldValue = QString("%1 (Not Available)").arg(programId);
-                            else fieldValue = QString::number(programId);
-                            break;
-                        }
-                        case 9: { // Program Color Sequence Index
-                            uint8_t colorSeqIdx = msg.GetByte(Index);
-                            if (colorSeqIdx >= 252) fieldValue = QString("%1 (Not Available)").arg(colorSeqIdx);
-                            else fieldValue = QString::number(colorSeqIdx);
-                            break;
-                        }
-                        case 10: { // Program Intensity
-                            uint8_t progIntensity = msg.GetByte(Index);
-                            if (progIntensity == 255) fieldValue = "255 (Not Available)";
-                            else fieldValue = QString("%1 (%2%)").arg(progIntensity).arg((progIntensity * 100.0 / 255.0), 0, 'f', 1);
-                            break;
-                        }
-                        case 11: { // Program Rate
-                            uint8_t progRate = msg.GetByte(Index);
-                            if (progRate == 255) fieldValue = "255 (Not Available)";
-                            else fieldValue = QString("%1 (%2%)").arg(progRate).arg((progRate * 100.0 / 255.0), 0, 'f', 1);
-                            break;
-                        }
-                        case 12: { // Program Color Sequence
-                            uint8_t progColorSeq = msg.GetByte(Index);
-                            if (progColorSeq == 255) fieldValue = "255 (Not Available)";
-                            else fieldValue = QString::number(progColorSeq);
-                            break;
-                        }
-                        case 13: { // Zone Enabled (2 bits)
-                            uint8_t zoneEnabled = msg.GetByte(Index) & 0x03;
-                            switch (zoneEnabled) {
-                                case 0: fieldValue = "0 (Off)"; break;
-                                case 1: fieldValue = "1 (On)"; break;
-                                case 2: fieldValue = "2 (Error)"; break;
-                                case 3: fieldValue = "3 (Unavailable)"; break;
-                                default: fieldValue = QString::number(zoneEnabled);
-                            }
-                            break;
-                        }
-                        default: {
-                            // Unknown field - assume 1 byte
-                            uint8_t genericVal = msg.GetByte(Index);
-                            fieldValue = QString::number(genericVal);
-                            break;
-                        }
-                    }
-                } else {
-                    // For other PGNs, assume 1 byte for now
-                    uint8_t genericVal = msg.GetByte(Index);
-                    fieldValue = QString::number(genericVal);
-                }
-
-                DecodedSignal sigField;
-                sigField.name = QString("Field %1 - %2").arg(fieldNum).arg(fieldName);
-                sigField.value = fieldValue;
-                sigField.isValid = true;
-                decoded.signalList.append(sigField);
-            }
-            
-        } else {
-            // Other function codes (Acknowledge, etc.) - use generic handling for now
-            DecodedSignal sig;
-            sig.name = "Decoder Note";
-            sig.value = QString("Function Code %1 not fully implemented yet").arg(functionCode);
-            sig.isValid = true;
-            decoded.signalList.append(sig);
-        }
-        return decoded;
+    // Special handling for PGN 126998 (Configuration Information)
+    if (msg.PGN == 126998) {
+        return decodePGN126998(msg);
     }
 
     // Special handling for lighting PGNs
@@ -1747,6 +1485,162 @@ DecodedMessage DBCDecoder::decodePGN130330(const tN2kMsg& msg)
     sigIdentifyDevice.isValid = true;
     decoded.signalList.append(sigIdentifyDevice);
 
+    return decoded;
+}
+
+// Dedicated function for decoding PGN 126208 (Group Function)
+DecodedMessage DBCDecoder::decodePGN126208(const tN2kMsg& msg)
+{
+    DecodedMessage decoded;
+    decoded.messageName = "Group Function (126208)";
+    decoded.description = "NMEA2000 Group Function Command/Request/Ack";
+    decoded.isDecoded = true;
+
+    // Minimum length check - Group Function needs at least 6 bytes
+    // (Function Code + PGN[3] + Priority + Number of Parameters)
+    if (msg.DataLen < 6) {
+        DecodedSignal sig;
+        sig.name = "Error";
+        sig.value = "Too short for 126208 decode (minimum 6 bytes)";
+        sig.isValid = true;
+        decoded.signalList.append(sig);
+        return decoded;
+    }
+
+    // Byte 0: Function Code
+    uint8_t functionCode = msg.Data[0];
+    // Bytes 1-3: Target PGN (little endian)
+    uint32_t targetPGN = msg.Data[1] | (msg.Data[2] << 8) | (msg.Data[3] << 16);
+    // Byte 4: Priority
+    uint8_t priority = msg.Data[4];
+    // Byte 5: Number of parameters
+    uint8_t numParams = msg.Data[5];
+
+    DecodedSignal sigFC;
+    sigFC.name = "Function Code";
+    QString functionCodeDescription;
+    switch (functionCode) {
+        case 0: functionCodeDescription = "Request"; break;
+        case 1: functionCodeDescription = "Command"; break;
+        case 2: functionCodeDescription = "Acknowledge"; break;
+        case 3: functionCodeDescription = "Read Response"; break;
+        case 4: functionCodeDescription = "Read Request"; break;
+        case 5: functionCodeDescription = "Write Request"; break;
+        case 6: functionCodeDescription = "Write Response"; break;
+        default: functionCodeDescription = QString("Unknown (%1)").arg(functionCode); break;
+    }
+    sigFC.value = QString("%1 (%2)").arg(functionCode).arg(functionCodeDescription);
+    sigFC.isValid = true;
+    decoded.signalList.append(sigFC);
+
+    DecodedSignal sigPGN;
+    sigPGN.name = "Target PGN";
+    sigPGN.value = QString("%1").arg(targetPGN);
+    sigPGN.isValid = true;
+    decoded.signalList.append(sigPGN);
+
+    DecodedSignal sigPrio;
+    sigPrio.name = "Priority";
+    sigPrio.value = priority;
+    sigPrio.isValid = true;
+    decoded.signalList.append(sigPrio);
+
+    DecodedSignal sigNumParams;
+    sigNumParams.name = "Number of Parameters";
+    sigNumParams.value = numParams;
+    sigNumParams.isValid = true;
+    decoded.signalList.append(sigNumParams);
+
+    // Each parameter: Byte 6 + 2*i: Field Number, Byte 7 + 2*i: Value
+    int paramStart = 6;
+    for (uint8_t i = 0; i < numParams; ++i) {
+        int fieldIdx = paramStart + i * 2;
+        if (fieldIdx + 1 >= msg.DataLen) break;
+        uint8_t fieldNum = msg.Data[fieldIdx];
+        uint8_t fieldVal = msg.Data[fieldIdx + 1];
+        DecodedSignal sigField;
+        sigField.name = QString("Field %1").arg(fieldNum);
+        sigField.value = fieldVal;
+        sigField.isValid = true;
+        decoded.signalList.append(sigField);
+    }
+    
+    return decoded;
+}
+
+// Dedicated function for decoding PGN 126998 (Configuration Information)
+DecodedMessage DBCDecoder::decodePGN126998(const tN2kMsg& msg)
+{
+    DecodedMessage decoded;
+    decoded.messageName = "Configuration Information (126998)";
+    decoded.description = "NMEA2000 Device Configuration Information";
+    decoded.isDecoded = true;
+
+    // Parse using the official NMEA2000 library function
+    char ManufacturerInformation[71] = {0};
+    char InstallationDescription1[71] = {0};
+    char InstallationDescription2[71] = {0};
+    size_t ManufacturerInformationSize = sizeof(ManufacturerInformation);
+    size_t InstallationDescription1Size = sizeof(InstallationDescription1);
+    size_t InstallationDescription2Size = sizeof(InstallationDescription2);
+    
+    bool parseSuccess = ParseN2kPGN126998(msg, 
+                          ManufacturerInformationSize, ManufacturerInformation,
+                          InstallationDescription1Size, InstallationDescription1,
+                          InstallationDescription2Size, InstallationDescription2);
+    
+    DecodedSignal parseResult;
+    parseResult.name = "Parse Result";
+    parseResult.value = parseSuccess ? "SUCCESS" : "FAILED";
+    parseResult.isValid = true;
+    decoded.signalList.append(parseResult);
+    
+    if (parseSuccess) {
+        // Helper function to decode NMEA2000 strings (which can be ASCII or Unicode with SOH prefix)
+        auto decodeN2kString = [](const char* rawStr) -> QString {
+            if (!rawStr || rawStr[0] == '\0') {
+                return QString("(empty)");
+            }
+            
+            // Check if string starts with SOH (Start of Header, 0x01) indicating Unicode
+            if (rawStr[0] == '\x01') {
+                // Unicode string - skip SOH and interpret as UTF-8
+                return QString::fromUtf8(rawStr + 1);
+            } else {
+                // ASCII string
+                return QString::fromLatin1(rawStr);
+            }
+        };
+        
+        // Manufacturer Information
+        DecodedSignal sigMfg;
+        sigMfg.name = "Manufacturer Information";
+        sigMfg.value = decodeN2kString(ManufacturerInformation);
+        sigMfg.isValid = true;
+        decoded.signalList.append(sigMfg);
+        
+        // Installation Description 1
+        DecodedSignal sigDesc1;
+        sigDesc1.name = "Installation Description 1";
+        sigDesc1.value = decodeN2kString(InstallationDescription1);
+        sigDesc1.isValid = true;
+        decoded.signalList.append(sigDesc1);
+        
+        // Installation Description 2
+        DecodedSignal sigDesc2;
+        sigDesc2.name = "Installation Description 2";
+        sigDesc2.value = decodeN2kString(InstallationDescription2);
+        sigDesc2.isValid = true;
+        decoded.signalList.append(sigDesc2);
+        
+    } else {
+        DecodedSignal sig;
+        sig.name = "Error";
+        sig.value = "Failed to parse Configuration Information";
+        sig.isValid = true;
+        decoded.signalList.append(sig);
+    }
+    
     return decoded;
 }
 
