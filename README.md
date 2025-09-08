@@ -90,7 +90,8 @@ make -j$(nproc)
 ```bash
 # Serve locally for testing
 cd wasm-deploy/
-python3 qtloader.js --name=pocotest --port=8000
+python3 -m http.server 8080
+# Open browser to http://localhost:8080/pocotest.html
 ```
 
 ## Deployment Options
