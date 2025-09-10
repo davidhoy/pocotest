@@ -2027,6 +2027,7 @@ void PGNLogDialog::showDecodeDetails(int row)
     detailsDialog->setWindowTitle(QString("Message Details - PGN %1").arg(pgn));
     detailsDialog->setMinimumSize(600, 400);
     detailsDialog->resize(700, 500);
+    detailsDialog->setAttribute(Qt::WA_DeleteOnClose); // Auto-delete when closed
     
     // Create layout
     QVBoxLayout* layout = new QVBoxLayout(detailsDialog);
@@ -2185,12 +2186,13 @@ void PGNLogDialog::showDecodeDetails(int row)
     buttonLayout->addWidget(copyButton);
     
     QPushButton* closeButton = new QPushButton("Close", detailsDialog);
-    connect(closeButton, &QPushButton::clicked, detailsDialog, &QDialog::accept);
+    connect(closeButton, &QPushButton::clicked, detailsDialog, &QDialog::close);
     buttonLayout->addWidget(closeButton);
     
     layout->addLayout(buttonLayout);
     
-    // Show the dialog
-    detailsDialog->exec();
-    detailsDialog->deleteLater();
+    // Show the dialog as non-modal (won't block other dialogs)
+    detailsDialog->show();
+    detailsDialog->raise();
+    detailsDialog->activateWindow();
 }
