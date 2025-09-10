@@ -2050,8 +2050,8 @@ void PGNLogDialog::showDecodeDetails(int row)
     }
     detailsText += "\n";
     detailsText += QString("Priority:     %1\n").arg(priority);
-    detailsText += QString("Source:       0x%1").arg(source);
-    detailsText += QString("Destination:  0x%1").arg(destination);
+    detailsText += QString("Source:       0x%1\n").arg(source);
+    detailsText += QString("Destination:  0x%1\n").arg(destination);
     detailsText += QString("Length:       %1 bytes\n").arg(length);
     
     // Add device name information if available
