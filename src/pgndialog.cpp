@@ -185,7 +185,7 @@ void PGNDialog::onPGNSelectionChanged()
     
     // Update preview
     if (pgn > 0) {
-        QString preview = QString("PGN: %1\nPriority: %2\nSource: %3\nDestination: %4")
+        QString preview = QString("PGN: %1\nPriority: %2\nSource: %3\nDestination: %4\n")
                             .arg(pgn)
                             .arg(m_prioritySpinBox->value())
                             .arg(m_sourceSpinBox->value())
