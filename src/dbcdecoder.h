@@ -92,6 +92,9 @@ private:
     // Field name mapping for group functions
     QString getFieldName(unsigned long pgn, uint8_t fieldNumber) const;
     
+    // Helper functions for PGN descriptions
+    QString getPGNDescription(uint32_t pgn);
+    
     // Lighting PGN decoders
     DecodedMessage decodePGN130330(const tN2kMsg& msg);  // Lighting System Settings
     DecodedMessage decodePGN130561(const tN2kMsg& msg);  // Zone Lighting Control
@@ -103,6 +106,7 @@ private:
     
     // NMEA2000 Standard PGN decoders
     DecodedMessage decodePGN126208(const tN2kMsg& msg);  // Group Function
+    DecodedMessage decodePGN126464(const tN2kMsg& msg);  // PGN List
     DecodedMessage decodePGN126998(const tN2kMsg& msg);  // Configuration Information
 
 private:

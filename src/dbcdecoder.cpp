@@ -254,6 +254,11 @@ DecodedMessage DBCDecoder::decodeMessage(const tN2kMsg& msg)
         return decodePGN126208(msg);
     }
 
+    // Special handling for PGN 126464 (PGN List)
+    if (msg.PGN == 126464) {
+        return decodePGN126464(msg);
+    }
+
     // Special handling for PGN 126998 (Configuration Information)
     if (msg.PGN == 126998) {
         return decodePGN126998(msg);
@@ -1568,6 +1573,110 @@ DecodedMessage DBCDecoder::decodePGN126208(const tN2kMsg& msg)
     return decoded;
 }
 
+// Dedicated function for decoding PGN 126464 (PGN List)
+DecodedMessage DBCDecoder::decodePGN126464(const tN2kMsg& msg)
+{
+    DecodedMessage decoded;
+    decoded.messageName = "PGN List (126464)";
+    decoded.description = "NMEA2000 PGN List - Transmit/Receive PGNs";
+    decoded.isDecoded = true;
+
+    // Fast packet handling - PGN 126464 is typically transmitted as a fast packet
+    // The actual data starts after the fast packet header
+    int dataStart = 0;
+    
+    // Check if this looks like a fast packet (sequence counter in first byte)
+    if (msg.DataLen >= 2) {
+        uint8_t sequenceCounter = msg.Data[0] & 0x1F;  // Lower 5 bits
+        if (sequenceCounter == 0) {
+            // This is the first frame of a fast packet
+            uint8_t totalLength = msg.Data[1];
+            dataStart = 2;  // Skip sequence counter and length
+            
+            DecodedSignal sigSeq;
+            sigSeq.name = "Fast Packet Sequence";
+            sigSeq.value = QString("First frame (0), Total length: %1 bytes").arg(totalLength);
+            sigSeq.isValid = true;
+            decoded.signalList.append(sigSeq);
+        } else {
+            // This is a continuation frame
+            DecodedSignal sigSeq;
+            sigSeq.name = "Fast Packet Sequence";
+            sigSeq.value = QString("Continuation frame (%1)").arg(sequenceCounter);
+            sigSeq.isValid = true;
+            decoded.signalList.append(sigSeq);
+            
+            dataStart = 1;  // Skip sequence counter only
+        }
+    }
+
+    // Check minimum length for actual PGN list data
+    if (msg.DataLen < dataStart + 1) {
+        DecodedSignal sig;
+        sig.name = "Error";
+        sig.value = "Too short for PGN 126464 decode";
+        sig.isValid = true;
+        decoded.signalList.append(sig);
+        return decoded;
+    }
+
+    // Parse the PGN list data
+    int offset = dataStart;
+    
+    // First byte: Function Code (PGN List type)
+    if (offset < msg.DataLen) {
+        uint8_t functionCode = msg.Data[offset++];
+        
+        DecodedSignal sigFC;
+        sigFC.name = "Function Code";
+        QString functionDescription;
+        switch (functionCode) {
+            case 0: functionDescription = "Transmit PGN List"; break;
+            case 1: functionDescription = "Receive PGN List"; break;
+            default: functionDescription = QString("Unknown (%1)").arg(functionCode); break;
+        }
+        sigFC.value = QString("%1 (%2)").arg(functionCode).arg(functionDescription);
+        sigFC.isValid = true;
+        decoded.signalList.append(sigFC);
+    }
+
+    // Parse PGN entries (each PGN is 3 bytes, little endian)
+    int pgnIndex = 1;
+    while (offset + 2 < msg.DataLen) {
+        uint32_t pgn = msg.Data[offset] | (msg.Data[offset + 1] << 8) | (msg.Data[offset + 2] << 16);
+        offset += 3;
+        
+        // Skip invalid/reserved PGNs (0x000000 and 0xFFFFFF are often used as padding)
+        if (pgn == 0 || pgn == 0xFFFFFF) {
+            continue;
+        }
+        
+        DecodedSignal sigPGN;
+        sigPGN.name = QString("PGN %1").arg(pgnIndex++);
+        sigPGN.value = QString("%1").arg(pgn);
+        sigPGN.description = getPGNDescription(pgn);
+        sigPGN.isValid = true;
+        decoded.signalList.append(sigPGN);
+    }
+    
+    // If we didn't find any PGNs, indicate that
+    if (pgnIndex == 1) {
+        DecodedSignal sig;
+        sig.name = "PGN Count";
+        sig.value = "No valid PGNs found";
+        sig.isValid = true;
+        decoded.signalList.append(sig);
+    } else {
+        DecodedSignal sig;
+        sig.name = "PGN Count";
+        sig.value = QString("%1 PGNs").arg(pgnIndex - 1);
+        sig.isValid = true;
+        decoded.signalList.append(sig);
+    }
+    
+    return decoded;
+}
+
 // Dedicated function for decoding PGN 126998 (Configuration Information)
 DecodedMessage DBCDecoder::decodePGN126998(const tN2kMsg& msg)
 {
@@ -1736,5 +1845,135 @@ QString DBCDecoder::getFieldName(unsigned long pgn, uint8_t fieldNumber) const
         // Add more PGNs as needed
         default:
             return QString("Field %1").arg(fieldNumber);
+    }
+}
+
+// Helper function to get PGN descriptions
+QString DBCDecoder::getPGNDescription(uint32_t pgn)
+{
+    // Common NMEA2000 PGN descriptions
+    static QMap<uint32_t, QString> pgnDescriptions;
+    
+    // Initialize the map if it's empty
+    if (pgnDescriptions.isEmpty()) {
+        // System PGNs
+        pgnDescriptions[59392] = "ISO Acknowledgement";
+        pgnDescriptions[59904] = "ISO Request";
+        pgnDescriptions[60416] = "ISO Transport Protocol - Data Transfer";
+        pgnDescriptions[60160] = "ISO Transport Protocol - Connection Management";
+        
+        // Standard NMEA2000 PGNs
+        pgnDescriptions[126208] = "Group Function";
+        pgnDescriptions[126464] = "PGN List";
+        pgnDescriptions[126992] = "System Time";
+        pgnDescriptions[126993] = "Heartbeat";
+        pgnDescriptions[126996] = "Product Information";
+        pgnDescriptions[126998] = "Configuration Information";
+        
+        // Navigation PGNs
+        pgnDescriptions[127245] = "Rudder";
+        pgnDescriptions[127250] = "Vessel Heading";
+        pgnDescriptions[127251] = "Rate of Turn";
+        pgnDescriptions[127257] = "Attitude";
+        pgnDescriptions[127258] = "Magnetic Variation";
+        pgnDescriptions[129025] = "Position (Rapid Update)";
+        pgnDescriptions[129026] = "COG & SOG (Rapid Update)";
+        pgnDescriptions[129029] = "GNSS Position Data";
+        pgnDescriptions[129033] = "Time & Date";
+        pgnDescriptions[129283] = "Cross Track Error";
+        pgnDescriptions[129284] = "Navigation Data";
+        pgnDescriptions[129285] = "Navigation Route/WP Information";
+        
+        // Engine PGNs
+        pgnDescriptions[127488] = "Engine Parameters (Rapid Update)";
+        pgnDescriptions[127489] = "Engine Parameters (Dynamic)";
+        pgnDescriptions[127493] = "Transmission Parameters (Dynamic)";
+        pgnDescriptions[127497] = "Trip Parameters (Engine)";
+        pgnDescriptions[127498] = "Trip Parameters (Vessel)";
+        pgnDescriptions[127500] = "Load Controller Connection State/Control";
+        pgnDescriptions[127501] = "Binary Switch Bank Status";
+        pgnDescriptions[127502] = "Switch Bank Control";
+        pgnDescriptions[127503] = "AC Input Status";
+        pgnDescriptions[127504] = "AC Output Status";
+        pgnDescriptions[127505] = "Fluid Level";
+        pgnDescriptions[127506] = "DC Detailed Status";
+        pgnDescriptions[127507] = "Charger Status";
+        pgnDescriptions[127508] = "Battery Status";
+        pgnDescriptions[127509] = "Inverter Status";
+        
+        // Environmental PGNs
+        pgnDescriptions[128259] = "Speed (Water Referenced)";
+        pgnDescriptions[128267] = "Water Depth";
+        pgnDescriptions[128275] = "Distance Log";
+        pgnDescriptions[130306] = "Wind Data";
+        pgnDescriptions[130310] = "Environmental Parameters";
+        pgnDescriptions[130311] = "Environmental Parameters";
+        pgnDescriptions[130312] = "Temperature";
+        pgnDescriptions[130313] = "Humidity";
+        pgnDescriptions[130314] = "Actual Pressure";
+        pgnDescriptions[130316] = "Temperature (Extended Range)";
+        
+        // Lighting PGNs (Lumitec specific)
+        pgnDescriptions[130330] = "Lighting System Settings";
+        pgnDescriptions[130561] = "Zone Lighting Control";
+        pgnDescriptions[130562] = "Lighting Scene";
+        pgnDescriptions[130563] = "Lighting Device";
+        pgnDescriptions[130564] = "Lighting Device Enumeration";
+        pgnDescriptions[130565] = "Lighting Color Sequence";
+        pgnDescriptions[130566] = "Lighting Program";
+        
+        // AIS PGNs
+        pgnDescriptions[129038] = "AIS Class A Position Report";
+        pgnDescriptions[129039] = "AIS Class B Position Report";
+        pgnDescriptions[129040] = "AIS Class B Extended Position Report";
+        pgnDescriptions[129041] = "AIS Aids to Navigation (AtoN) Report";
+        pgnDescriptions[129793] = "AIS UTC and Date Report";
+        pgnDescriptions[129794] = "AIS Class A Static and Voyage Related Data";
+        pgnDescriptions[129798] = "AIS SAR Aircraft Position Report";
+        pgnDescriptions[129802] = "AIS Safety Related Broadcast Message";
+        pgnDescriptions[129809] = "AIS Class B Static Data (Part A)";
+        pgnDescriptions[129810] = "AIS Class B Static Data (Part B)";
+    }
+    
+    // Look up the PGN description
+    if (pgnDescriptions.contains(pgn)) {
+        return pgnDescriptions[pgn];
+    }
+    
+    // If not found, provide a generic description based on PGN range
+    if (pgn >= 126208 && pgn <= 126463) {
+        return "Network Management/Group Function";
+    } else if (pgn >= 126464 && pgn <= 126719) {
+        return "Proprietary Range A";
+    } else if (pgn >= 126720 && pgn <= 126975) {
+        return "Proprietary Range B";
+    } else if (pgn >= 126976 && pgn <= 127231) {
+        return "Network Management";
+    } else if (pgn >= 127232 && pgn <= 127487) {
+        return "Steering/Navigation";
+    } else if (pgn >= 127488 && pgn <= 127743) {
+        return "Propulsion";
+    } else if (pgn >= 127744 && pgn <= 127999) {
+        return "Navigation";
+    } else if (pgn >= 128000 && pgn <= 128255) {
+        return "Communication";
+    } else if (pgn >= 128256 && pgn <= 128511) {
+        return "Instrumentation/General";
+    } else if (pgn >= 129024 && pgn <= 129279) {
+        return "Navigation";
+    } else if (pgn >= 129280 && pgn <= 129535) {
+        return "Navigation";
+    } else if (pgn >= 129536 && pgn <= 129791) {
+        return "Communication";
+    } else if (pgn >= 129792 && pgn <= 130047) {
+        return "Communication/AIS";
+    } else if (pgn >= 130048 && pgn <= 130303) {
+        return "Instrumentation/General";
+    } else if (pgn >= 130304 && pgn <= 130559) {
+        return "Environmental";
+    } else if (pgn >= 130560 && pgn <= 130815) {
+        return "Proprietary/Lighting";
+    } else {
+        return "Unknown Range";
     }
 }
