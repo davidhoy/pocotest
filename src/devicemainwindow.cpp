@@ -74,7 +74,6 @@ DeviceMainWindow::DeviceMainWindow(QWidget *parent)
     , m_rxBlinkTimer(nullptr)
     , m_deviceList(nullptr)
     , m_isConnected(false)
-    , m_pgnLogDialog(nullptr)
     , m_conflictAnalyzer(nullptr)
     , m_hasSeenValidTraffic(false)
     , m_autoDiscoveryTriggered(false)
@@ -453,9 +452,11 @@ void DeviceMainWindow::handleN2kMsg(const tN2kMsg& msg) {
         handleGroupFunctionMessage(msg);
     }
 
-    // Forward to PGN log dialog if it exists and is visible
-    if (m_pgnLogDialog && m_pgnLogDialog->isVisible()) {
-        m_pgnLogDialog->appendMessage(msg);
+    // Forward to all PGN log dialogs
+    for (PGNLogDialog* dialog : m_pgnLogDialogs) {
+        if (dialog && dialog->isVisible()) {
+            dialog->appendMessage(msg);
+        }
     }
 }
 
@@ -1830,9 +1831,11 @@ bool DeviceMainWindow::sendConfigurationUpdate(uint8_t targetAddress, const QStr
         // Blink TX indicator for transmitted messages
         blinkTxIndicator();
         
-        // Log the sent message to PGN log if it's visible
-        if (m_pgnLogDialog && m_pgnLogDialog->isVisible()) {
-            m_pgnLogDialog->appendSentMessage(msg);
+        // Log the sent message to all PGN log dialogs
+        for (PGNLogDialog* dialog : m_pgnLogDialogs) {
+            if (dialog && dialog->isVisible()) {
+                dialog->appendSentMessage(msg);
+            }
         }
         
         // Schedule a configuration information request after a delay to get updated values
@@ -1927,36 +1930,40 @@ void DeviceMainWindow::showLumitecSwitchActionDialog(uint8_t targetAddress, cons
 
 void DeviceMainWindow::showPGNLog()
 {
-    qDebug() << "showPGNLog: Starting...";
+    qDebug() << "showPGNLog: Creating new PGNLogDialog instance...";
     
-    if (!m_pgnLogDialog) {
-        qDebug() << "showPGNLog: Creating new PGNLogDialog...";
-        m_pgnLogDialog = new PGNLogDialog(this);
-        
-        // Set up device name resolver
-        m_pgnLogDialog->setDeviceNameResolver([this](uint8_t address) {
-            return getDeviceName(address);
-        });
-        
-        qDebug() << "showPGNLog: PGNLogDialog created successfully";
-    }
+    // Always create a new dialog for multi-instance support
+    PGNLogDialog* newDialog = new PGNLogDialog(this);
+    
+    // Set up device name resolver
+    newDialog->setDeviceNameResolver([this](uint8_t address) {
+        return getDeviceName(address);
+    });
+    
+    // Connect the destroyed signal to our cleanup slot
+    connect(newDialog, &QObject::destroyed, this, &DeviceMainWindow::onPGNLogDialogDestroyed);
+    
+    // Add to our list of dialogs
+    m_pgnLogDialogs.append(newDialog);
     
     qDebug() << "showPGNLog: About to clear all filters...";
     // Clear all filters for general PGN log view
-    m_pgnLogDialog->clearAllFilters();
+    newDialog->clearAllFilters();
     qDebug() << "showPGNLog: Filters cleared";
     
     qDebug() << "showPGNLog: About to show dialog...";
-    m_pgnLogDialog->show();
+    newDialog->show();
     qDebug() << "showPGNLog: Dialog shown";
     
     qDebug() << "showPGNLog: About to raise dialog...";
-    m_pgnLogDialog->raise();
+    newDialog->raise();
     qDebug() << "showPGNLog: Dialog raised";
     
     qDebug() << "showPGNLog: About to activate window...";
-    m_pgnLogDialog->activateWindow();
+    newDialog->activateWindow();
     qDebug() << "showPGNLog: Window activated - completed successfully";
+    
+    qDebug() << "showPGNLog: Total PGN dialogs now: " << m_pgnLogDialogs.size();
 }
 
 void DeviceMainWindow::showSendPGNDialog()
@@ -2058,9 +2065,11 @@ void DeviceMainWindow::queryDeviceConfiguration(uint8_t targetAddress)
         // Blink TX indicator for transmitted messages
         blinkTxIndicator();
         
-        // Log the sent message to PGN log if it's visible
-        if (m_pgnLogDialog && m_pgnLogDialog->isVisible()) {
-            m_pgnLogDialog->appendSentMessage(N2kMsg);
+        // Log the sent message to all PGN log dialogs
+        for (PGNLogDialog* dialog : m_pgnLogDialogs) {
+            if (dialog && dialog->isVisible()) {
+                dialog->appendSentMessage(N2kMsg);
+            }
         }
         
         qDebug() << "Configuration information request sent to device" << 
@@ -2101,9 +2110,11 @@ void DeviceMainWindow::requestProductInformation(uint8_t targetAddress)
         m_productInfoRetryTimers[targetAddress] = retryTimer;
         retryTimer->start(PRODUCT_INFO_RETRY_TIMEOUT_MS);
         
-        // Log the sent message to PGN log if it's visible
-        if (m_pgnLogDialog && m_pgnLogDialog->isVisible()) {
-            m_pgnLogDialog->appendSentMessage(N2kMsg);
+        // Log the sent message to all PGN log dialogs
+        for (PGNLogDialog* dialog : m_pgnLogDialogs) {
+            if (dialog && dialog->isVisible()) {
+                dialog->appendSentMessage(N2kMsg);
+            }
         }
         
         qDebug() << "Product information request sent to device" << 
@@ -2128,8 +2139,11 @@ void DeviceMainWindow::requestSupportedPGNs(uint8_t targetAddress)
     if (nmea2000->SendMsg(N2kMsg)) {
         blinkTxIndicator();
         
-        if (m_pgnLogDialog && m_pgnLogDialog->isVisible()) {
-            m_pgnLogDialog->appendSentMessage(N2kMsg);
+        // Log the sent message to all PGN log dialogs
+        for (PGNLogDialog* dialog : m_pgnLogDialogs) {
+            if (dialog && dialog->isVisible()) {
+                dialog->appendSentMessage(N2kMsg);
+            }
         }
         
         qDebug() << "Supported PGNs request sent to device" << 
@@ -2448,31 +2462,39 @@ void DeviceMainWindow::queryNewDevice(uint8_t sourceAddress)
 
 void DeviceMainWindow::showPGNLogForDevice(uint8_t sourceAddress)
 {
-    // Show PGN log dialog filtered for this specific device
-    if (!m_pgnLogDialog) {
-        m_pgnLogDialog = new PGNLogDialog(this);
-        
-        // Set up device name resolver
-        m_pgnLogDialog->setDeviceNameResolver([this](uint8_t address) {
-            return getDeviceName(address);
-        });
-    }
+    // Create a new PGN log dialog for this specific device
+    PGNLogDialog* deviceDialog = new PGNLogDialog(this);
+    
+    // Set up device name resolver
+    deviceDialog->setDeviceNameResolver([this](uint8_t address) {
+        return getDeviceName(address);
+    });
+    
+    // Connect the destroyed signal to our cleanup slot
+    connect(deviceDialog, &QObject::destroyed, this, &DeviceMainWindow::onPGNLogDialogDestroyed);
+    
+    // Add to our list of dialogs
+    m_pgnLogDialogs.append(deviceDialog);
     
     // Ensure the device list is up to date before setting filters
     updatePGNDialogDeviceList();
     
     // Set filters for both source and destination addresses to capture all traffic
     // involving this device (messages from it OR messages to it)
-    m_pgnLogDialog->setSourceFilter(sourceAddress);
-    m_pgnLogDialog->setDestinationFilter(sourceAddress);
-    m_pgnLogDialog->setFilterLogic(true); // Use OR logic - show messages FROM device OR TO device
+    deviceDialog->setSourceFilter(sourceAddress);
+    deviceDialog->setDestinationFilter(sourceAddress);
+    deviceDialog->setFilterLogic(true); // Use OR logic - show messages FROM device OR TO device
     
-    m_pgnLogDialog->setWindowTitle(QString("PGN History - Device 0x%1 (Source OR Destination)")
-                                   .arg(sourceAddress, 2, 16, QChar('0')).toUpper());
+    deviceDialog->setWindowTitle(QString("PGN History - Device 0x%1 (Source OR Destination)")
+                                .arg(sourceAddress, 2, 16, QChar('0')).toUpper());
     
-    m_pgnLogDialog->show();
-    m_pgnLogDialog->raise();
-    m_pgnLogDialog->activateWindow();
+    deviceDialog->show();
+    deviceDialog->raise();
+    deviceDialog->activateWindow();
+    
+    qDebug() << "Created device-specific PGN dialog for device 0x" 
+             << QString::number(sourceAddress, 16).toUpper() 
+             << ". Total dialogs: " << m_pgnLogDialogs.size();
 }
 
 void DeviceMainWindow::clearConflictHistory()
@@ -2841,9 +2863,11 @@ void DeviceMainWindow::sendLumitecSimpleAction(uint8_t targetAddress, uint8_t ac
             // Blink TX indicator for transmitted messages
             blinkTxIndicator();
             
-            // Log the sent message to PGN log if it's visible
-            if (m_pgnLogDialog && m_pgnLogDialog->isVisible()) {
-                m_pgnLogDialog->appendSentMessage(msg);
+            // Log the sent message to all PGN log dialogs
+            for (PGNLogDialog* dialog : m_pgnLogDialogs) {
+                if (dialog && dialog->isVisible()) {
+                    dialog->appendSentMessage(msg);
+                }
             }
             
             qDebug() << "Sent Lumitec Simple Action - Target:" << QString("0x%1").arg(targetAddress, 2, 16, QChar('0'))
@@ -2937,9 +2961,11 @@ void DeviceMainWindow::sendLumitecCustomHSB(uint8_t targetAddress, uint8_t hue, 
             // Blink TX indicator for transmitted messages
             blinkTxIndicator();
             
-            // Log the sent message to PGN log if it's visible
-            if (m_pgnLogDialog && m_pgnLogDialog->isVisible()) {
-                m_pgnLogDialog->appendSentMessage(msg);
+            // Log the sent message to all PGN log dialogs
+            for (PGNLogDialog* dialog : m_pgnLogDialogs) {
+                if (dialog && dialog->isVisible()) {
+                    dialog->appendSentMessage(msg);
+                }
             }
             
             qDebug() << "Sent Lumitec Custom HSB - Target:" << QString("0x%1").arg(targetAddress, 2, 16, QChar('0'))
@@ -3209,11 +3235,6 @@ void DeviceMainWindow::displayLumitecMessage(const tN2kMsg& msg, const QString& 
 
 void DeviceMainWindow::updatePGNDialogDeviceList()
 {
-    // Only update if the PGN dialog exists
-    if (!m_pgnLogDialog) {
-        return;
-    }
-    
     // Build a list of current devices for the filter combo boxes
     QStringList devices;
     
@@ -3242,8 +3263,12 @@ void DeviceMainWindow::updatePGNDialogDeviceList()
         }
     }
     
-    // Update the PGN dialog's device list
-    m_pgnLogDialog->updateDeviceList(devices);
+    // Update all PGN dialogs' device lists
+    for (PGNLogDialog* dialog : m_pgnLogDialogs) {
+        if (dialog) {
+            dialog->updateDeviceList(devices);
+        }
+    }
 }
 
 // Helper to send NMEA 2000 Command for PGN 130561 zone control via PGN 126208 Group Function
@@ -3291,8 +3316,11 @@ void DeviceMainWindow::sendZonePGN130561(uint8_t targetAddress, uint8_t zoneId, 
             // Blink TX indicator for transmitted messages
             blinkTxIndicator();
             
-            if (m_pgnLogDialog && m_pgnLogDialog->isVisible()) {
-                m_pgnLogDialog->appendSentMessage(msg);
+            // Log the sent message to all PGN log dialogs
+            for (PGNLogDialog* dialog : m_pgnLogDialogs) {
+                if (dialog && dialog->isVisible()) {
+                    dialog->appendSentMessage(msg);
+                }
             }
             qDebug() << "Sent Simple Zone Command (PGN 126208->130561) - Target:" << QString("0x%1").arg(targetAddress, 2, 16, QChar('0'))
                      << "Zone:" << zoneId << "Action:" << (zoneEnabled ? "ON" : "OFF");
@@ -3364,8 +3392,11 @@ void DeviceMainWindow::sendZonePGN130561(uint8_t targetAddress, uint8_t zoneId, 
             // Blink TX indicator for transmitted messages
             blinkTxIndicator();
             
-            if (m_pgnLogDialog && m_pgnLogDialog->isVisible()) {
-                m_pgnLogDialog->appendSentMessage(msg);
+            // Log the sent message to all PGN log dialogs
+            for (PGNLogDialog* dialog : m_pgnLogDialogs) {
+                if (dialog && dialog->isVisible()) {
+                    dialog->appendSentMessage(msg);
+                }
             }
             qDebug() << "Sent Full Zone Command (PGN 126208->130561) - Target:" << QString("0x%1").arg(targetAddress, 2, 16, QChar('0'))
                      << "Zone:" << zoneId << "Name:" << zoneName 
@@ -3513,6 +3544,14 @@ void DeviceMainWindow::onRxBlinkTimeout()
     );
 }
 
+void DeviceMainWindow::onPGNLogDialogDestroyed(QObject* obj)
+{
+    // Remove the destroyed dialog from our list
+    PGNLogDialog* dialog = static_cast<PGNLogDialog*>(obj);
+    m_pgnLogDialogs.removeAll(dialog);
+    qDebug() << "PGN log dialog destroyed. Remaining dialogs: " << m_pgnLogDialogs.size();
+}
+
 void DeviceMainWindow::retryProductInformation(uint8_t targetAddress)
 {
     // Check if we've reached max retries
@@ -3563,9 +3602,11 @@ void DeviceMainWindow::retryProductInformation(uint8_t targetAddress)
             m_productInfoRetryTimers[targetAddress] = retryTimer;
             retryTimer->start(PRODUCT_INFO_RETRY_TIMEOUT_MS);
             
-            // Log the sent message to PGN log if it's visible
-            if (m_pgnLogDialog && m_pgnLogDialog->isVisible()) {
-                m_pgnLogDialog->appendSentMessage(N2kMsg);
+            // Log the sent message to all PGN log dialogs
+            for (PGNLogDialog* dialog : m_pgnLogDialogs) {
+                if (dialog && dialog->isVisible()) {
+                    dialog->appendSentMessage(N2kMsg);
+                }
             }
         }
     }

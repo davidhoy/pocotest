@@ -140,6 +140,9 @@ private slots:
     void onTxBlinkTimeout();
     void onRxBlinkTimeout();
     
+    // PGN dialog management
+    void onPGNLogDialogDestroyed(QObject* obj);
+    
     // Poco device dialog slots
     void onPocoSwitchActionRequested(uint8_t deviceAddress, uint8_t switchId, uint8_t actionId);
     void onPocoColorControlRequested(uint8_t deviceAddress);
@@ -182,8 +185,8 @@ private:
     QString m_currentInterface;
     bool m_isConnected;
     
-    // Secondary dialogs
-    PGNLogDialog* m_pgnLogDialog;
+    // Secondary dialogs - support multiple PGN log dialogs
+    QList<PGNLogDialog*> m_pgnLogDialogs;
     
     // Instance conflict analysis
     InstanceConflictAnalyzer* m_conflictAnalyzer;
