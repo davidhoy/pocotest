@@ -89,6 +89,9 @@ private:
     double extractSignalValue(const uint8_t* data, const DBCSignal& signal);
     bool isSignalValid(double rawValue, const DBCSignal& signal);
     
+    // Field name mapping for group functions
+    QString getFieldName(unsigned long pgn, uint8_t fieldNumber) const;
+    
     // Lighting PGN decoders
     DecodedMessage decodePGN130330(const tN2kMsg& msg);  // Lighting System Settings
     DecodedMessage decodePGN130561(const tN2kMsg& msg);  // Zone Lighting Control

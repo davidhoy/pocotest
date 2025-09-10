@@ -254,26 +254,20 @@ DecodedMessage DBCDecoder::decodeMessage(const tN2kMsg& msg)
         decoded.description = "NMEA2000 Group Function Command/Request/Ack";
         decoded.isDecoded = true;
 
-        // Minimum length check - Group Function needs at least 6 bytes
-        // (Function Code + PGN[3] + Priority + Number of Parameters)
-        if (msg.DataLen < 6) {
+        // Minimum length check - different for Request vs Command
+        if (msg.DataLen < 5) {
             DecodedSignal sig;
             sig.name = "Error";
-            sig.value = "Too short for 126208 decode (minimum 6 bytes)";
+            sig.value = "Too short for 126208 decode (minimum 5 bytes)";
             sig.isValid = true;
             decoded.signalList.append(sig);
             return decoded;
         }
 
-        // Byte 0: Function Code
-        uint8_t functionCode = msg.Data[0];
-        // Bytes 1-3: Target PGN (little endian)
-        uint32_t targetPGN = msg.Data[1] | (msg.Data[2] << 8) | (msg.Data[3] << 16);
-        // Byte 4: Priority
-        uint8_t priority = msg.Data[4];
-        // Byte 5: Number of parameters
-        uint8_t numParams = msg.Data[5];
-
+        // Field 1 - Function Code
+        int Index = 0;
+        uint8_t functionCode = msg.GetByte(Index);
+        
         DecodedSignal sigFC;
         sigFC.name = "Function Code";
         QString functionCodeDescription;
@@ -291,36 +285,238 @@ DecodedMessage DBCDecoder::decodeMessage(const tN2kMsg& msg)
         sigFC.isValid = true;
         decoded.signalList.append(sigFC);
 
+        // Field 2 - Commanded PGN
+        uint32_t targetPGN = msg.GetByte(Index) | 
+                             (msg.GetByte(Index) << 8) |
+                             (msg.GetByte(Index) << 16);
         DecodedSignal sigPGN;
-        sigPGN.name = "Target PGN";
+        sigPGN.name = (functionCode == 0) ? "Requested PGN" : "Commanded PGN";
         sigPGN.value = QString("%1").arg(targetPGN);
         sigPGN.isValid = true;
         decoded.signalList.append(sigPGN);
 
-        DecodedSignal sigPrio;
-        sigPrio.name = "Priority";
-        sigPrio.value = priority;
-        sigPrio.isValid = true;
-        decoded.signalList.append(sigPrio);
+        if (functionCode == 0) {
+            // REQUEST structure
+            if (msg.DataLen < 11) {
+                DecodedSignal sig;
+                sig.name = "Error";
+                sig.value = "Too short for Request decode (minimum 11 bytes)";
+                sig.isValid = true;
+                decoded.signalList.append(sig);
+                return decoded;
+            }
+            
+            // Field 3 Bytes 4-7: Transmission Interval (4 bytes, little endian)
+            uint32_t transmissionInterval = msg.Get4ByteUInt(Index);
+            DecodedSignal sigInterval;
+            sigInterval.name = "Transmission Interval";
+            if (transmissionInterval == 0xFFFFFFFF) {
+                sigInterval.value = "One-time request";
+            } else {
+                sigInterval.value = QString("%1 ms").arg(transmissionInterval);
+            }
+            sigInterval.isValid = true;
+            decoded.signalList.append(sigInterval);
+            
+            // Bytes 8-9: Transmission Interval Offset (2 bytes, little endian)
+            uint16_t intervalOffset = msg.Data[8] | (msg.Data[9] << 8);
+            DecodedSignal sigOffset;
+            sigOffset.name = "Transmission Interval Offset";
+            sigOffset.value = QString("%1 ms").arg(intervalOffset);
+            sigOffset.isValid = true;
+            decoded.signalList.append(sigOffset);
+            
+            // Byte 10: Number of Parameter Pairs
+            uint8_t numParams = msg.Data[10];
+            DecodedSignal sigNumParams;
+            sigNumParams.name = "Number of Parameter Pairs";
+            if (numParams == 255) {
+                sigNumParams.value = "255 (All Parameters)";
+            } else {
+                sigNumParams.value = numParams;
+            }
+            sigNumParams.isValid = true;
+            decoded.signalList.append(sigNumParams);
+            
+            // Handle parameter pairs for Request
+            if (numParams == 255) {
+                DecodedSignal sigAllParams;
+                sigAllParams.name = "Parameter Specification";
+                sigAllParams.value = "All parameters of target PGN requested";
+                sigAllParams.isValid = true;
+                decoded.signalList.append(sigAllParams);
+            } else {
+                // Parameter pairs start at byte 11
+                int paramStart = 11;
+                for (uint8_t i = 0; i < numParams; ++i) {
+                    int fieldIdx = paramStart + i * 2;
+                    if (fieldIdx + 1 >= msg.DataLen) break;
+                    uint8_t fieldNum = msg.Data[fieldIdx];
+                    uint8_t fieldVal = msg.Data[fieldIdx + 1];
+                    
+                    QString fieldName = getFieldName(targetPGN, fieldNum);
+                    
+                    DecodedSignal sigField;
+                    sigField.name = QString("Field %1 - %2").arg(fieldNum).arg(fieldName);
+                    sigField.value = fieldVal;
+                    sigField.isValid = true;
+                    decoded.signalList.append(sigField);
+                }
+            }
+            
+        } else if (functionCode == 1) {
+            // COMMAND structure
+            if (msg.DataLen < 6) {
+                DecodedSignal sig;
+                sig.name = "Error";
+                sig.value = "Too short for Command decode (minimum 6 bytes)";
+                sig.isValid = true;
+                decoded.signalList.append(sig);
+                return decoded;
+            }
 
-        DecodedSignal sigNumParams;
-        sigNumParams.name = "Number of Parameters";
-        sigNumParams.value = numParams;
-        sigNumParams.isValid = true;
-        decoded.signalList.append(sigNumParams);
+            // Fields 3 & 4: Priority Setting (4 bits) + Reserved (4 bits)
+            uint8_t priorityByte = msg.GetByte(Index);
+            uint8_t prioritySetting = priorityByte & 0x0F;
+            DecodedSignal sigPriority; 
+            sigPriority.name = "Priority Setting";
+            QString priorityDesc;
+            if (prioritySetting <= 0x7) {
+                priorityDesc = QString("Set to %1").arg(prioritySetting);
+            } else if (prioritySetting == 0x8) {
+                priorityDesc = "Do not change";
+            } else if (prioritySetting == 0x9) {
+                priorityDesc = "Return to default";
+            } else {
+                priorityDesc = QString("Reserved (%1)").arg(prioritySetting);
+            }
+            sigPriority.value = QString("%1 (%2)").arg(prioritySetting).arg(priorityDesc);
+            sigPriority.isValid = true;
+            decoded.signalList.append(sigPriority);
 
-        // Each parameter: Byte 6 + 2*i: Field Number, Byte 7 + 2*i: Value
-        int paramStart = 6;
-        for (uint8_t i = 0; i < numParams; ++i) {
-            int fieldIdx = paramStart + i * 2;
-            if (fieldIdx + 1 >= msg.DataLen) break;
-            uint8_t fieldNum = msg.Data[fieldIdx];
-            uint8_t fieldVal = msg.Data[fieldIdx + 1];
-            DecodedSignal sigField;
-            sigField.name = QString("Field %1").arg(fieldNum);
-            sigField.value = fieldVal;
-            sigField.isValid = true;
-            decoded.signalList.append(sigField);
+            // Field 5: Number of Parameter Pairs
+            uint8_t numParams = msg.GetByte(Index);
+            DecodedSignal sigNumParams;
+            sigNumParams.name = "Number of Parameter Pairs";
+            sigNumParams.value = numParams;
+            sigNumParams.isValid = true;
+            decoded.signalList.append(sigNumParams);
+            
+            // Fields 6 & 7, repeated numParams times
+            for (uint8_t i = 0; i < numParams; ++i) {
+                // Field Number
+                int fieldNum = msg.GetByte(Index);
+                QString fieldName = getFieldName(targetPGN, fieldNum);
+
+                // Field Value - length depends on PGN and field number
+                QString fieldValue;
+                
+                if (targetPGN == 130561) {
+                    // PGN 130561 Zone Lighting Control - handle specific field sizes
+                    switch (fieldNum) {
+                        case 1: { // Zone ID
+                            uint8_t zoneId = msg.GetByte(Index);
+                            if (zoneId == 253) fieldValue = "253 (Broadcast)";
+                            else if (zoneId == 254) fieldValue = "254 (No Zone)";
+                            else if (zoneId == 255) fieldValue = "255 (NULL)";
+                            else fieldValue = QString::number(zoneId);
+                            break;
+                        }
+                        case 2: { // Zone Name - variable length string
+                            char zoneName[80];
+                            size_t zoneNameSize = sizeof(zoneName);
+                            msg.GetVarStr(zoneNameSize, zoneName, Index);
+                            fieldValue = QString("'%1'").arg(QString::fromUtf8(zoneName));
+                            break;
+                        }
+                        case 3: case 4: case 5: { // Red, Green, Blue
+                            uint8_t colorVal = msg.GetByte(Index);
+                            fieldValue = QString("%1 (%2%)").arg(colorVal).arg((colorVal * 100.0 / 255.0), 0, 'f', 1);
+                            break;
+                        }
+                        case 6: { // Color Temperature - 2 bytes
+                            uint16_t colorTemp = msg.Get2ByteUInt(Index);
+                            if (colorTemp == 65535) fieldValue = "65535 (Not Available)";
+                            else fieldValue = QString("%1 K").arg(colorTemp);
+                            break;
+                        }
+                        case 7: { // Intensity
+                            uint8_t intensity = msg.GetByte(Index);
+                            if (intensity <= 200) {
+                                fieldValue = QString("%1 (%2%)").arg(intensity).arg((intensity / 2.0), 0, 'f', 1);
+                            } else {
+                                fieldValue = QString("%1 (Out of range)").arg(intensity);
+                            }
+                            break;
+                        }
+                        case 8: { // Program ID
+                            uint8_t programId = msg.GetByte(Index);
+                            if (programId >= 252) fieldValue = QString("%1 (Not Available)").arg(programId);
+                            else fieldValue = QString::number(programId);
+                            break;
+                        }
+                        case 9: { // Program Color Sequence Index
+                            uint8_t colorSeqIdx = msg.GetByte(Index);
+                            if (colorSeqIdx >= 252) fieldValue = QString("%1 (Not Available)").arg(colorSeqIdx);
+                            else fieldValue = QString::number(colorSeqIdx);
+                            break;
+                        }
+                        case 10: { // Program Intensity
+                            uint8_t progIntensity = msg.GetByte(Index);
+                            if (progIntensity == 255) fieldValue = "255 (Not Available)";
+                            else fieldValue = QString("%1 (%2%)").arg(progIntensity).arg((progIntensity * 100.0 / 255.0), 0, 'f', 1);
+                            break;
+                        }
+                        case 11: { // Program Rate
+                            uint8_t progRate = msg.GetByte(Index);
+                            if (progRate == 255) fieldValue = "255 (Not Available)";
+                            else fieldValue = QString("%1 (%2%)").arg(progRate).arg((progRate * 100.0 / 255.0), 0, 'f', 1);
+                            break;
+                        }
+                        case 12: { // Program Color Sequence
+                            uint8_t progColorSeq = msg.GetByte(Index);
+                            if (progColorSeq == 255) fieldValue = "255 (Not Available)";
+                            else fieldValue = QString::number(progColorSeq);
+                            break;
+                        }
+                        case 13: { // Zone Enabled (2 bits)
+                            uint8_t zoneEnabled = msg.GetByte(Index) & 0x03;
+                            switch (zoneEnabled) {
+                                case 0: fieldValue = "0 (Off)"; break;
+                                case 1: fieldValue = "1 (On)"; break;
+                                case 2: fieldValue = "2 (Error)"; break;
+                                case 3: fieldValue = "3 (Unavailable)"; break;
+                                default: fieldValue = QString::number(zoneEnabled);
+                            }
+                            break;
+                        }
+                        default: {
+                            // Unknown field - assume 1 byte
+                            uint8_t genericVal = msg.GetByte(Index);
+                            fieldValue = QString::number(genericVal);
+                            break;
+                        }
+                    }
+                } else {
+                    // For other PGNs, assume 1 byte for now
+                    uint8_t genericVal = msg.GetByte(Index);
+                    fieldValue = QString::number(genericVal);
+                }
+
+                DecodedSignal sigField;
+                sigField.name = QString("Field %1 - %2").arg(fieldNum).arg(fieldName);
+                sigField.value = fieldValue;
+                sigField.isValid = true;
+                decoded.signalList.append(sigField);
+            }
+            
+        } else {
+            // Other function codes (Acknowledge, etc.) - use generic handling for now
+            DecodedSignal sig;
+            sig.name = "Decoder Note";
+            sig.value = QString("Function Code %1 not fully implemented yet").arg(functionCode);
+            sig.isValid = true;
+            decoded.signalList.append(sig);
         }
         return decoded;
     }
@@ -360,7 +556,24 @@ DecodedMessage DBCDecoder::decodeMessage(const tN2kMsg& msg)
     // Decode each signal
     for (const DBCSignal& signal : dbcMsg.signalList) {
         DecodedSignal decodedSignal;
-        decodedSignal.name = signal.name;
+        
+        // Check if we have a better field name available for lighting PGNs
+        QString enhancedName = signal.name;
+        if (signal.name.contains(QRegularExpression("^Field\\s*\\d+$|^Field_\\d+$", QRegularExpression::CaseInsensitiveOption))) {
+            // Extract field number from generic field name
+            QRegularExpression fieldRegex("(\\d+)");
+            QRegularExpressionMatch match = fieldRegex.match(signal.name);
+            if (match.hasMatch()) {
+                uint8_t fieldNum = match.captured(1).toUInt();
+                QString betterName = getFieldName(msg.PGN, fieldNum);
+                if (betterName != QString("Field %1").arg(fieldNum)) {
+                    // We have a better name, use it with field number prefix
+                    enhancedName = QString("Field %1 - %2").arg(fieldNum).arg(betterName);
+                }
+            }
+        }
+        
+        decodedSignal.name = enhancedName;
         decodedSignal.unit = signal.unit;
         decodedSignal.description = signal.description;
 
@@ -1440,7 +1653,7 @@ DecodedMessage DBCDecoder::decodePGN130330(const tN2kMsg& msg)
     uint8_t globalEnable = byte & 0x03;
     DecodedSignal sigGlobalEnable;
     sigGlobalEnable.name = "Global Enable";
-    sigGlobalEnable.value = QString("0x%1").arg(globalEnable, 1, 16, QChar('0')).toUpper();
+    sigGlobalEnable.value = QString("0x%1").arg(QString::number(globalEnable, 16).toUpper());
     sigGlobalEnable.isValid = true;
     decoded.signalList.append(sigGlobalEnable);
 
@@ -1448,7 +1661,7 @@ DecodedMessage DBCDecoder::decodePGN130330(const tN2kMsg& msg)
     uint8_t defaultSettings = (byte >> 2) & 0x07;
     DecodedSignal sigDefaultSettings;
     sigDefaultSettings.name = "Default Settings";
-    sigDefaultSettings.value = QString("0x%1").arg(defaultSettings, 1, 16, QChar('0')).toUpper();
+    sigDefaultSettings.value = QString("0x%1").arg(QString::number(defaultSettings, 16).toUpper());
     sigDefaultSettings.isValid = true;
     decoded.signalList.append(sigDefaultSettings);
 
@@ -1535,4 +1748,99 @@ DecodedMessage DBCDecoder::decodePGN130330(const tN2kMsg& msg)
     decoded.signalList.append(sigIdentifyDevice);
 
     return decoded;
+}
+
+QString DBCDecoder::getFieldName(unsigned long pgn, uint8_t fieldNumber) const
+{
+    switch (pgn) {
+        case 130561: // Zone Lighting Control
+            switch (fieldNumber) {
+                case 1: return "Zone ID";
+                case 2: return "Zone Name";
+                case 3: return "Red";
+                case 4: return "Green";
+                case 5: return "Blue";
+                case 6: return "Color Temperature";
+                case 7: return "Intensity";
+                case 8: return "Program ID";
+                case 9: return "Program Color Seq Index";
+                case 10: return "Program Intensity";
+                case 11: return "Program Rate";
+                case 12: return "Program Color Sequence";
+                case 13: return "Zone Enabled";
+                default: return QString("Field %1").arg(fieldNumber);
+            }
+            
+        case 130562: // Lighting Scene
+            switch (fieldNumber) {
+                case 1: return "Scene ID";
+                case 2: return "Scene Name";
+                case 3: return "Scene State";
+                case 4: return "Scene Description";
+                default: return QString("Field %1").arg(fieldNumber);
+            }
+            
+        case 130563: // Lighting Device
+            switch (fieldNumber) {
+                case 1: return "Device Instance";
+                case 2: return "Device Name";
+                case 3: return "Device Type";
+                case 4: return "Device Status";
+                case 5: return "Firmware Version";
+                case 6: return "Hardware Version";
+                case 7: return "Serial Number";
+                case 8: return "Manufacturer Code";
+                case 9: return "Industry Code";
+                case 10: return "Device Function";
+                case 11: return "Device Class";
+                case 12: return "System Instance";
+                default: return QString("Field %1").arg(fieldNumber);
+            }
+            
+        case 130564: // Lighting Device Enumeration
+            switch (fieldNumber) {
+                case 1: return "Device Index";
+                case 2: return "Device Instance";
+                case 3: return "Device Name";
+                case 4: return "Device Type";
+                default: return QString("Field %1").arg(fieldNumber);
+            }
+            
+        case 130565: // Lighting Color Sequence
+            switch (fieldNumber) {
+                case 1: return "Sequence ID";
+                case 2: return "Sequence Name";
+                case 3: return "Color Count";
+                case 4: return "Color Index";
+                case 5: return "Red";
+                case 6: return "Green";
+                case 7: return "Blue";
+                case 8: return "Duration";
+                default: return QString("Field %1").arg(fieldNumber);
+            }
+            
+        case 130566: // Lighting Program
+            switch (fieldNumber) {
+                case 1: return "Program ID";
+                case 2: return "Program Name";
+                case 3: return "Program Type";
+                case 4: return "Program State";
+                case 5: return "Program Description";
+                default: return QString("Field %1").arg(fieldNumber);
+            }
+            
+        case 130330: // Lighting System Settings
+            switch (fieldNumber) {
+                case 1: return "System Instance";
+                case 2: return "System Name";
+                case 3: return "Global Brightness";
+                case 4: return "Power State";
+                case 5: return "Default Scene";
+                default: return QString("Field %1").arg(fieldNumber);
+            }
+            
+        // Add more PGNs as needed
+        default:
+            return QString("Field %1").arg(fieldNumber);
+    }
 }
