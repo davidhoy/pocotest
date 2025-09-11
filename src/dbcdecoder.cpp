@@ -1678,6 +1678,27 @@ DecodedMessage DBCDecoder::decodePGN126464(const tN2kMsg& msg)
     return decoded;
 }
 
+// Helper function to extract NMEA2000 strings that may be padded with 0xFF
+QString extractNMEA2000String(const uint8_t* data, int length)
+{
+    // Find the first 0xFF or null terminator
+    int actualLength = 0;
+    for (int i = 0; i < length; i++) {
+        if (data[i] == 0xFF || data[i] == 0x00) {
+            break;
+        }
+        actualLength++;
+    }
+    
+    // Create string from the actual content only
+    if (actualLength == 0) {
+        return QString();
+    }
+    
+    QByteArray stringData(reinterpret_cast<const char*>(data), actualLength);
+    return QString::fromLatin1(stringData).trimmed();
+}
+
 // Dedicated function for decoding PGN 126996 (Product Information)
 DecodedMessage DBCDecoder::decodePGN126996(const tN2kMsg& msg)
 {
@@ -1722,8 +1743,7 @@ DecodedMessage DBCDecoder::decodePGN126996(const tN2kMsg& msg)
 
     // Field 3: Model ID (32 bytes string)
     if (offset + 31 < msg.DataLen) {
-        QByteArray modelIdData(reinterpret_cast<const char*>(&msg.Data[offset]), 32);
-        QString modelId = QString::fromLatin1(modelIdData).trimmed();
+        QString modelId = extractNMEA2000String(&msg.Data[offset], 32);
         DecodedSignal sig;
         sig.name = "3 - Model ID";
         sig.value = modelId.isEmpty() ? "Not specified" : modelId;
@@ -1734,8 +1754,7 @@ DecodedMessage DBCDecoder::decodePGN126996(const tN2kMsg& msg)
 
     // Field 4: Software Version Code (32 bytes string)
     if (offset + 31 < msg.DataLen) {
-        QByteArray swVersionData(reinterpret_cast<const char*>(&msg.Data[offset]), 32);
-        QString swVersion = QString::fromLatin1(swVersionData).trimmed();
+        QString swVersion = extractNMEA2000String(&msg.Data[offset], 32);
         DecodedSignal sig;
         sig.name = "4 - Software Version Code";
         sig.value = swVersion.isEmpty() ? "Not specified" : swVersion;
@@ -1746,8 +1765,7 @@ DecodedMessage DBCDecoder::decodePGN126996(const tN2kMsg& msg)
 
     // Field 5: Model Version (32 bytes string)
     if (offset + 31 < msg.DataLen) {
-        QByteArray modelVersionData(reinterpret_cast<const char*>(&msg.Data[offset]), 32);
-        QString modelVersion = QString::fromLatin1(modelVersionData).trimmed();
+        QString modelVersion = extractNMEA2000String(&msg.Data[offset], 32);
         DecodedSignal sig;
         sig.name = "5 - Model Version";
         sig.value = modelVersion.isEmpty() ? "Not specified" : modelVersion;
@@ -1758,8 +1776,7 @@ DecodedMessage DBCDecoder::decodePGN126996(const tN2kMsg& msg)
 
     // Field 6: Model Serial Code (32 bytes string)
     if (offset + 31 < msg.DataLen) {
-        QByteArray serialCodeData(reinterpret_cast<const char*>(&msg.Data[offset]), 32);
-        QString serialCode = QString::fromLatin1(serialCodeData).trimmed();
+        QString serialCode = extractNMEA2000String(&msg.Data[offset], 32);
         DecodedSignal sig;
         sig.name = "6 - Model Serial Code";
         sig.value = serialCode.isEmpty() ? "Not specified" : serialCode;
