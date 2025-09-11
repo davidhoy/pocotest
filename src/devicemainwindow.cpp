@@ -1,5 +1,6 @@
 #include "devicemainwindow.h"
 #include <cstdint>
+#include <algorithm>
 #include "pgnlogdialog.h"
 #include "pgndialog.h"
 #include "pocodevicedialog.h"
@@ -113,6 +114,17 @@ DeviceMainWindow::DeviceMainWindow(QWidget *parent)
 
 DeviceMainWindow::~DeviceMainWindow()
 {
+    // Clean up PGN log dialogs and disconnect their signals to prevent crashes
+    for (PGNLogDialog* dialog : m_pgnLogDialogs) {
+        if (dialog) {
+            // Disconnect the destroyed signal to prevent calling onPGNLogDialogDestroyed
+            // after this object is partially destroyed
+            disconnect(dialog, &QObject::destroyed, this, &DeviceMainWindow::onPGNLogDialogDestroyed);
+            dialog->deleteLater(); // Safely queue for deletion
+        }
+    }
+    m_pgnLogDialogs.clear();
+    
     if (m_updateTimer) {
         m_updateTimer->stop();
     }
@@ -3546,10 +3558,17 @@ void DeviceMainWindow::onRxBlinkTimeout()
 
 void DeviceMainWindow::onPGNLogDialogDestroyed(QObject* obj)
 {
-    // Remove the destroyed dialog from our list
-    PGNLogDialog* dialog = static_cast<PGNLogDialog*>(obj);
-    m_pgnLogDialogs.removeAll(dialog);
-    qDebug() << "PGN log dialog destroyed. Remaining dialogs: " << m_pgnLogDialogs.size();
+    // Remove the destroyed dialog from our list by finding the matching pointer
+    // Don't cast to PGNLogDialog* since the object may already be partially destroyed
+    auto it = std::find_if(m_pgnLogDialogs.begin(), m_pgnLogDialogs.end(),
+                          [obj](PGNLogDialog* dialog) { return static_cast<QObject*>(dialog) == obj; });
+    
+    if (it != m_pgnLogDialogs.end()) {
+        m_pgnLogDialogs.erase(it);
+        qDebug() << "PGN log dialog destroyed. Remaining dialogs: " << m_pgnLogDialogs.size();
+    } else {
+        qDebug() << "Warning: Could not find destroyed dialog in list";
+    }
 }
 
 void DeviceMainWindow::retryProductInformation(uint8_t targetAddress)
