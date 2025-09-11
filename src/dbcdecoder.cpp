@@ -259,6 +259,11 @@ DecodedMessage DBCDecoder::decodeMessage(const tN2kMsg& msg)
         return decodePGN126464(msg);
     }
 
+    // Special handling for PGN 126996 (Product Information)
+    if (msg.PGN == 126996) {
+        return decodePGN126996(msg);
+    }
+
     // Special handling for PGN 126998 (Configuration Information)
     if (msg.PGN == 126998) {
         return decodePGN126998(msg);
@@ -1670,6 +1675,121 @@ DecodedMessage DBCDecoder::decodePGN126464(const tN2kMsg& msg)
         decoded.signalList.append(sig);
     }
     
+    return decoded;
+}
+
+// Dedicated function for decoding PGN 126996 (Product Information)
+DecodedMessage DBCDecoder::decodePGN126996(const tN2kMsg& msg)
+{
+    DecodedMessage decoded;
+    decoded.messageName = "Product Information (126996)";
+    decoded.description = "NMEA2000 Device Product Information";
+    decoded.isDecoded = true;
+
+    // Check minimum length for PGN 126996
+    if (msg.DataLen < 134) {
+        DecodedSignal sig;
+        sig.name = "Error";
+        sig.value = QString("Too short for PGN 126996 decode (got %1, need 134 bytes)").arg(msg.DataLen);
+        sig.isValid = true;
+        decoded.signalList.append(sig);
+        return decoded;
+    }
+
+    int offset = 0;
+
+    // Field 1: NMEA 2000 Version (2 bytes)
+    if (offset + 1 < msg.DataLen) {
+        uint16_t nmea2000Version = msg.Data[offset] | (msg.Data[offset + 1] << 8);
+        DecodedSignal sig;
+        sig.name = "1 - NMEA 2000 Version";
+        sig.value = QString("%1").arg(nmea2000Version);
+        sig.isValid = true;
+        decoded.signalList.append(sig);
+        offset += 2;
+    }
+
+    // Field 2: Product Code (2 bytes)
+    if (offset + 1 < msg.DataLen) {
+        uint16_t productCode = msg.Data[offset] | (msg.Data[offset + 1] << 8);
+        DecodedSignal sig;
+        sig.name = "2 - Product Code";
+        sig.value = QString("%1").arg(productCode);
+        sig.isValid = true;
+        decoded.signalList.append(sig);
+        offset += 2;
+    }
+
+    // Field 3: Model ID (32 bytes string)
+    if (offset + 31 < msg.DataLen) {
+        QByteArray modelIdData(reinterpret_cast<const char*>(&msg.Data[offset]), 32);
+        QString modelId = QString::fromLatin1(modelIdData).trimmed();
+        DecodedSignal sig;
+        sig.name = "3 - Model ID";
+        sig.value = modelId.isEmpty() ? "Not specified" : modelId;
+        sig.isValid = true;
+        decoded.signalList.append(sig);
+        offset += 32;
+    }
+
+    // Field 4: Software Version Code (32 bytes string)
+    if (offset + 31 < msg.DataLen) {
+        QByteArray swVersionData(reinterpret_cast<const char*>(&msg.Data[offset]), 32);
+        QString swVersion = QString::fromLatin1(swVersionData).trimmed();
+        DecodedSignal sig;
+        sig.name = "4 - Software Version Code";
+        sig.value = swVersion.isEmpty() ? "Not specified" : swVersion;
+        sig.isValid = true;
+        decoded.signalList.append(sig);
+        offset += 32;
+    }
+
+    // Field 5: Model Version (32 bytes string)
+    if (offset + 31 < msg.DataLen) {
+        QByteArray modelVersionData(reinterpret_cast<const char*>(&msg.Data[offset]), 32);
+        QString modelVersion = QString::fromLatin1(modelVersionData).trimmed();
+        DecodedSignal sig;
+        sig.name = "5 - Model Version";
+        sig.value = modelVersion.isEmpty() ? "Not specified" : modelVersion;
+        sig.isValid = true;
+        decoded.signalList.append(sig);
+        offset += 32;
+    }
+
+    // Field 6: Model Serial Code (32 bytes string)
+    if (offset + 31 < msg.DataLen) {
+        QByteArray serialCodeData(reinterpret_cast<const char*>(&msg.Data[offset]), 32);
+        QString serialCode = QString::fromLatin1(serialCodeData).trimmed();
+        DecodedSignal sig;
+        sig.name = "6 - Model Serial Code";
+        sig.value = serialCode.isEmpty() ? "Not specified" : serialCode;
+        sig.isValid = true;
+        decoded.signalList.append(sig);
+        offset += 32;
+    }
+
+    // Field 7: Certification Level (1 byte)
+    if (offset < msg.DataLen) {
+        uint8_t certLevel = msg.Data[offset];
+        DecodedSignal sig;
+        sig.name = "7 - Certification Level";
+        sig.value = QString("%1").arg(certLevel);
+        sig.isValid = true;
+        decoded.signalList.append(sig);
+        offset += 1;
+    }
+
+    // Field 8: Load Equivalency (1 byte)
+    if (offset < msg.DataLen) {
+        uint8_t loadEquiv = msg.Data[offset];
+        DecodedSignal sig;
+        sig.name = "8 - Load Equivalency";
+        sig.value = QString("%1").arg(loadEquiv);
+        sig.isValid = true;
+        decoded.signalList.append(sig);
+        offset += 1;
+    }
+
     return decoded;
 }
 

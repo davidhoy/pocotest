@@ -107,6 +107,7 @@ private:
     // NMEA2000 Standard PGN decoders
     DecodedMessage decodePGN126208(const tN2kMsg& msg);  // Group Function
     DecodedMessage decodePGN126464(const tN2kMsg& msg);  // PGN List
+    DecodedMessage decodePGN126996(const tN2kMsg& msg);  // Product Information
     DecodedMessage decodePGN126998(const tN2kMsg& msg);  // Configuration Information
 
 private:
