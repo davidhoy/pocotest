@@ -1754,141 +1754,141 @@ QString DBCDecoder::getFieldName(unsigned long pgn, uint8_t fieldNumber) const
     switch (pgn) {
         case 130561: // Zone Lighting Control
             switch (fieldNumber) {
-                case 1: return "Field 1: Zone ID";
-                case 2: return "Field 2: Zone Name";
-                case 3: return "Field 3: Red";
-                case 4: return "Field 4: Green";
-                case 5: return "Field 5: Blue";
-                case 6: return "Field 6: Color Temperature";
-                case 7: return "Field 7: Intensity";
-                case 8: return "Field 8: Program ID";
-                case 9: return "Field 9: Program Color Seq Index";
-                case 10: return "Field 10: Program Intensity";
-                case 11: return "Field 11: Program Rate";
-                case 12: return "Field 12: Program Color Sequence";
-                case 13: return "Field 13: Zone Enabled";
+                case 1: return "Field 1 - Zone ID";
+                case 2: return "Field 2 - Zone Name";
+                case 3: return "Field 3 - Red";
+                case 4: return "Field 4 - Green";
+                case 5: return "Field 5 - Blue";
+                case 6: return "Field 6 - Color Temperature";
+                case 7: return "Field 7 - Intensity";
+                case 8: return "Field 8 - Program ID";
+                case 9: return "Field 9 - Program Color Seq Index";
+                case 10: return "Field 10 - Program Intensity";
+                case 11: return "Field 11 - Program Rate";
+                case 12: return "Field 12 - Program Color Sequence";
+                case 13: return "Field 13 - Zone Enabled";
                 default: return QString("Field %1").arg(fieldNumber);
             }
             
         case 130562: // Lighting Scene
             switch (fieldNumber) {
-                case 1: return "Field 1: Scene ID";
-                case 2: return "Field 2: Scene Name";
-                case 3: return "Field 3: Scene State";
-                case 4: return "Field 4: Scene Description";
+                case 1: return "Field 1 - Scene ID";
+                case 2: return "Field 2 - Scene Name";
+                case 3: return "Field 3 - Scene State";
+                case 4: return "Field 4 - Scene Description";
                 default: return QString("Field %1").arg(fieldNumber);
             }
             
         case 130563: // Lighting Device
             switch (fieldNumber) {
-                case 1: return "Field 1: Device Instance";
-                case 2: return "Field 2: Device Name";
-                case 3: return "Field 3: Device Type";
-                case 4: return "Field 4: Device Status";
-                case 5: return "Field 5: Firmware Version";
-                case 6: return "Field 6: Hardware Version";
-                case 7: return "Field 7: Serial Number";
-                case 8: return "Field 8: Manufacturer Code";
-                case 9: return "Field 9: Industry Code";
-                case 10: return "Field 10: Device Function";
-                case 11: return "Field 11: Device Class";
-                case 12: return "Field 12: System Instance";
+                case 1: return "Field 1 - Device Instance";
+                case 2: return "Field 2 - Device Name";
+                case 3: return "Field 3 - Device Type";
+                case 4: return "Field 4 - Device Status";
+                case 5: return "Field 5 - Firmware Version";
+                case 6: return "Field 6 - Hardware Version";
+                case 7: return "Field 7 - Serial Number";
+                case 8: return "Field 8 - Manufacturer Code";
+                case 9: return "Field 9 - Industry Code";
+                case 10: return "Field 10 - Device Function";
+                case 11: return "Field 11 - Device Class";
+                case 12: return "Field 12 - System Instance";
                 default: return QString("Field %1").arg(fieldNumber);
             }
             
         case 130564: // Lighting Device Enumeration
             switch (fieldNumber) {
-                case 1: return "Field 1: Device Index";
-                case 2: return "Field 2: Device Instance";
-                case 3: return "Field 3: Device Name";
-                case 4: return "Field 4: Device Type";
+                case 1: return "Field 1 - Device Index";
+                case 2: return "Field 2 - Device Instance";
+                case 3: return "Field 3 - Device Name";
+                case 4: return "Field 4 - Device Type";
                 default: return QString("Field %1").arg(fieldNumber);
             }
             
         case 130565: // Lighting Color Sequence
             switch (fieldNumber) {
-                case 1: return "Field 1: Sequence ID";
-                case 2: return "Field 2: Sequence Name";
-                case 3: return "Field 3: Color Count";
-                case 4: return "Field 4: Color Index";
-                case 5: return "Field 5: Red";
-                case 6: return "Field 6: Green";
-                case 7: return "Field 7: Blue";
-                case 8: return "Field 8: Duration";
+                case 1: return "Field 1 - Sequence ID";
+                case 2: return "Field 2 - Sequence Name";
+                case 3: return "Field 3 - Color Count";
+                case 4: return "Field 4 - Color Index";
+                case 5: return "Field 5 - Red";
+                case 6: return "Field 6 - Green";
+                case 7: return "Field 7 - Blue";
+                case 8: return "Field 8 - Duration";
                 default: return QString("Field %1").arg(fieldNumber);
             }
             
         case 130566: // Lighting Program
             switch (fieldNumber) {
-                case 1: return "Field 1: Program ID";
-                case 2: return "Field 2: Program Name";
-                case 3: return "Field 3: Program Type";
-                case 4: return "Field 4: Program State";
-                case 5: return "Field 5: Program Description";
+                case 1: return "Field 1 - Program ID";
+                case 2: return "Field 2 - Program Name";
+                case 3: return "Field 3 - Program Type";
+                case 4: return "Field 4 - Program State";
+                case 5: return "Field 5 - Program Description";
                 default: return QString("Field %1").arg(fieldNumber);
             }
             
         case 130330: // Lighting System Settings
             switch (fieldNumber) {
-                case 1: return "Field 1: System Instance";
-                case 2: return "Field 2: System Name";
-                case 3: return "Field 3: Global Brightness";
-                case 4: return "Field 4: Power State";
-                case 5: return "Field 5: Default Scene";
+                case 1: return "Field 1 - System Instance";
+                case 2: return "Field 2 - System Name";
+                case 3: return "Field 3 - Global Brightness";
+                case 4: return "Field 4 - Power State";
+                case 5: return "Field 5 - Default Scene";
                 default: return QString("Field %1").arg(fieldNumber);
             }
             
         case 130567: // Lighting Zone Configuration
             switch (fieldNumber) {
-                case 1: return "Field 1: Zone ID";
-                case 2: return "Field 2: Zone Name";
-                case 3: return "Field 3: Zone Type";
-                case 4: return "Field 4: Zone Location";
-                case 5: return "Field 5: Default Program";
-                case 6: return "Field 6: Default Brightness";
-                case 7: return "Field 7: Default Color";
-                case 8: return "Field 8: Zone Group";
+                case 1: return "Field 1 - Zone ID";
+                case 2: return "Field 2 - Zone Name";
+                case 3: return "Field 3 - Zone Type";
+                case 4: return "Field 4 - Zone Location";
+                case 5: return "Field 5 - Default Program";
+                case 6: return "Field 6 - Default Brightness";
+                case 7: return "Field 7 - Default Color";
+                case 8: return "Field 8 - Zone Group";
                 default: return QString("Field %1").arg(fieldNumber);
             }
             
         case 130568: // Lighting Device Configuration
             switch (fieldNumber) {
-                case 1: return "Field 1: Device Instance";
-                case 2: return "Field 2: Device Address";
-                case 3: return "Field 3: Device Type";
-                case 4: return "Field 4: Max Zones";
-                case 5: return "Field 5: Supported Programs";
-                case 6: return "Field 6: Color Capability";
-                case 7: return "Field 7: Dimming Capability";
-                case 8: return "Field 8: Device Name";
+                case 1: return "Field 1 - Device Instance";
+                case 2: return "Field 2 - Device Address";
+                case 3: return "Field 3 - Device Type";
+                case 4: return "Field 4 - Max Zones";
+                case 5: return "Field 5 - Supported Programs";
+                case 6: return "Field 6 - Color Capability";
+                case 7: return "Field 7 - Dimming Capability";
+                case 8: return "Field 8 - Device Name";
                 default: return QString("Field %1").arg(fieldNumber);
             }
             
         case 130847: // Lighting Control/Status (Proprietary)
             switch (fieldNumber) {
-                case 1: return "Field 1: Control Command";
-                case 2: return "Field 2: Zone ID";
-                case 3: return "Field 3: Brightness";
-                case 4: return "Field 4: Red Value";
-                case 5: return "Field 5: Green Value";
-                case 6: return "Field 6: Blue Value";
-                case 7: return "Field 7: White Value";
-                case 8: return "Field 8: Program ID";
-                case 9: return "Field 9: Speed/Rate";
-                case 10: return "Field 10: Direction";
-                case 11: return "Field 11: Status";
+                case 1: return "Field 1 - Control Command";
+                case 2: return "Field 2 - Zone ID";
+                case 3: return "Field 3 - Brightness";
+                case 4: return "Field 4 - Red Value";
+                case 5: return "Field 5 - Green Value";
+                case 6: return "Field 6 - Blue Value";
+                case 7: return "Field 7 - White Value";
+                case 8: return "Field 8 - Program ID";
+                case 9: return "Field 9 - Speed/Rate";
+                case 10: return "Field 10 - Direction";
+                case 11: return "Field 11 - Status";
                 default: return QString("Field %1").arg(fieldNumber);
             }
             
         case 131072: // Lighting System Command (Proprietary)
             switch (fieldNumber) {
-                case 1: return "Field 1: System Command";
-                case 2: return "Field 2: Zone Mask";
-                case 3: return "Field 3: Global Brightness";
-                case 4: return "Field 4: Scene ID";
-                case 5: return "Field 5: Program ID";
-                case 6: return "Field 6: Color Mode";
-                case 7: return "Field 7: Transition Time";
+                case 1: return "Field 1 - System Command";
+                case 2: return "Field 2 - Zone Mask";
+                case 3: return "Field 3 - Global Brightness";
+                case 4: return "Field 4 - Scene ID";
+                case 5: return "Field 5 - Program ID";
+                case 6: return "Field 6 - Color Mode";
+                case 7: return "Field 7 - Transition Time";
                 default: return QString("Field %1").arg(fieldNumber);
             }
             
