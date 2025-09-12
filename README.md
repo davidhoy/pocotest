@@ -44,8 +44,8 @@ A professional Qt-based NMEA2000 network diagnostic tool featuring real-time dev
 sudo apt update
 sudo apt install qt6-base-dev qt6-widgets-dev qt6-network-dev cmake g++ can-utils
 
-# Build with qmake
-qmake pocotest.pro
+# Build with qmake6 (Qt6)
+qmake6 pocotest.pro
 make -j$(nproc)
 
 # Or build with CMake
@@ -426,9 +426,9 @@ mkdir build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
 make -j$(nproc)
 
-# Option B: Using qmake
+# Option B: Using qmake6 (Qt6)
 # cd pocotest  # if using CMake, go back to project root
-qmake pocotest.pro
+qmake6 pocotest.pro
 make -j$(nproc)
 ```
 

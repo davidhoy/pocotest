@@ -4,7 +4,7 @@
         {
             "label": "build-debug",
             "type": "shell",
-            "command": "qmake",
+            "command": "qmake6",
             "args": [
                 "CONFIG+=debug",
                 "CONFIG-=release",
@@ -74,7 +74,7 @@
         {
             "label": "build-debug-ipg100",
             "type": "shell",
-            "command": "qmake",
+            "command": "qmake6",
             "args": [
                 "CONFIG+=debug",
                 "CONFIG+=ipg100",
@@ -101,7 +101,7 @@
         {
             "label": "build-release",
             "type": "shell",
-            "command": "qmake",
+            "command": "qmake6",
             "args": [
                 "CONFIG+=release",
                 "CONFIG-=debug"
@@ -187,7 +187,7 @@
         {
             "label": "qmake",
             "type": "shell",
-            "command": "qmake",
+            "command": "qmake6",
             "args": [],
             "group": "build",
             "presentation": {
