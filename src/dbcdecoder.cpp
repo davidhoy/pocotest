@@ -1203,7 +1203,7 @@ DecodedMessage DBCDecoder::decodePGN130565(const tN2kMsg& msg)
     decoded.description = "NMEA2000 Lighting Color Sequence Message";
     decoded.isDecoded = true;
 
-    if (msg.DataLen < 3) {
+    if (msg.DataLen < 2) {
         DecodedSignal sig;
         sig.name = "Error";
         sig.value = "Message too short for PGN 130565";
