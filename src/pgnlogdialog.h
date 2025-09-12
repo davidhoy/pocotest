@@ -18,6 +18,10 @@
 #include <QSet>
 #include <QMenu>
 #include <QSettings>
+#include <QKeyEvent>
+#include <QShortcut>
+#include <QFrame>
+#include <QResizeEvent>
 #include <functional>
 #include <N2kMsg.h>
 #include "dbcdecoder.h"
@@ -65,6 +69,14 @@ private slots:
     void onTableContextMenu(const QPoint& position);
     void onPgnFilteringToggled(bool enabled);
     void onScrollPositionChanged();
+    
+    // Search functionality
+    void showSearchPopup();
+    void hideSearchPopup();
+    void onSearchTextChanged(const QString& text);
+    void onSearchNext();
+    void onSearchPrevious();
+    void clearSearchHighlights();
 
 public:
     enum TimestampMode {
@@ -73,6 +85,9 @@ public:
     };
     void setTimestampMode(TimestampMode mode);
     TimestampMode getTimestampMode() const;
+
+protected:
+    void resizeEvent(QResizeEvent* event) override;
 
 private:
     TimestampMode m_timestampMode = Absolute;
@@ -144,6 +159,31 @@ private:
     
     // Device name resolution
     DeviceNameResolver m_deviceNameResolver;
+    
+    // Search functionality
+    QFrame* m_searchPopup = nullptr;
+    QLineEdit* m_searchEdit = nullptr;
+    QPushButton* m_searchNextButton = nullptr;
+    QPushButton* m_searchPrevButton = nullptr;
+    QPushButton* m_searchCloseButton = nullptr;
+    QLabel* m_searchResultsLabel = nullptr;
+    QShortcut* m_searchShortcut = nullptr;
+    QShortcut* m_escapeShortcut = nullptr;
+    
+    // Search state
+    QString m_currentSearchText;
+    QList<int> m_searchResults;
+    int m_currentSearchIndex = -1;
+    
+    // Search helper methods
+    void performSearch(const QString& text);
+    void highlightSearchResults();
+    void clearSearchState();
+    void navigateToSearchResult(int index);
+    void updateSearchResultsLabel();
+    void setupSearchPopup();
+    void setupSearchShortcuts();
+    void updateSearchPopupPosition();
     
     // PGN filtering helper methods
     void addPgnToIgnoreList(uint32_t pgn);

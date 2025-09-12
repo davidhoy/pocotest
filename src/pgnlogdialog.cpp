@@ -311,6 +311,10 @@ void PGNLogDialog::setupUI()
     buttonLayout->addWidget(m_closeButton);
     
     mainLayout->addLayout(buttonLayout);
+    
+    // Setup search functionality
+    setupSearchPopup();
+    setupSearchShortcuts();
 }
 
 void PGNLogDialog::appendMessage(const tN2kMsg& msg)
@@ -2195,4 +2199,286 @@ void PGNLogDialog::showDecodeDetails(int row)
     detailsDialog->show();
     detailsDialog->raise();
     detailsDialog->activateWindow();
+}
+
+void PGNLogDialog::setupSearchPopup()
+{
+    // Create search popup widget
+    m_searchPopup = new QFrame(this);
+    m_searchPopup->setFrameStyle(QFrame::StyledPanel | QFrame::Raised);
+    m_searchPopup->setStyleSheet(
+        "QFrame {"
+        "    background-color: #f0f0f0;"
+        "    border: 2px solid #888888;"
+        "    border-radius: 6px;"
+        "}"
+    );
+    m_searchPopup->setFixedHeight(50);
+    m_searchPopup->hide();
+    
+    // Search popup layout
+    QHBoxLayout* searchLayout = new QHBoxLayout(m_searchPopup);
+    searchLayout->setContentsMargins(8, 8, 8, 8);
+    searchLayout->setSpacing(6);
+    
+    // Search label
+    QLabel* searchLabel = new QLabel("Find:");
+    searchLayout->addWidget(searchLabel);
+    
+    // Search input
+    m_searchEdit = new QLineEdit();
+    m_searchEdit->setPlaceholderText("Search in decoded text...");
+    m_searchEdit->setFixedWidth(200);
+    connect(m_searchEdit, &QLineEdit::textChanged, this, &PGNLogDialog::onSearchTextChanged);
+    connect(m_searchEdit, &QLineEdit::returnPressed, this, &PGNLogDialog::onSearchNext);
+    searchLayout->addWidget(m_searchEdit);
+    
+    // Navigation buttons
+    m_searchPrevButton = new QPushButton("◀");
+    m_searchPrevButton->setFixedSize(30, 24);
+    m_searchPrevButton->setToolTip("Previous (Shift+F3)");
+    connect(m_searchPrevButton, &QPushButton::clicked, this, &PGNLogDialog::onSearchPrevious);
+    searchLayout->addWidget(m_searchPrevButton);
+    
+    m_searchNextButton = new QPushButton("▶");
+    m_searchNextButton->setFixedSize(30, 24);
+    m_searchNextButton->setToolTip("Next (F3)");
+    connect(m_searchNextButton, &QPushButton::clicked, this, &PGNLogDialog::onSearchNext);
+    searchLayout->addWidget(m_searchNextButton);
+    
+    // Results label
+    m_searchResultsLabel = new QLabel();
+    m_searchResultsLabel->setStyleSheet("color: #666666; font-size: 11px;");
+    m_searchResultsLabel->setFixedWidth(80);
+    searchLayout->addWidget(m_searchResultsLabel);
+    
+    searchLayout->addStretch();
+    
+    // Close button
+    m_searchCloseButton = new QPushButton("✕");
+    m_searchCloseButton->setFixedSize(24, 24);
+    m_searchCloseButton->setToolTip("Close (Esc)");
+    connect(m_searchCloseButton, &QPushButton::clicked, this, &PGNLogDialog::hideSearchPopup);
+    searchLayout->addWidget(m_searchCloseButton);
+    
+    // Position the popup at the top-right of the table
+    updateSearchPopupPosition();
+}
+
+void PGNLogDialog::setupSearchShortcuts()
+{
+    // Ctrl+F to show search
+    m_searchShortcut = new QShortcut(QKeySequence::Find, this);
+    connect(m_searchShortcut, &QShortcut::activated, this, &PGNLogDialog::showSearchPopup);
+    
+    // Escape to hide search
+    m_escapeShortcut = new QShortcut(QKeySequence(Qt::Key_Escape), this);
+    connect(m_escapeShortcut, &QShortcut::activated, this, &PGNLogDialog::hideSearchPopup);
+    
+    // F3 for next result
+    QShortcut* nextShortcut = new QShortcut(QKeySequence(Qt::Key_F3), this);
+    connect(nextShortcut, &QShortcut::activated, this, &PGNLogDialog::onSearchNext);
+    
+    // Shift+F3 for previous result
+    QShortcut* prevShortcut = new QShortcut(QKeySequence(Qt::SHIFT | Qt::Key_F3), this);
+    connect(prevShortcut, &QShortcut::activated, this, &PGNLogDialog::onSearchPrevious);
+}
+
+void PGNLogDialog::updateSearchPopupPosition()
+{
+    if (!m_searchPopup || !m_logTable) return;
+    
+    // Position at top-right of the table
+    QRect tableGeometry = m_logTable->geometry();
+    int popupWidth = 350;
+    int popupX = tableGeometry.right() - popupWidth - 10;
+    int popupY = tableGeometry.top() + 10;
+    
+    m_searchPopup->setGeometry(popupX, popupY, popupWidth, 50);
+}
+
+void PGNLogDialog::showSearchPopup()
+{
+    if (!m_searchPopup) return;
+    
+    updateSearchPopupPosition();
+    m_searchPopup->show();
+    m_searchPopup->raise();
+    m_searchEdit->setFocus();
+    m_searchEdit->selectAll();
+}
+
+void PGNLogDialog::hideSearchPopup()
+{
+    if (!m_searchPopup) return;
+    
+    m_searchPopup->hide();
+    clearSearchHighlights();
+    clearSearchState();
+    m_logTable->setFocus();
+}
+
+void PGNLogDialog::onSearchTextChanged(const QString& text)
+{
+    m_currentSearchText = text;
+    
+    if (text.isEmpty()) {
+        clearSearchHighlights();
+        clearSearchState();
+        m_searchResultsLabel->setText("");
+        m_searchNextButton->setEnabled(false);
+        m_searchPrevButton->setEnabled(false);
+        return;
+    }
+    
+    performSearch(text);
+}
+
+void PGNLogDialog::onSearchNext()
+{
+    if (m_searchResults.isEmpty()) return;
+    
+    m_currentSearchIndex++;
+    if (m_currentSearchIndex >= m_searchResults.size()) {
+        m_currentSearchIndex = 0; // Wrap to beginning
+    }
+    
+    navigateToSearchResult(m_currentSearchIndex);
+    updateSearchResultsLabel();
+}
+
+void PGNLogDialog::onSearchPrevious()
+{
+    if (m_searchResults.isEmpty()) return;
+    
+    m_currentSearchIndex--;
+    if (m_currentSearchIndex < 0) {
+        m_currentSearchIndex = m_searchResults.size() - 1; // Wrap to end
+    }
+    
+    navigateToSearchResult(m_currentSearchIndex);
+    updateSearchResultsLabel();
+}
+
+void PGNLogDialog::performSearch(const QString& text)
+{
+    if (!m_logTable || text.isEmpty()) return;
+    
+    clearSearchState();
+    
+    // Search through all visible rows
+    for (int row = 0; row < m_logTable->rowCount(); ++row) {
+        if (m_logTable->isRowHidden(row)) continue;
+        
+        // Search in decoded text (column 8) and message name (column 2)
+        QTableWidgetItem* decodedItem = m_logTable->item(row, 8);
+        QTableWidgetItem* nameItem = m_logTable->item(row, 2);
+        
+        bool found = false;
+        if (decodedItem && decodedItem->text().contains(text, Qt::CaseInsensitive)) {
+            found = true;
+        }
+        if (!found && nameItem && nameItem->text().contains(text, Qt::CaseInsensitive)) {
+            found = true;
+        }
+        
+        if (found) {
+            m_searchResults.append(row);
+        }
+    }
+    
+    // Update UI
+    if (!m_searchResults.isEmpty()) {
+        m_currentSearchIndex = 0;
+        navigateToSearchResult(0);
+        m_searchNextButton->setEnabled(m_searchResults.size() > 1);
+        m_searchPrevButton->setEnabled(m_searchResults.size() > 1);
+    } else {
+        m_searchNextButton->setEnabled(false);
+        m_searchPrevButton->setEnabled(false);
+    }
+    
+    highlightSearchResults();
+    updateSearchResultsLabel();
+}
+
+void PGNLogDialog::highlightSearchResults()
+{
+    if (!m_logTable) return;
+    
+    // Clear previous highlights
+    clearSearchHighlights();
+    
+    if (m_currentSearchText.isEmpty() || m_searchResults.isEmpty()) return;
+    
+    // Highlight search results
+    for (int row : m_searchResults) {
+        for (int col = 0; col < m_logTable->columnCount(); ++col) {
+            QTableWidgetItem* item = m_logTable->item(row, col);
+            if (item) {
+                // Highlight rows containing search results
+                if (row == (m_currentSearchIndex >= 0 && m_currentSearchIndex < m_searchResults.size() ? 
+                           m_searchResults[m_currentSearchIndex] : -1)) {
+                    // Current result - bright highlight
+                    item->setBackground(QColor(255, 255, 0, 180)); // Yellow
+                } else {
+                    // Other results - subtle highlight
+                    item->setBackground(QColor(255, 255, 0, 80)); // Light yellow
+                }
+            }
+        }
+    }
+}
+
+void PGNLogDialog::clearSearchHighlights()
+{
+    if (!m_logTable) return;
+    
+    // Remove all search highlights
+    for (int row = 0; row < m_logTable->rowCount(); ++row) {
+        for (int col = 0; col < m_logTable->columnCount(); ++col) {
+            QTableWidgetItem* item = m_logTable->item(row, col);
+            if (item) {
+                item->setBackground(QBrush()); // Reset to default
+            }
+        }
+    }
+}
+
+void PGNLogDialog::clearSearchState()
+{
+    m_searchResults.clear();
+    m_currentSearchIndex = -1;
+}
+
+void PGNLogDialog::navigateToSearchResult(int index)
+{
+    if (index < 0 || index >= m_searchResults.size()) return;
+    
+    int row = m_searchResults[index];
+    m_logTable->selectRow(row);
+    m_logTable->scrollToItem(m_logTable->item(row, 0), QAbstractItemView::PositionAtCenter);
+    
+    highlightSearchResults();
+}
+
+void PGNLogDialog::updateSearchResultsLabel()
+{
+    if (m_searchResults.isEmpty()) {
+        m_searchResultsLabel->setText("No results");
+    } else {
+        m_searchResultsLabel->setText(QString("%1 of %2")
+            .arg(m_currentSearchIndex + 1)
+            .arg(m_searchResults.size()));
+    }
+}
+
+void PGNLogDialog::resizeEvent(QResizeEvent* event)
+{
+    QDialog::resizeEvent(event);
+    
+    // Update search popup position when window is resized
+    if (m_searchPopup && m_searchPopup->isVisible()) {
+        updateSearchPopupPosition();
+    }
 }
