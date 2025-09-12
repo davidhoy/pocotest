@@ -82,6 +82,8 @@ SOURCES += \
     src/n2k_linux_port.cpp \
     src/dbcdecoder.cpp \
     src/instanceconflictanalyzer.cpp \
+    src/toastnotification.cpp \
+    src/toastmanager.cpp \
     components/external/NMEA2000/src/NMEA2000.cpp \
     components/external/NMEA2000/src/N2kTimer.cpp \
     components/external/NMEA2000/src/N2kMsg.cpp \
@@ -111,7 +113,9 @@ HEADERS += \
     src/zonelightingdialog.h \
     src/LumitecPoco.h \
     src/dbcdecoder.h \
-    src/instanceconflictanalyzer.h
+    src/instanceconflictanalyzer.h \
+    src/toastnotification.h \
+    src/toastmanager.h
 
 # Platform-specific headers
 wasm {

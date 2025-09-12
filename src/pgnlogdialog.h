@@ -22,6 +22,7 @@
 #include <QShortcut>
 #include <QFrame>
 #include <QResizeEvent>
+#include "toastmanager.h"
 #include <functional>
 #include <N2kMsg.h>
 #include "dbcdecoder.h"

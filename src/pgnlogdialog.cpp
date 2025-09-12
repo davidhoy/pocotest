@@ -560,6 +560,8 @@ void PGNLogDialog::appendSentMessage(const tN2kMsg& msg)
 
 void PGNLogDialog::clearLog()
 {
+    int messageCount = m_logTable->rowCount();
+    
     m_logTable->setRowCount(0);
     m_messageTimestamps.clear();
     
@@ -584,6 +586,12 @@ void PGNLogDialog::clearLog()
     m_showingLoadedLog = false;
     m_loadedLogFileName = "";
     updateWindowTitle();
+    
+    // Show info toast
+    if (messageCount > 0) {
+        ToastManager::instance()->showInfo(
+            QString("Log cleared - %1 messages removed").arg(messageCount), this);
+    }
 }
 
 void PGNLogDialog::clearLogForLoad()
@@ -627,10 +635,8 @@ void PGNLogDialog::onSaveLogClicked()
     // Write log to file
     QFile file(fileName);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        QMessageBox::critical(this, "Save Error", 
-                             QString("Could not open file for writing:\n%1\n\nError: %2")
-                             .arg(fileName)
-                             .arg(file.errorString()));
+        ToastManager::instance()->showError(
+            QString("Could not save log file: %1").arg(file.errorString()), this);
         return;
     }
     
@@ -771,11 +777,11 @@ void PGNLogDialog::onSaveLogClicked()
     
     file.close();
     
-    // Show success message
-    QMessageBox::information(this, "Save Successful", 
-                           QString("PGN log saved successfully!\n\nFile: %1\nMessages: %2\n\nThis file can be reloaded to display the PGN trace and re-decode the data.")
-                           .arg(fileName)
-                           .arg(m_logTable->rowCount()));
+    // Show success toast notification
+    ToastManager::instance()->showSuccess(
+        QString("Log saved successfully! %1 messages exported to %2")
+        .arg(m_logTable->rowCount())
+        .arg(QFileInfo(fileName).fileName()), this);
 }
 
 void PGNLogDialog::onLoadLogClicked()
@@ -800,10 +806,8 @@ void PGNLogDialog::onLoadLogClicked()
     // Read log from file
     QFile file(fileName);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        QMessageBox::critical(this, "Load Error", 
-                             QString("Could not open file for reading:\n%1\n\nError: %2")
-                             .arg(fileName)
-                             .arg(file.errorString()));
+        ToastManager::instance()->showError(
+            QString("Could not load log file: %1").arg(file.errorString()), this);
         return;
     }
     
@@ -876,11 +880,10 @@ void PGNLogDialog::onLoadLogClicked()
     updateWindowTitle();
     
     // Show load result
-    QMessageBox::information(this, "Load Complete", 
-                           QString("PGN log loaded successfully!\n\nFile: %1\nLoaded: %2 messages\nSkipped: %3 messages\n\nMessages have been re-decoded with current DBC definitions.\n\nLive logging has been stopped.")
-                           .arg(fileName)
-                           .arg(loadedMessages)
-                           .arg(skippedMessages));
+    ToastManager::instance()->showSuccess(
+        QString("Log loaded successfully! %1 messages from %2")
+        .arg(loadedMessages)
+        .arg(QFileInfo(fileName).fileName()), this);
 }
 
 void PGNLogDialog::addLoadedMessage(const tN2kMsg& msg, const QString& originalTimestamp)
@@ -1135,6 +1138,9 @@ void PGNLogDialog::onClearFilters()
     m_useAndLogic = true;
     
     updateStatusLabel();
+    
+    // Show info toast
+    ToastManager::instance()->showInfo("All filters cleared", this);
 }
 
 void PGNLogDialog::clearAllFilters()
@@ -2393,9 +2399,19 @@ void PGNLogDialog::performSearch(const QString& text)
         navigateToSearchResult(0);
         m_searchNextButton->setEnabled(m_searchResults.size() > 1);
         m_searchPrevButton->setEnabled(m_searchResults.size() > 1);
+        
+        // Show success toast for multiple results
+        if (m_searchResults.size() > 1) {
+            ToastManager::instance()->showInfo(
+                QString("Found %1 matches for '%2'").arg(m_searchResults.size()).arg(text), this);
+        }
     } else {
         m_searchNextButton->setEnabled(false);
         m_searchPrevButton->setEnabled(false);
+        
+        // Show toast for no results
+        ToastManager::instance()->showWarning(
+            QString("No matches found for '%1'").arg(text), this);
     }
     
     highlightSearchResults();
