@@ -2853,8 +2853,8 @@ void DeviceMainWindow::handleGroupFunctionMessage(const tN2kMsg& msg) {
     if (tN2kGroupFunctionHandler::Parse(msg, GroupFunctionCode, PGNForGroupFunction)) {
         // Check if this is an acknowledgment
         if (GroupFunctionCode == N2kgfc_Acknowledge) {
-            qDebug() << "Received Group Function ACK from device" << QString("0x%1").arg(msg.Source, 2, 16, QChar('0'))
-                     << "for PGN" << PGNForGroupFunction;
+            //qDebug() << "Received Group Function ACK from device" << QString("0x%1").arg(msg.Source, 2, 16, QChar('0'))
+            //         << "for PGN" << PGNForGroupFunction;
             
             // Emit signal to notify waiting dialogs
             emit commandAcknowledged(msg.Source, PGNForGroupFunction, true);
