@@ -56,6 +56,30 @@ fi
 echo "[*] Bringing $IFACE up..."
 sudo ip link set "$IFACE" up
 
+# --- terminate existing cannelloni instances --------------------------------
+
+echo "[*] Checking for existing cannelloni instances..."
+if pgrep -x cannelloni >/dev/null 2>&1; then
+  echo "[*] Found running cannelloni instances. Terminating..."
+  
+  # Try graceful termination first
+  sudo pkill -TERM cannelloni 2>/dev/null || true
+  
+  # Wait a moment for graceful shutdown
+  sleep 2
+  
+  # Force kill any remaining instances
+  if pgrep -x cannelloni >/dev/null 2>&1; then
+    echo "[*] Force killing remaining cannelloni instances..."
+    sudo pkill -KILL cannelloni 2>/dev/null || true
+    sleep 1
+  fi
+  
+  echo "[*] All cannelloni instances terminated."
+else
+  echo "[*] No existing cannelloni instances found."
+fi
+
 # --- info ------------------------------------------------------------------
 
 echo "[*] Note: vcan ignores bitrate, but physical CAN is assumed ${ASSUMED_BITRATE}."
