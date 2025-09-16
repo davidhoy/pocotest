@@ -111,7 +111,8 @@ DeviceMainWindow::DeviceMainWindow(QWidget *parent)
     // Set window icon explicitly
     setWindowIcon(QIcon(":/app_icon.svg"));
     
-    setWindowTitle("Lumitec Poco Tester");
+    QString version = getVersionString();
+    setWindowTitle(QString("Lumitec Poco Tester - %1").arg(version));
     resize(1000, 700);
 }
 
@@ -2632,6 +2633,41 @@ QString DeviceMainWindow::getDeviceName(uint8_t deviceAddress) const {
     
     // Return address if device name not found
     return QString("0x%1").arg(deviceAddress, 2, 16, QChar('0'));
+}
+
+QString DeviceMainWindow::getVersionString() const {
+#ifndef WASM_BUILD
+    // Try to get git tag first
+    QProcess process;
+    process.start("git", QStringList() << "describe" << "--tags" << "--abbrev=0");
+    process.waitForFinished(3000); // 3 second timeout
+    
+    if (process.exitCode() == 0) {
+        QString tag = process.readAllStandardOutput().trimmed();
+        if (!tag.isEmpty()) {
+            return tag;
+        }
+    }
+    
+    // Fall back to commit hash and date
+    process.start("git", QStringList() << "log" << "--format=%h %ci" << "-1");
+    process.waitForFinished(3000);
+    
+    if (process.exitCode() == 0) {
+        QString output = process.readAllStandardOutput().trimmed();
+        if (!output.isEmpty()) {
+            QStringList parts = output.split(' ');
+            if (parts.size() >= 2) {
+                QString hash = parts[0];
+                QString date = parts[1];
+                return QString("%1 (%2)").arg(hash, date);
+            }
+        }
+    }
+#endif
+    
+    // Ultimate fallback (for WASM builds or when git is not available)
+    return "v1.0.0";
 }
 
 // Lumitec Poco Message Handling

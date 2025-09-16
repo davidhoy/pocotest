@@ -45,6 +45,9 @@ public:
     
     // Device name resolution
     QString getDeviceName(uint8_t deviceAddress) const;
+    
+    // Version information
+    QString getVersionString() const;
 
 private slots:
     void updateDeviceList();
