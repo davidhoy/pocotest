@@ -14,6 +14,7 @@
 #include <QFont>
 #include <QClipboard>
 #include <QTimer>
+#include <QTime>
 
 PGNLogDialog::PGNLogDialog(QWidget *parent)
     : QDialog(parent)
@@ -48,19 +49,12 @@ PGNLogDialog::PGNLogDialog(QWidget *parent)
     , m_pgnIgnoreList(nullptr)
     , m_pgnFilteringEnabled(nullptr)
 {
-    qDebug() << "PGNLogDialog constructor: Starting...";
-    
-    qDebug() << "PGNLogDialog constructor: About to call setupUI()";
     setupUI();
-    qDebug() << "PGNLogDialog constructor: setupUI() completed";
     
     // Initialize the original DBC decoder - proven stable and fast
-    qDebug() << "Initializing DBC Decoder...";
-    
     m_dbcDecoder = new DBCDecoder(this);
     if (m_dbcDecoder && m_dbcDecoder->isInitialized()) {
-        qDebug() << "DBC Decoder initialized successfully";
-        qDebug() << m_dbcDecoder->getDecoderInfo();
+        // DBC Decoder initialized successfully
     } else {
         qWarning() << "Failed to create or initialize DBC Decoder";
     }
@@ -71,8 +65,6 @@ PGNLogDialog::PGNLogDialog(QWidget *parent)
     
     // Load saved settings
     loadSettings();
-    
-    qDebug() << "PGNLogDialog constructor: Completed successfully";
 }
 
 PGNLogDialog::~PGNLogDialog()
@@ -83,18 +75,12 @@ PGNLogDialog::~PGNLogDialog()
 
 void PGNLogDialog::setupUI()
 {
-    qDebug() << "setupUI: Starting...";
-    
     QVBoxLayout* mainLayout = new QVBoxLayout(this);
-    
-    qDebug() << "setupUI: Created main layout";
     
     // Status label
     m_statusLabel = new QLabel("Live NMEA2000 PGN message log - Real-time updates");
     m_statusLabel->setStyleSheet("font-weight: bold; color: #333; padding: 5px;");
     mainLayout->addWidget(m_statusLabel);
-    
-    qDebug() << "setupUI: Created status label";
     
     // Filter toolbar - single horizontal line
     QHBoxLayout* filterToolbar = new QHBoxLayout();
@@ -106,8 +92,6 @@ void PGNLogDialog::setupUI()
     m_sourceFilterCombo = new QComboBox();
     m_sourceFilterCombo->setMinimumWidth(150);
     filterToolbar->addWidget(m_sourceFilterCombo);
-    
-    qDebug() << "setupUI: Created source filter";
     
     // Add spacing
     filterToolbar->addSpacing(20);
@@ -129,8 +113,6 @@ void PGNLogDialog::setupUI()
     m_destinationFilterCombo = new QComboBox();
     m_destinationFilterCombo->setMinimumWidth(150);
     filterToolbar->addWidget(m_destinationFilterCombo);
-    
-    qDebug() << "setupUI: Created destination filter";
     
     // Add spacing
     filterToolbar->addSpacing(20);
@@ -505,8 +487,8 @@ void PGNLogDialog::appendSentMessage(const tN2kMsg& msg)
     tsItem->setForeground(QBrush(blueColor));
     m_logTable->setItem(row, 0, tsItem);
     
-    // Column 1: PGN (with "Sent:" prefix for sent messages)
-    QTableWidgetItem* pgnItem = new QTableWidgetItem(QString("Sent: %1").arg(msg.PGN));
+    // Column 1: PGN (without prefix since blue highlighting indicates sent messages)
+    QTableWidgetItem* pgnItem = new QTableWidgetItem(QString::number(msg.PGN));
     pgnItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
     pgnItem->setForeground(QBrush(blueColor));
     m_logTable->setItem(row, 1, pgnItem);
@@ -682,10 +664,7 @@ void PGNLogDialog::onSaveLogClicked()
         QString length = m_logTable->item(row, 6) ? m_logTable->item(row, 6)->text() : "";
         QString rawData = m_logTable->item(row, 7) ? m_logTable->item(row, 7)->text() : "";
         
-        // Clean up PGN field (remove "Sent:" prefix if present)
-        if (pgn.startsWith("Sent: ")) {
-            pgn = pgn.mid(6);
-        }
+        // PGN field no longer has "Sent:" prefix since we removed it
         
         // Format: TIMESTAMP | PGN | PRIORITY | SOURCE | DESTINATION | LENGTH | RAW_DATA
         messageData << timestamp << pgn << priority << source << destination << length << rawData;
@@ -1826,6 +1805,14 @@ void PGNLogDialog::setIgnoredPgns(const QSet<uint32_t>& pgns)
 
 void PGNLogDialog::onTableContextMenu(const QPoint& position)
 {
+    // Prevent rapid multiple triggers with a more robust approach
+    static qint64 lastTriggerTime = 0;
+    qint64 currentTime = QDateTime::currentMSecsSinceEpoch();
+    if (currentTime - lastTriggerTime < 200) { // 200ms debounce
+        return;
+    }
+    lastTriggerTime = currentTime;
+    
     QTableWidgetItem* item = m_logTable->itemAt(position);
     if (!item) {
         return; // No item at this position
@@ -1840,7 +1827,9 @@ void PGNLogDialog::onTableContextMenu(const QPoint& position)
     }
     
     bool ok;
-    uint32_t pgn = pgnItem->text().toUInt(&ok);
+    QString pgnText = pgnItem->text();
+    uint32_t pgn = pgnText.toUInt(&ok);
+    
     if (!ok) {
         return; // Invalid PGN value
     }
@@ -1891,7 +1880,6 @@ void PGNLogDialog::onTableContextMenu(const QPoint& position)
         
         QAction* addAction = contextMenu->addAction(menuText);
         connect(addAction, &QAction::triggered, [this, pgn]() {
-            qDebug() << "Context menu: User selected to exclude PGN" << pgn;
             addPgnToIgnoreList(pgn);
         });
     }
@@ -2026,11 +2014,8 @@ void PGNLogDialog::showDecodeDetails(int row)
     QString rawData = m_logTable->item(row, 7) ? m_logTable->item(row, 7)->text() : "";
     QString decodedData = m_logTable->item(row, 8) ? m_logTable->item(row, 8)->text() : "";
     
-    // Clean up PGN field (remove "Sent:" prefix if present)
+    // PGN field no longer has "Sent:" prefix since we removed it
     QString pgn = pgnText;
-    if (pgn.startsWith("Sent: ")) {
-        pgn = pgn.mid(6);
-    }
     
     // Create the details dialog
     QDialog* detailsDialog = new QDialog(this);
@@ -2225,11 +2210,8 @@ void PGNLogDialog::showDecodeDetails(int row)
         QString rawData = m_logTable->item(newRow, 7) ? m_logTable->item(newRow, 7)->text() : "";
         QString decodedData = m_logTable->item(newRow, 8) ? m_logTable->item(newRow, 8)->text() : "";
         
-        // Clean up PGN field (remove "Sent:" prefix if present)
+        // PGN field no longer has "Sent:" prefix since we removed it
         QString pgn = pgnText;
-        if (pgn.startsWith("Sent: ")) {
-            pgn = pgn.mid(6);
-        }
         
         // Update dialog title
         detailsDialog->setWindowTitle(QString("Message Details - PGN %1 (Row %2)").arg(pgn).arg(newRow + 1));

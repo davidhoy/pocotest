@@ -925,6 +925,7 @@ void DeviceMainWindow::showDeviceContextMenu(const QPoint& position)
     
     // Send PGN to Device action
     QAction* sendPGNAction = contextMenu->addAction("Send PGN to Device...");
+    sendPGNAction->setEnabled(m_isConnected && nmea2000 != nullptr);
     connect(sendPGNAction, &QAction::triggered, [this, sourceAddress, nodeAddress]() {
         showSendPGNToDevice(sourceAddress, nodeAddress);
     });
@@ -1995,11 +1996,38 @@ void DeviceMainWindow::showSendPGNDialog()
 
 void DeviceMainWindow::showSendPGNToDevice(uint8_t targetAddress, const QString& nodeAddress)
 {
+    // Check if we're connected to an interface
+    if (!m_isConnected || !nmea2000) {
+        QMessageBox::warning(this, "Not Connected", 
+                           "You must be connected to a NMEA2000 interface before sending PGNs.\n"
+                           "Please connect to an interface first.");
+        return;
+    }
+    
     PGNDialog* pgnDialog = new PGNDialog(this);
     
     // Set the destination field to the target device's node address
     pgnDialog->setDestinationAddress(targetAddress);
     pgnDialog->setWindowTitle(QString("Send PGN to Device 0x%1").arg(nodeAddress));
+    
+    // Connect to the messageTransmitted signal to track bandwidth and blink TX indicator
+    connect(pgnDialog, &PGNDialog::messageTransmitted, this, [this](const tN2kMsg& message) {
+        qDebug() << "DeviceMainWindow: Received messageTransmitted signal with destination:" 
+                 << QString("0x%1").arg(message.Destination, 2, 16, QChar('0')).toUpper();
+        
+        blinkTxIndicator(message.DataLen);
+        
+        // Log the sent message to all PGN log dialogs
+        for (PGNLogDialog* dialog : m_pgnLogDialogs) {
+            if (dialog && dialog->isVisible()) {
+                dialog->appendSentMessage(message);
+            }
+        }
+        
+        qDebug() << "PGN" << message.PGN << "sent from dialog to destination" 
+                 << QString("0x%1").arg(message.Destination, 2, 16, QChar('0')).toUpper()
+                 << "with" << message.DataLen << "bytes";
+    });
     
     pgnDialog->exec();
     delete pgnDialog;

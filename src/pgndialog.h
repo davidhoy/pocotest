@@ -23,6 +23,9 @@ public:
     explicit PGNDialog(QWidget *parent = nullptr);
     void setDestinationAddress(uint8_t address);
 
+signals:
+    void messageTransmitted(const tN2kMsg& message);
+
 private slots:
     void onSendPGN();
     void onPGNSelectionChanged();
@@ -57,6 +60,9 @@ private:
     };
     
     QList<PGNInfo> m_commonPGNs;
+    
+    // Store the intended destination address separately from the spinbox
+    uint8_t m_intendedDestination;
 };
 
 #endif // PGNDIALOG_H

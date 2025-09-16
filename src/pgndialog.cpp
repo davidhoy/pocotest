@@ -29,6 +29,7 @@ PGNDialog::PGNDialog(QWidget *parent)
     , m_cancelButton(nullptr)
     , m_parameterWidget(nullptr)
     , m_parameterLayout(nullptr)
+    , m_intendedDestination(255)  // Default to broadcast
 {
     setupUI();
     populateCommonPGNs();
@@ -155,7 +156,7 @@ void PGNDialog::populateCommonPGNs()
     m_commonPGNs.append({127250, "Vessel Heading", "Vessel magnetic heading", {"SID", "Heading", "Deviation", "Variation", "Reference"}});
     m_commonPGNs.append({127251, "Rate of Turn", "Rate of turn", {"SID", "Rate of Turn"}});
     m_commonPGNs.append({127488, "Engine Parameters, Rapid", "Engine parameters rapid update", {"Engine Instance", "Engine Speed", "Engine Boost Pressure", "Engine Tilt/Trim"}});
-    m_commonPGNs.append({127502, "Binary Switch Bank Control", "Control up to 8 binary switches (lights, pumps, etc.)", {"Instance", "Indicator Bank", "Switch 1", "Switch 2", "Switch 3", "Switch 4", "Switch 5", "Switch 6", "Switch 7", "Switch 8"}});
+    m_commonPGNs.append({127502, "Binary Switch Bank Control", "Control up to 28 binary switches (2 bits each: Off/On/Error/Unavailable)", {"Instance", "Switch 1", "Switch 2", "Switch 3", "Switch 4", "Switch 5", "Switch 6", "Switch 7", "Switch 8", "Switch 9", "Switch 10", "Switch 11", "Switch 12", "Switch 13", "Switch 14", "Switch 15", "Switch 16", "Switch 17", "Switch 18", "Switch 19", "Switch 20", "Switch 21", "Switch 22", "Switch 23", "Switch 24", "Switch 25", "Switch 26", "Switch 27", "Switch 28"}});
     m_commonPGNs.append({127505, "Fluid Level", "Fluid level", {"Instance", "Type", "Level", "Capacity"}});
     m_commonPGNs.append({127508, "Battery Status", "DC battery status", {"Battery Instance", "Voltage", "Current", "Temperature", "SID"}});
     m_commonPGNs.append({128259, "Boat Speed", "Speed through water", {"SID", "Speed Water Referenced", "Speed Water Referenced Type"}});
@@ -233,17 +234,13 @@ void PGNDialog::updateDataFieldsForPGN(unsigned long pgn)
             instanceEdit->setText("0");
             m_parameterLayout->addRow("Instance:", instanceEdit);
             
-            QLineEdit* indicatorEdit = new QLineEdit();
-            indicatorEdit->setPlaceholderText("0-255");
-            indicatorEdit->setText("0");
-            m_parameterLayout->addRow("Indicator Bank:", indicatorEdit);
-            
-            // Add checkboxes for switches 1-8
-            for (int i = 1; i <= 8; i++) {
+            // Add checkboxes for switches 1-28 (as per NMEA2000 spec)
+            // Group them in rows of 4 for better layout
+            for (int i = 1; i <= 28; i++) {
                 QCheckBox* switchBox = new QCheckBox();
                 switchBox->setText(QString("Switch %1").arg(i));
                 switchBox->setObjectName(QString("switch_%1").arg(i));
-                switchBox->setToolTip(QString("Enable/disable switch %1 (bit %2)").arg(i).arg(i-1));
+                switchBox->setToolTip(QString("Switch %1: Unchecked=Off, Checked=On").arg(i));
                 m_parameterLayout->addRow(switchBox);
             }
         } else {
@@ -277,14 +274,39 @@ void PGNDialog::onSendPGN()
             return;
         }
         
+        // Debug output
+        qDebug() << "Attempting to send PGN:" << msg.PGN 
+                 << "Priority:" << msg.Priority
+                 << "Source:" << QString("0x%1").arg(msg.Source, 2, 16, QChar('0')).toUpper()
+                 << "Destination:" << QString("0x%1").arg(msg.Destination, 2, 16, QChar('0')).toUpper()
+                 << "Data length:" << msg.DataLen;
+        
+        // Create a copy for signal emission to preserve original destination
+        tN2kMsg msgCopy = msg;
+        
         // Send the message
         bool success = nmea2000->SendMsg(msg);
         
+        qDebug() << "SendMsg result:" << success;
+        qDebug() << "After SendMsg - original destination:" << QString("0x%1").arg(msg.Destination, 2, 16, QChar('0')).toUpper()
+                 << "copy destination:" << QString("0x%1").arg(msgCopy.Destination, 2, 16, QChar('0')).toUpper();
+        
         if (success) {
-            QMessageBox::information(this, "Success", "PGN sent successfully!");
+            // Debug: Check message before emitting signal
+            qDebug() << "PGNDialog: About to emit signal with message destination:" 
+                     << QString("0x%1").arg(msgCopy.Destination, 2, 16, QChar('0')).toUpper();
+            
+            // Emit signal to notify parent about the transmission
+            emit messageTransmitted(msgCopy);
+            
+            QMessageBox::information(this, "Success", 
+                QString("PGN %1 sent successfully!\nData length: %2 bytes")
+                .arg(msgCopy.PGN).arg(msgCopy.DataLen));
             accept();  // Close the dialog
         } else {
-            QMessageBox::warning(this, "Error", "Failed to send PGN!");
+            QMessageBox::warning(this, "Error", 
+                QString("Failed to send PGN %1!\nCheck NMEA2000 interface connection.")
+                .arg(msg.PGN));
         }
     } catch (const std::exception& e) {
         QMessageBox::critical(this, "Error", QString("Exception occurred: %1").arg(e.what()));
@@ -300,6 +322,7 @@ void PGNDialog::onClearData()
     m_prioritySpinBox->setValue(6);
     m_sourceSpinBox->setValue(22);
     m_destinationSpinBox->setValue(255);
+    m_intendedDestination = 255;  // Also reset the intended destination
     m_pgnComboBox->setCurrentIndex(0);
     
     // Clear parameter fields
@@ -350,7 +373,10 @@ tN2kMsg PGNDialog::createMessageFromInputs()
     msg.SetPGN(pgn);
     msg.Priority = m_prioritySpinBox->value();
     msg.Source = m_sourceSpinBox->value();
-    msg.Destination = m_destinationSpinBox->value();
+    msg.Destination = m_intendedDestination;  // Use stored destination instead of spinbox
+    
+    qDebug() << "PGNDialog: Creating message with destination" << QString("0x%1").arg(m_intendedDestination, 2, 16, QChar('0')).toUpper()
+             << "(spinbox shows" << QString("0x%1").arg(m_destinationSpinBox->value(), 2, 16, QChar('0')).toUpper() << ")";
     
     // Add data from raw data field
     QString dataText = m_dataTextEdit->toPlainText().trimmed();
@@ -377,10 +403,9 @@ tN2kMsg PGNDialog::createMessageFromInputs()
                 break;
             case 127502: // Binary Switch Bank Control
                 {
-                    // Get instance and indicator values from input fields
+                    // Get instance value from input fields
                     unsigned char instance = 0;
-                    unsigned char indicator = 0;
-                    unsigned char switchByte = 0;
+                    unsigned char switchData[7] = {0}; // 7 bytes for switch data (bytes 1-7)
                     
                     // Find the input fields
                     for (int i = 0; i < m_parameterLayout->rowCount(); i++) {
@@ -396,11 +421,6 @@ tN2kMsg PGNDialog::createMessageFromInputs()
                                     if (edit) {
                                         instance = edit->text().toUInt();
                                     }
-                                } else if (labelText.startsWith("Indicator Bank:")) {
-                                    QLineEdit* edit = qobject_cast<QLineEdit*>(fieldItem->widget());
-                                    if (edit) {
-                                        indicator = edit->text().toUInt();
-                                    }
                                 }
                             }
                             
@@ -410,17 +430,32 @@ tN2kMsg PGNDialog::createMessageFromInputs()
                                 QString objectName = checkbox->objectName();
                                 if (objectName.startsWith("switch_")) {
                                     int switchNum = objectName.split("_")[1].toInt();
-                                    if (switchNum >= 1 && switchNum <= 8 && checkbox->isChecked()) {
-                                        switchByte |= (1 << (switchNum - 1));
+                                    if (switchNum >= 1 && switchNum <= 28) {
+                                        // Each switch uses 2 bits: 00=Off, 01=On, 10=Error, 11=Unavailable
+                                        // Switch state: 1 if checked (On), 0 if unchecked (Off)
+                                        unsigned char switchState = checkbox->isChecked() ? 1 : 0;
+                                        
+                                        // Calculate bit position (switches start at bit 8)
+                                        int bitPos = 8 + (switchNum - 1) * 2;
+                                        int byteIndex = bitPos / 8;
+                                        int bitInByte = bitPos % 8;
+                                        
+                                        if (byteIndex >= 1 && byteIndex <= 7) {
+                                            switchData[byteIndex - 1] |= (switchState << bitInByte);
+                                        }
                                     }
                                 }
                             }
                         }
                     }
                     
+                    // PGN 127502 format (8 bytes total):
+                    // Byte 0: Instance
+                    // Bytes 1-7: Switch data (28 switches, 2 bits each)
                     msg.AddByte(instance);
-                    msg.AddByte(indicator);
-                    msg.AddByte(switchByte);
+                    for (int i = 0; i < 7; i++) {
+                        msg.AddByte(switchData[i]);
+                    }
                 }
                 break;
             default:
@@ -435,6 +470,8 @@ tN2kMsg PGNDialog::createMessageFromInputs()
 
 void PGNDialog::setDestinationAddress(uint8_t address)
 {
+    qDebug() << "PGNDialog: Setting destination address to" << QString("0x%1").arg(address, 2, 16, QChar('0')).toUpper();
+    m_intendedDestination = address;  // Store the intended destination
     if (m_destinationSpinBox) {
         m_destinationSpinBox->setValue(address);
     }
