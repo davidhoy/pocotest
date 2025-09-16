@@ -40,13 +40,51 @@ A professional Qt-based NMEA2000 network diagnostic tool featuring real-time dev
 
 ### Native Build (Desktop)
 
+Build and run natively on Windows, Linux, or macOS with full CAN interface support.
+
+#### Prerequisites
+
+First, clone the repository with all submodules:
+
+```bash
+# Clone with recursive option to get all submodules
+git clone --recursive https://github.com/davidhoy/pocotest.git
+
+# Note: If already cloned, get the submodules:
+git submodule update --init --recursive
+```
+
 #### Linux (Ubuntu/Debian)
 
 ```bash
 # Install dependencies
 sudo apt update
 sudo apt install qt6-base-dev qt6-widgets-dev qt6-network-dev cmake g++ can-utils
+```
 
+#### ⚠️ Note for VS Code Users
+
+If you are using **VS Code** on Linux, **do not** use the Snap build of VS Code to build or run this project.  
+The Snap version injects Snap base library paths (e.g., `/snap/core20/...`) into the integrated terminal environment,  
+which can cause the app to link against the wrong version of `glibc`/`libpthread` and fail at runtime with errors like:
+
+- **How to Avoid the Issue (Recommended):** Install the official `.deb` package from Microsoft’s repository instead of the Snap:
+
+  ```bash
+  sudo snap remove code
+  wget -qO- https://packages.microsoft.com/keys/microsoft.asc \
+    | gpg --dearmor \
+    | sudo tee /usr/share/keyrings/ms_vscode.gpg >/dev/null
+  echo "deb [arch=amd64,arm64 signed-by=/usr/share/keyrings/ms_vscode.gpg] \
+    https://packages.microsoft.com/repos/code stable main" \
+    | sudo tee /etc/apt/sources.list.d/vscode.list
+  sudo apt update
+  sudo apt install code
+  ```
+
+#### 2. Build
+```sh
+cd pocotest
 # Build with qmake6 (Qt6)
 qmake6 pocotest.pro
 make -j$(nproc)
@@ -57,7 +95,32 @@ cmake ..
 make -j$(nproc)
 ```
 
-#### Installation
+#### Setup CAN Interface
+
+```bash
+# If you have CAN hardware (e.g., MCP2515, CAN HAT), use can0 directly:
+sudo ip link set can0 up type can bitrate 250000
+
+# For testing without hardware, use virtual CAN:
+sudo modprobe vcan
+sudo ip link add dev vcan0 type vcan
+sudo ip link set up vcan0
+
+# For MCP2515 CAN controller, add to /boot/config.txt:
+# dtparam=spi=on
+# dtoverlay=mcp2515-can0,oscillator=16000000,interrupt=25
+# Then reboot and use the can0 command above
+```
+
+#### Run the Application
+
+```bash
+./pocotest
+```
+
+The application will auto-detect available CAN interfaces and display them in the interface dropdown.
+
+#### Installation (Optional)
 
 ```bash
 # Install to system (creates desktop entry)
@@ -65,6 +128,7 @@ sudo ./install.sh
 ```
 
 ### WebAssembly (WASM) Build
+Run in any modern browser with simulated CAN data for demonstration purposes.
 
 #### Prerequisites Setup
 
@@ -130,8 +194,6 @@ This creates a headless marine network analyzer accessible via web browser:
 
 See `bridge-daemon/README_DEPLOYMENT.md` for detailed deployment instructions.
 
-## Open browser to: http://localhost:8080/pocotest.html
-
 ### Linux (Fedora)
 
 ```bash
@@ -157,6 +219,26 @@ cd vcpkg
 1. **Install Qt**: Download from [qt.io](https://www.qt.io/download)
 2. **Install Visual Studio**: Community Edition with C++ support
 3. **Install CAN Driver**: Peak PCAN, Vector, or Kvaser drivers
+
+
+#### Windows (Visual Studio)
+
+```sh
+git clone --recurse-submodules https://github.com/davidhoy/pocotest.git
+cd pocotest
+# Open pocotest.pro in Qt Creator or use qmake
+qmake
+nmake  # or use Visual Studio
+```
+
+#### Windows (MinGW)
+
+```sh
+git clone --recurse-submodules https://github.com/davidhoy/pocotest.git
+cd pocotest
+qmake
+mingw32-make
+```
 
 ### macOS (using Homebrew)
 
@@ -380,6 +462,116 @@ The application can be adapted for Windows CAN interfaces:
 
 ## Building the Project
 
+### Linux (Desktop)
+
+```bash
+git clone --recurse-submodules https://github.com/davidhoy/pocotest.git
+cd pocotest
+qmake6 pocotest.pro
+make
+```
+
+## ⚠️ Note for VS Code Users
+
+If you are using **VS Code** on Linux, **do not** use the Snap build of VS Code to build or run this project.  
+The Snap version injects Snap base library paths (e.g., `/snap/core20/...`) into the integrated terminal environment,  
+which can cause the app to link against the wrong version of `glibc`/`libpthread` and fail at runtime with errors like:
+
+### How to Avoid the Issue
+
+- **Recommended:** Install the official `.deb` package from Microsoft's repository instead of the Snap:
+
+  ```bash
+  sudo snap remove code
+  wget -qO- https://packages.microsoft.com/keys/microsoft.asc \
+    | gpg --dearmor \
+    | sudo tee /usr/share/keyrings/ms_vscode.gpg >/dev/null
+  echo "deb [arch=amd64,arm64 signed-by=/usr/share/keyrings/ms_vscode.gpg] \
+    https://packages.microsoft.com/repos/code stable main" \
+    | sudo tee /etc/apt/sources.list.d/vscode.list
+  sudo apt update
+  sudo apt install code
+  ```
+
+### Raspberry Pi (Native Build - Recommended)
+
+Building directly on the Raspberry Pi is the **recommended approach** because:
+
+- ✅ **Perfect compatibility** - uses exact Pi libraries and ABI
+- ✅ **No cross-compilation complexity** - avoids toolchain issues  
+- ✅ **Optimal performance** - compiler optimizes for actual hardware
+- ✅ **Easy debugging** - native development tools available
+- ✅ **Reliable builds** - standard package management
+
+#### 1. Install Dependencies
+
+```bash
+sudo apt update
+sudo apt install -y build-essential cmake qt6-base-dev qt6-widgets-dev qt6-network-dev can-utils git
+```
+
+#### 2. Clone and Build
+
+```bash
+git clone --recurse-submodules https://github.com/davidhoy/pocotest.git
+cd pocotest
+
+# Option A: Using CMake (recommended)
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
+
+# Option B: Using qmake6 (Qt6)
+# cd pocotest  # if using CMake, go back to project root
+qmake6 pocotest.pro
+make -j$(nproc)
+```
+
+#### 3. Setup CAN Interface
+
+```bash
+# If you have CAN hardware (e.g., MCP2515, CAN HAT), use can0 directly:
+sudo ip link set can0 up type can bitrate 250000
+
+# For testing without hardware, use virtual CAN:
+sudo modprobe vcan
+sudo ip link add dev vcan0 type vcan
+sudo ip link set up vcan0
+
+# For MCP2515 CAN controller, add to /boot/config.txt:
+# dtparam=spi=on
+# dtoverlay=mcp2515-can0,oscillator=16000000,interrupt=25
+# Then reboot and use the can0 command above
+```
+
+#### 4. Run
+
+```bash
+./pocotest  # or ./build/pocotest if using CMake
+```
+
+### Windows (Visual Studio)
+
+```bash
+git clone --recurse-submodules https://github.com/davidhoy/pocotest.git
+cd pocotest
+# Open pocotest.pro in Qt Creator or use qmake
+qmake
+nmake  # or use Visual Studio
+```
+
+### Windows (MinGW)
+
+```bash
+git clone --recurse-submodules https://github.com/davidhoy/pocotest.git
+cd pocotest
+qmake
+mingw32-make
+```
+
+## Windows CAN Interface Implementation
+
+To adapt this application for Windows CAN interfaces, you would need to:
 ### Linux (Desktop)
 
 ```sh
@@ -794,23 +986,7 @@ candump vcan1
 # Check web interface statistics page
 ```
 
-## Running
 
-After building, run the application:
-
-### Linux (Running)
-
-```sh
-./pocotest
-```
-
-### Windows (Running)
-
-```cmd
-pocotest.exe
-```
-
-The application will auto-detect available CAN interfaces and display them in the interface dropdown.
 
 ## Platform-Specific Notes
 
