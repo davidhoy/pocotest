@@ -132,13 +132,17 @@ private:
     
     // Activity indicator methods
     void setupActivityIndicators();
-    void blinkTxIndicator();
+    void blinkTxIndicator(int messageLength = 8);  // Default 8 bytes for unknown length
     void blinkRxIndicator();
+    void updateBandwidthDisplay();
+    void trackTransmittedBytes(int dataLen);
+    void trackReceivedBytes(int dataLen);
 
 private slots:
     // Activity indicator slots
     void onTxBlinkTimeout();
     void onRxBlinkTimeout();
+    void onBandwidthTimerUpdate();
     
     // PGN dialog management
     void onPGNLogDialogDestroyed(QObject* obj);
@@ -173,6 +177,7 @@ private:
     // Activity indicators
     QLabel* m_txIndicator;
     QLabel* m_rxIndicator;
+    QLabel* m_bandwidthLabel;
     QTimer* m_txBlinkTimer;
     QTimer* m_rxBlinkTimer;
     
@@ -219,8 +224,16 @@ private:
     bool m_autoDiscoveryTriggered;
     QDateTime m_interfaceStartTime;
     int m_messagesReceived;
+    int m_messagesSent;
     static const int AUTO_DISCOVERY_DELAY_MS = 5000; // Wait 5 seconds after first traffic
     static const int MIN_MESSAGES_FOR_DISCOVERY = 10; // Require at least 10 messages
+    
+    // Bandwidth tracking
+    QList<QPair<QDateTime, int>> m_rxBytesHistory;  // Sliding window of received bytes
+    QList<QPair<QDateTime, int>> m_txBytesHistory;  // Sliding window of transmitted bytes
+    QTimer* m_bandwidthTimer;
+    static const int BANDWIDTH_WINDOW_MS = 1000;  // 1 second sliding window
+    static const int NMEA2000_MAX_BPS = 31250;     // 250kbps / 8 = 31,250 bytes per second
     
     // Follow-up device query tracking
     bool m_followUpQueriesScheduled;

@@ -71,6 +71,7 @@ DeviceMainWindow::DeviceMainWindow(QWidget *parent)
     , m_canInterfaceCombo(nullptr)
     , m_txIndicator(nullptr)
     , m_rxIndicator(nullptr)
+    , m_bandwidthLabel(nullptr)
     , m_txBlinkTimer(nullptr)
     , m_rxBlinkTimer(nullptr)
     , m_deviceList(nullptr)
@@ -79,6 +80,8 @@ DeviceMainWindow::DeviceMainWindow(QWidget *parent)
     , m_hasSeenValidTraffic(false)
     , m_autoDiscoveryTriggered(false)
     , m_messagesReceived(0)
+    , m_messagesSent(0)
+    , m_bandwidthTimer(nullptr)
     , m_followUpQueriesScheduled(false)
 {
     DeviceMainWindow::instance = this;  // Capture 'this' for static callback
@@ -196,6 +199,8 @@ void DeviceMainWindow::setupUI()
     toolbarLayout->addSpacing(5);
     toolbarLayout->addWidget(new QLabel("TX:"));
     toolbarLayout->addWidget(m_txIndicator);
+    toolbarLayout->addSpacing(10);
+    toolbarLayout->addWidget(m_bandwidthLabel);
     
     mainLayout->addLayout(toolbarLayout);
     
@@ -414,6 +419,9 @@ void DeviceMainWindow::handleN2kMsg(const tN2kMsg& msg) {
     
     // Blink RX indicator for received messages
     blinkRxIndicator();
+    
+    // Track received bytes for bandwidth calculation
+    trackReceivedBytes(msg.DataLen);
     
     // Track traffic for automatic device discovery
     m_messagesReceived++;
@@ -1841,7 +1849,7 @@ bool DeviceMainWindow::sendConfigurationUpdate(uint8_t targetAddress, const QStr
                  << "- Install Desc 2:" << installDesc2;
         
         // Blink TX indicator for transmitted messages
-        blinkTxIndicator();
+        blinkTxIndicator(msg.DataLen);
         
         // Log the sent message to all PGN log dialogs
         for (PGNLogDialog* dialog : m_pgnLogDialogs) {
@@ -2075,7 +2083,7 @@ void DeviceMainWindow::queryDeviceConfiguration(uint8_t targetAddress)
         m_pendingConfigInfoRequests.insert(targetAddress);
         
         // Blink TX indicator for transmitted messages
-        blinkTxIndicator();
+        blinkTxIndicator(N2kMsg.DataLen);
         
         // Log the sent message to all PGN log dialogs
         for (PGNLogDialog* dialog : m_pgnLogDialogs) {
@@ -2105,7 +2113,7 @@ void DeviceMainWindow::requestProductInformation(uint8_t targetAddress)
     
     if (nmea2000->SendMsg(N2kMsg)) {
         // Blink TX indicator for transmitted messages
-        blinkTxIndicator();
+        blinkTxIndicator(N2kMsg.DataLen);
         
         // Track that we've requested product info from this device
         m_pendingProductInfoRequests.insert(targetAddress);
@@ -2149,7 +2157,7 @@ void DeviceMainWindow::requestSupportedPGNs(uint8_t targetAddress)
     SetN2kPGN59904(N2kMsg, targetAddress, 126464L);
     
     if (nmea2000->SendMsg(N2kMsg)) {
-        blinkTxIndicator();
+        blinkTxIndicator(N2kMsg.DataLen);
         
         // Log the sent message to all PGN log dialogs
         for (PGNLogDialog* dialog : m_pgnLogDialogs) {
@@ -2274,7 +2282,7 @@ void DeviceMainWindow::sendInitialBroadcastRequest()
     
     if (nmea2000->SendMsg(msg)) {
         // Blink TX indicator for transmitted message
-        blinkTxIndicator();
+        blinkTxIndicator(msg.DataLen);
         
         qDebug() << "Initial broadcast request sent successfully";
         statusBar()->showMessage("Sent initial broadcast request for device discovery...", 3000);
@@ -2307,7 +2315,7 @@ void DeviceMainWindow::triggerAutomaticDeviceDiscovery()
         nmea2000->SendMsg(msg);
         
         // Blink TX indicator for transmitted messages
-        blinkTxIndicator();
+        blinkTxIndicator(8); // Default 8 bytes
     }
     
     // Show completion message after a short delay to let responses come in
@@ -2873,7 +2881,7 @@ void DeviceMainWindow::sendLumitecSimpleAction(uint8_t targetAddress, uint8_t ac
     if (SetLumitecExtSwSimpleAction(msg, targetAddress, actionId, switchId)) {
         if (nmea2000->SendMsg(msg)) {
             // Blink TX indicator for transmitted messages
-            blinkTxIndicator();
+            blinkTxIndicator(8); // Default 8 bytes
             
             // Log the sent message to all PGN log dialogs
             for (PGNLogDialog* dialog : m_pgnLogDialogs) {
@@ -2971,7 +2979,7 @@ void DeviceMainWindow::sendLumitecCustomHSB(uint8_t targetAddress, uint8_t hue, 
     if (SetLumitecExtSwCustomHSB(msg, targetAddress, ACTION_T2HSB, 1, hue, saturation, brightness)) {
         if (nmea2000->SendMsg(msg)) {
             // Blink TX indicator for transmitted messages
-            blinkTxIndicator();
+            blinkTxIndicator(8); // Default 8 bytes
             
             // Log the sent message to all PGN log dialogs
             for (PGNLogDialog* dialog : m_pgnLogDialogs) {
@@ -3326,7 +3334,7 @@ void DeviceMainWindow::sendZonePGN130561(uint8_t targetAddress, uint8_t zoneId, 
         
         if (nmea2000->SendMsg(msg)) {
             // Blink TX indicator for transmitted messages
-            blinkTxIndicator();
+            blinkTxIndicator(8); // Default 8 bytes
             
             // Log the sent message to all PGN log dialogs
             for (PGNLogDialog* dialog : m_pgnLogDialogs) {
@@ -3402,7 +3410,7 @@ void DeviceMainWindow::sendZonePGN130561(uint8_t targetAddress, uint8_t zoneId, 
 
         if (nmea2000->SendMsg(msg)) {
             // Blink TX indicator for transmitted messages
-            blinkTxIndicator();
+            blinkTxIndicator(8); // Default 8 bytes
             
             // Log the sent message to all PGN log dialogs
             for (PGNLogDialog* dialog : m_pgnLogDialogs) {
@@ -3500,10 +3508,32 @@ void DeviceMainWindow::setupActivityIndicators()
     m_rxBlinkTimer = new QTimer(this);
     m_rxBlinkTimer->setSingleShot(true);
     connect(m_rxBlinkTimer, &QTimer::timeout, this, &DeviceMainWindow::onRxBlinkTimeout);
+    
+    // Create bandwidth display label
+    m_bandwidthLabel = new QLabel("Bandwidth: 0%");
+    m_bandwidthLabel->setStyleSheet(
+        "QLabel {"
+        "    font-weight: bold;"
+        "    color: #333;"
+        "    padding: 2px 8px;"
+        "    background-color: #f8f8f8;"
+        "    border: 1px solid #ccc;"
+        "    border-radius: 3px;"
+        "}"
+    );
+    m_bandwidthLabel->setToolTip("Current NMEA2000 bus bandwidth usage");
+    
+    // Create bandwidth update timer (update every 250ms for smooth display)
+    m_bandwidthTimer = new QTimer(this);
+    connect(m_bandwidthTimer, &QTimer::timeout, this, &DeviceMainWindow::onBandwidthTimerUpdate);
+    m_bandwidthTimer->start(250);
 }
 
-void DeviceMainWindow::blinkTxIndicator()
+void DeviceMainWindow::blinkTxIndicator(int messageLength)
 {
+    // Track transmitted bytes for bandwidth calculation
+    trackTransmittedBytes(messageLength);
+    
     // Turn on the red LED
     m_txIndicator->setStyleSheet(
         "QLabel {"
@@ -3532,6 +3562,27 @@ void DeviceMainWindow::blinkRxIndicator()
     m_rxBlinkTimer->start(50);
 }
 
+void DeviceMainWindow::trackTransmittedBytes(int dataLen)
+{
+    // Calculate actual CAN frame bytes:
+    // CAN 2.0B Extended frame: 29-bit ID (4 bytes) + DLC (1 byte) + data (0-8 bytes) + CRC (2 bytes) + overhead ≈ 13-15 bytes
+    // For NMEA2000, we'll estimate 13 bytes overhead per frame
+    int totalBytes = dataLen + 13;
+    
+    QDateTime now = QDateTime::currentDateTime();
+    m_txBytesHistory.append(qMakePair(now, totalBytes));
+    m_messagesSent++;
+}
+
+void DeviceMainWindow::trackReceivedBytes(int dataLen)
+{
+    // Same calculation as transmitted bytes
+    int totalBytes = dataLen + 13;
+    
+    QDateTime now = QDateTime::currentDateTime();
+    m_rxBytesHistory.append(qMakePair(now, totalBytes));
+}
+
 void DeviceMainWindow::onTxBlinkTimeout()
 {
     // Turn off the red LED
@@ -3554,6 +3605,75 @@ void DeviceMainWindow::onRxBlinkTimeout()
         "    border: 1px solid #333;"
         "}"
     );
+}
+
+void DeviceMainWindow::onBandwidthTimerUpdate()
+{
+    updateBandwidthDisplay();
+}
+
+void DeviceMainWindow::updateBandwidthDisplay()
+{
+    QDateTime now = QDateTime::currentDateTime();
+    QDateTime windowStart = now.addMSecs(-BANDWIDTH_WINDOW_MS);
+    
+    // Clean up old entries and calculate bytes in the last second
+    auto cleanupAndSum = [windowStart](QList<QPair<QDateTime, int>>& history) -> int {
+        int totalBytes = 0;
+        auto it = history.begin();
+        while (it != history.end()) {
+            if (it->first < windowStart) {
+                it = history.erase(it);  // Remove old entries
+            } else {
+                totalBytes += it->second;  // Sum bytes within window
+                ++it;
+            }
+        }
+        return totalBytes;
+    };
+    
+    int rxBytes = cleanupAndSum(m_rxBytesHistory);
+    int txBytes = cleanupAndSum(m_txBytesHistory);
+    int totalBytes = rxBytes + txBytes;
+    
+    // Calculate percentage of 250kbps (31,250 bytes/second)
+    double percentage = (totalBytes * 100.0) / NMEA2000_MAX_BPS;
+    
+    // Update the label with appropriate color coding
+    QString text = QString("Bandwidth: %1%").arg(QString::number(percentage, 'f', 1));
+    QString color;
+    if (percentage < 50) {
+        color = "#008000";  // Green for low usage
+    } else if (percentage < 80) {
+        color = "#FF8000";  // Orange for medium usage  
+    } else {
+        color = "#FF0000";  // Red for high usage
+    }
+    
+    m_bandwidthLabel->setText(text);
+    m_bandwidthLabel->setStyleSheet(QString(
+        "QLabel {"
+        "    font-weight: bold;"
+        "    color: %1;"
+        "    padding: 2px 8px;"
+        "    background-color: #f8f8f8;"
+        "    border: 1px solid #ccc;"
+        "    border-radius: 3px;"
+        "}"
+    ).arg(color));
+    
+    // Update tooltip with detailed information
+    m_bandwidthLabel->setToolTip(QString(
+        "NMEA2000 Bus Bandwidth Usage\n"
+        "Current: %1% (%2 bytes/sec)\n"
+        "RX: %3 bytes/sec\n"
+        "TX: %4 bytes/sec\n"
+        "Bus Capacity: %5 bytes/sec (250 kbps)"
+    ).arg(QString::number(percentage, 'f', 1))
+     .arg(totalBytes)
+     .arg(rxBytes)
+     .arg(txBytes)
+     .arg(NMEA2000_MAX_BPS));
 }
 
 void DeviceMainWindow::onPGNLogDialogDestroyed(QObject* obj)
@@ -3607,7 +3727,7 @@ void DeviceMainWindow::retryProductInformation(uint8_t targetAddress)
         SetN2kPGN59904(N2kMsg, targetAddress, N2kPGNProductInformation);
         
         if (nmea2000->SendMsg(N2kMsg)) {
-            blinkTxIndicator();
+            blinkTxIndicator(8); // Default 8 bytes
             
             // Start another retry timer
             QTimer* retryTimer = new QTimer();
