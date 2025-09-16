@@ -84,6 +84,7 @@ SOURCES += \
     src/instanceconflictanalyzer.cpp \
     src/toastnotification.cpp \
     src/toastmanager.cpp \
+    src/thememanager.cpp \
     components/external/NMEA2000/src/NMEA2000.cpp \
     components/external/NMEA2000/src/N2kTimer.cpp \
     components/external/NMEA2000/src/N2kMsg.cpp \
@@ -115,7 +116,8 @@ HEADERS += \
     src/dbcdecoder.h \
     src/instanceconflictanalyzer.h \
     src/toastnotification.h \
-    src/toastmanager.h
+    src/toastmanager.h \
+    src/thememanager.h
 
 # Platform-specific headers
 wasm {

@@ -32,6 +32,7 @@
 #include <QHBoxLayout>
 #include <QPushButton>
 #include <QDebug>
+#include <QTimer>
 #include <QHBoxLayout>
 #include <QWidget>
 #include <QDebug>
@@ -91,6 +92,11 @@ DeviceMainWindow::DeviceMainWindow(QWidget *parent)
     
     setupUI();
     setupMenuBar();
+    applyTheme();
+    
+    // Connect to theme changes
+    connect(ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, &DeviceMainWindow::onThemeChanged);
     
     // Initialize with the current interface (from command line or default)
     m_currentInterface = QString(can_interface);
@@ -205,9 +211,8 @@ void DeviceMainWindow::setupUI()
     
     mainLayout->addLayout(toolbarLayout);
     
-    // Status label
+    // Status label (will be styled by theme)
     m_statusLabel = new QLabel("Scanning for NMEA2000 devices...");
-    m_statusLabel->setStyleSheet("font-weight: bold; color: #333; padding: 5px; background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 3px;");
     m_statusLabel->setWordWrap(true);
     mainLayout->addWidget(m_statusLabel);
     
@@ -222,6 +227,7 @@ void DeviceMainWindow::setupUI()
     
     // Configure table
     m_deviceTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_deviceTable->setSelectionMode(QAbstractItemView::SingleSelection);
     m_deviceTable->setAlternatingRowColors(true);
     m_deviceTable->horizontalHeader()->setStretchLastSection(true);
     m_deviceTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
@@ -733,7 +739,7 @@ void DeviceMainWindow::updateDeviceList()
 {
     if (!nmea2000) {
         m_statusLabel->setText("NMEA2000 interface not initialized");
-        m_statusLabel->setStyleSheet("font-weight: bold; color: red; padding: 5px; background-color: #ffe6e6; border: 1px solid #ff9999; border-radius: 3px;");
+        m_statusLabel->setStyleSheet(ThemeManager::instance()->getErrorStatusStyle());
         return;
     }
     
@@ -747,7 +753,7 @@ void DeviceMainWindow::populateDeviceTable()
 {
     if (!m_deviceList) {
         m_statusLabel->setText("Device list not available");
-        m_statusLabel->setStyleSheet("font-weight: bold; color: red; padding: 5px; background-color: #ffe6e6; border: 1px solid #ff9999; border-radius: 3px;");
+        m_statusLabel->setStyleSheet(ThemeManager::instance()->getErrorStatusStyle());
         return;
     }
     
@@ -830,10 +836,10 @@ void DeviceMainWindow::populateDeviceTable()
     // Update status
     if (deviceCount == 0) {
         m_statusLabel->setText("No NMEA2000 devices detected on the network");
-        m_statusLabel->setStyleSheet("font-weight: bold; color: orange; padding: 5px; background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 3px;");
+        m_statusLabel->setStyleSheet(ThemeManager::instance()->getWarningStatusStyle());
     } else {
         QString statusText = QString("Found %1 NMEA2000 device(s) - Auto-updating every 2 seconds").arg(deviceCount);
-        QString statusStyle = "font-weight: bold; color: green; padding: 5px; background-color: #e6ffe6; border: 1px solid #99ff99; border-radius: 3px;";
+        QString statusStyle = ThemeManager::instance()->getSuccessStatusStyle();
         
         // Update conflict analysis before checking
         m_conflictAnalyzer->updateConflictAnalysis();
@@ -841,7 +847,7 @@ void DeviceMainWindow::populateDeviceTable()
         // Check for instance conflicts and update status accordingly
         if (m_conflictAnalyzer->hasConflicts()) {
             statusText += QString(" - WARNING: %1 instance conflict(s) detected!").arg(m_conflictAnalyzer->getConflictCount());
-            statusStyle = "font-weight: bold; color: red; padding: 5px; background-color: #ffe6e6; border: 1px solid #ff9999; border-radius: 3px;";
+            statusStyle = ThemeManager::instance()->getErrorStatusStyle();
         }
         
         m_statusLabel->setText(statusText);
@@ -1766,12 +1772,13 @@ bool DeviceMainWindow::sendInstanceChangeCommand(uint8_t deviceAddress, unsigned
                 if (m_statusLabel) {
                     m_statusLabel->setText(statusMessage);
                     m_statusLabel->setStyleSheet(m_conflictAnalyzer->hasConflicts() ? 
-                                               "color: orange;" : "color: green;");
+                                               ThemeManager::instance()->getWarningStatusStyle() : 
+                                               ThemeManager::instance()->getSuccessStatusStyle());
                     
                     // Reset status color after 5 seconds
                     QTimer::singleShot(5000, [this]() {
                         if (m_statusLabel) {
-                            m_statusLabel->setStyleSheet("");
+                            m_statusLabel->setStyleSheet(ThemeManager::instance()->getStatusStyle());
                         }
                     });
                 }
@@ -3845,4 +3852,97 @@ uint8_t DeviceMainWindow::suggestAvailableInstance(unsigned long pgn, uint8_t ex
     
     // If all instances are somehow used (highly unlikely), return 253
     return 253;
+}
+
+void DeviceMainWindow::applyTheme()
+{
+    ThemeManager* themeManager = ThemeManager::instance();
+    
+    qDebug() << "applyTheme() called";
+    qDebug() << "Theme colors - Text:" << themeManager->textColor().name() 
+             << "Background:" << themeManager->backgroundColor().name();
+    
+    // Apply theme to the main window
+    setPalette(themeManager->adaptivePalette());
+    
+    // Update status label
+    if (m_statusLabel) {
+        m_statusLabel->setStyleSheet(themeManager->getStatusStyle());
+    }
+    
+    // Update device table
+    if (m_deviceTable) {
+        QString tableStyle = QString(
+            "QTableWidget {"
+            "    background-color: %1;"
+            "    color: %2;"
+            "    gridline-color: %3;"
+            "    selection-background-color: %4;"
+            "    alternate-background-color: %5;"
+            "}"
+            "QTableWidget::item {"
+            "    padding: 4px;"
+            "    color: %2;"
+            "}"
+            "QTableWidget::item:alternate {"
+            "    background-color: %5;"
+            "}"
+            "QTableWidget::item:selected {"
+            "    background-color: %4 !important;"
+            "    color: white !important;"
+            "}"
+            "QTableWidget::item:alternate:selected {"
+            "    background-color: %4 !important;"
+            "    color: white !important;"
+            "}"
+            "QHeaderView::section {"
+            "    background-color: %6;"
+            "    color: %2;"
+            "    border: 1px solid %3;"
+            "    padding: 4px;"
+            "    font-weight: bold;"
+            "}"
+        ).arg(themeManager->backgroundColor().name())
+         .arg(themeManager->textColor().name())
+         .arg(themeManager->borderColor().name())
+         .arg(themeManager->selectionColor().name())
+         .arg(themeManager->alternateBackgroundColor().name())
+         .arg(themeManager->headerBackgroundColor().name());
+        
+        m_deviceTable->setStyleSheet(tableStyle);
+    }
+    
+    // Update indicators
+    QString indicatorStyle = QString("border: 1px solid %1; background-color: %2;")
+                             .arg(themeManager->borderColor().name())
+                             .arg(themeManager->backgroundColor().name());
+    
+    if (m_txIndicator) {
+        m_txIndicator->setStyleSheet(indicatorStyle);
+    }
+    if (m_rxIndicator) {
+        m_rxIndicator->setStyleSheet(indicatorStyle);
+    }
+}
+
+void DeviceMainWindow::onThemeChanged()
+{
+    qDebug() << "DeviceMainWindow: Theme change detected, applying new theme...";
+    applyTheme();
+    
+    // Show a temporary status message
+    if (m_statusLabel) {
+        ThemeManager* themeManager = ThemeManager::instance();
+        QString themeText = themeManager->isDarkTheme() ? "Dark" : "Light";
+        m_statusLabel->setText(QString("Theme changed to %1 mode").arg(themeText));
+        m_statusLabel->setStyleSheet(themeManager->getSuccessStatusStyle());
+        
+        // Reset to normal status after 3 seconds
+        QTimer::singleShot(3000, [this]() {
+            if (m_statusLabel) {
+                m_statusLabel->setText("Ready");
+                m_statusLabel->setStyleSheet(ThemeManager::instance()->getStatusStyle());
+            }
+        });
+    }
 }

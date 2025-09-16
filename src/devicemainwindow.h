@@ -20,6 +20,7 @@
 #include <N2kDeviceList.h>
 #include "LumitecPoco.h"
 #include "instanceconflictanalyzer.h"
+#include "thememanager.h"
 
 // Forward declarations
 class tN2kDeviceList;
@@ -61,10 +62,12 @@ private slots:
     void clearConflictHistory();
     void showDeviceContextMenu(const QPoint& position);
     void editInstallationLabels(uint8_t sourceAddress, const QString& nodeAddress);
+    void onThemeChanged();
 
 private:
     void setupUI();
     void setupMenuBar();
+    void applyTheme();
     void populateDeviceTable();
     void sendInitialBroadcastRequest();
     void highlightInstanceConflicts();
