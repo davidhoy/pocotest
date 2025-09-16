@@ -130,9 +130,7 @@ This creates a headless marine network analyzer accessible via web browser:
 
 See `bridge-daemon/README_DEPLOYMENT.md` for detailed deployment instructions.
 
-# Open browser to: http://localhost:8080/pocotest.html
-
-```
+## Open browser to: http://localhost:8080/pocotest.html
 
 ### Linux (Fedora)
 
