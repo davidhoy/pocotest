@@ -1,4 +1,5 @@
 #include "pgndialog.h"
+#include "toastmanager.h"
 
 #ifdef WASM_BUILD
 #include "NMEA2000_WASM.h"
@@ -262,7 +263,7 @@ void PGNDialog::updateDataFieldsForPGN(unsigned long pgn)
 void PGNDialog::onSendPGN()
 {
     if (!nmea2000) {
-        QMessageBox::warning(this, "Error", "NMEA2000 interface not initialized!");
+        ToastManager::instance()->showError("NMEA2000 interface not initialized!", this);
         return;
     }
     
@@ -270,16 +271,9 @@ void PGNDialog::onSendPGN()
         tN2kMsg msg = createMessageFromInputs();
         
         if (msg.PGN == 0) {
-            QMessageBox::warning(this, "Error", "Invalid PGN specified!");
+            ToastManager::instance()->showError("Invalid PGN specified!", this);
             return;
         }
-        
-        // Debug output
-        qDebug() << "Attempting to send PGN:" << msg.PGN 
-                 << "Priority:" << msg.Priority
-                 << "Source:" << QString("0x%1").arg(msg.Source, 2, 16, QChar('0')).toUpper()
-                 << "Destination:" << QString("0x%1").arg(msg.Destination, 2, 16, QChar('0')).toUpper()
-                 << "Data length:" << msg.DataLen;
         
         // Create a copy for signal emission to preserve original destination
         tN2kMsg msgCopy = msg;
@@ -287,31 +281,24 @@ void PGNDialog::onSendPGN()
         // Send the message
         bool success = nmea2000->SendMsg(msg);
         
-        qDebug() << "SendMsg result:" << success;
-        qDebug() << "After SendMsg - original destination:" << QString("0x%1").arg(msg.Destination, 2, 16, QChar('0')).toUpper()
-                 << "copy destination:" << QString("0x%1").arg(msgCopy.Destination, 2, 16, QChar('0')).toUpper();
-        
         if (success) {
-            // Debug: Check message before emitting signal
-            qDebug() << "PGNDialog: About to emit signal with message destination:" 
-                     << QString("0x%1").arg(msgCopy.Destination, 2, 16, QChar('0')).toUpper();
-            
             // Emit signal to notify parent about the transmission
             emit messageTransmitted(msgCopy);
             
-            QMessageBox::information(this, "Success", 
-                QString("PGN %1 sent successfully!\nData length: %2 bytes")
-                .arg(msgCopy.PGN).arg(msgCopy.DataLen));
+            // Show success toast notification
+            ToastManager::instance()->showSuccess(
+                QString("PGN %1 sent successfully! (%2 bytes)")
+                .arg(msgCopy.PGN).arg(msgCopy.DataLen), this);
             accept();  // Close the dialog
         } else {
-            QMessageBox::warning(this, "Error", 
-                QString("Failed to send PGN %1!\nCheck NMEA2000 interface connection.")
-                .arg(msg.PGN));
+            ToastManager::instance()->showError(
+                QString("Failed to send PGN %1! Check NMEA2000 interface connection.")
+                .arg(msg.PGN), this);
         }
     } catch (const std::exception& e) {
-        QMessageBox::critical(this, "Error", QString("Exception occurred: %1").arg(e.what()));
+        ToastManager::instance()->showError(QString("Exception occurred: %1").arg(e.what()), this);
     } catch (...) {
-        QMessageBox::critical(this, "Error", "Unknown error occurred while sending PGN!");
+        ToastManager::instance()->showError("Unknown error occurred while sending PGN!", this);
     }
 }
 
@@ -375,9 +362,6 @@ tN2kMsg PGNDialog::createMessageFromInputs()
     msg.Source = m_sourceSpinBox->value();
     msg.Destination = m_intendedDestination;  // Use stored destination instead of spinbox
     
-    qDebug() << "PGNDialog: Creating message with destination" << QString("0x%1").arg(m_intendedDestination, 2, 16, QChar('0')).toUpper()
-             << "(spinbox shows" << QString("0x%1").arg(m_destinationSpinBox->value(), 2, 16, QChar('0')).toUpper() << ")";
-    
     // Add data from raw data field
     QString dataText = m_dataTextEdit->toPlainText().trimmed();
     if (!dataText.isEmpty()) {
@@ -411,6 +395,7 @@ tN2kMsg PGNDialog::createMessageFromInputs()
                     for (int i = 0; i < m_parameterLayout->rowCount(); i++) {
                         QLayoutItem* labelItem = m_parameterLayout->itemAt(i, QFormLayout::LabelRole);
                         QLayoutItem* fieldItem = m_parameterLayout->itemAt(i, QFormLayout::FieldRole);
+                        QLayoutItem* spanningItem = m_parameterLayout->itemAt(i, QFormLayout::SpanningRole);
                         
                         if (labelItem && fieldItem) {
                             QLabel* label = qobject_cast<QLabel*>(labelItem->widget());
@@ -424,7 +409,7 @@ tN2kMsg PGNDialog::createMessageFromInputs()
                                 }
                             }
                             
-                            // Check for switch checkboxes
+                            // Check for switch checkboxes in field role
                             QCheckBox* checkbox = qobject_cast<QCheckBox*>(fieldItem->widget());
                             if (checkbox) {
                                 QString objectName = checkbox->objectName();
@@ -435,13 +420,40 @@ tN2kMsg PGNDialog::createMessageFromInputs()
                                         // Switch state: 1 if checked (On), 0 if unchecked (Off)
                                         unsigned char switchState = checkbox->isChecked() ? 1 : 0;
                                         
-                                        // Calculate bit position (switches start at bit 8)
-                                        int bitPos = 8 + (switchNum - 1) * 2;
-                                        int byteIndex = bitPos / 8;
-                                        int bitInByte = bitPos % 8;
+                                        // Calculate bit position in switch data bytes (switches start at bit 0 of byte 1)
+                                        // Each switch uses 2 bits, so switch N is at bits (N-1)*2 and (N-1)*2+1
+                                        int switchBitPos = (switchNum - 1) * 2;
+                                        int byteIndex = switchBitPos / 8;
+                                        int bitInByte = switchBitPos % 8;
                                         
-                                        if (byteIndex >= 1 && byteIndex <= 7) {
-                                            switchData[byteIndex - 1] |= (switchState << bitInByte);
+                                        if (byteIndex >= 0 && byteIndex < 7) {
+                                            switchData[byteIndex] |= (switchState << bitInByte);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Also check spanning role for checkboxes (addRow(widget) puts widgets there)
+                        if (spanningItem) {
+                            QCheckBox* checkbox = qobject_cast<QCheckBox*>(spanningItem->widget());
+                            if (checkbox) {
+                                QString objectName = checkbox->objectName();
+                                if (objectName.startsWith("switch_")) {
+                                    int switchNum = objectName.split("_")[1].toInt();
+                                    if (switchNum >= 1 && switchNum <= 28) {
+                                        // Each switch uses 2 bits: 00=Off, 01=On, 10=Error, 11=Unavailable
+                                        // Switch state: 1 if checked (On), 0 if unchecked (Off)
+                                        unsigned char switchState = checkbox->isChecked() ? 1 : 0;
+                                        
+                                        // Calculate bit position in switch data bytes (switches start at bit 0 of byte 1)
+                                        // Each switch uses 2 bits, so switch N is at bits (N-1)*2 and (N-1)*2+1
+                                        int switchBitPos = (switchNum - 1) * 2;
+                                        int byteIndex = switchBitPos / 8;
+                                        int bitInByte = switchBitPos % 8;
+                                        
+                                        if (byteIndex >= 0 && byteIndex < 7) {
+                                            switchData[byteIndex] |= (switchState << bitInByte);
                                         }
                                     }
                                 }
@@ -470,7 +482,6 @@ tN2kMsg PGNDialog::createMessageFromInputs()
 
 void PGNDialog::setDestinationAddress(uint8_t address)
 {
-    qDebug() << "PGNDialog: Setting destination address to" << QString("0x%1").arg(address, 2, 16, QChar('0')).toUpper();
     m_intendedDestination = address;  // Store the intended destination
     if (m_destinationSpinBox) {
         m_destinationSpinBox->setValue(address);
