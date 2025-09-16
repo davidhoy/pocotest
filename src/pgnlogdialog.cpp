@@ -2050,32 +2050,43 @@ void PGNLogDialog::showDecodeDetails(int row)
     // Build the detailed information text
     QString detailsText;
     
-    // Header information
-    detailsText += "NMEA2000 Message Details\n";
-    detailsText += "========================\n\n";
-    
-    // Basic message information
+    // Basic message information in compact format
     detailsText += "Message Information:\n";
     detailsText += "-------------------\n";
-    detailsText += QString("Timestamp:    %1\n").arg(timestamp);
+    
+    // Use consistent column width for alignment
+    const int leftColumnWidth = 35;
+    
+    detailsText += QString("Timestamp:    %1").arg(timestamp);
+    
+    // Add relative timestamp in parentheses
+    if (row > 0 && row < m_messageTimestamps.size()) {
+        qint64 deltaMs = m_messageTimestamps[row-1].msecsTo(m_messageTimestamps[row]);
+        detailsText += QString(" (+%1ms)").arg(deltaMs);
+    }
+    detailsText += "\n";
+    
+    // PGN on its own line to handle long names
     detailsText += QString("PGN:          %1").arg(pgn);
     if (!messageName.isEmpty() && messageName != QString("PGN %1").arg(pgn)) {
         detailsText += QString(" (%1)").arg(messageName);
     }
     detailsText += "\n";
-    detailsText += QString("Priority:     %1\n").arg(priority);
-    detailsText += QString("Source:       0x%1\n").arg(source);
-    detailsText += QString("Destination:  0x%1\n").arg(destination);
-    detailsText += QString("Length:       %1 bytes\n").arg(length);
     
-    // Add device name information if available
+    // Priority and Length on same line
+    QString priorityLine = QString("Priority:     %1").arg(priority);
+    priorityLine = priorityLine.leftJustified(leftColumnWidth, ' ');
+    detailsText += priorityLine + QString("Length:       %1 bytes\n").arg(length);
+    
+    // Add device name information if available (inline with addresses)
+    QString sourceDeviceInfo, destDeviceInfo;
     if (m_deviceNameResolver) {
         bool ok;
         uint8_t srcAddr = source.toUInt(&ok, 16);
         if (ok) {
             QString sourceName = m_deviceNameResolver(srcAddr);
             if (!sourceName.isEmpty()) {
-                detailsText += QString("Source Device: %1\n").arg(sourceName);
+                sourceDeviceInfo = QString(" (%1)").arg(sourceName);
             }
         }
         
@@ -2086,42 +2097,15 @@ void PGNLogDialog::showDecodeDetails(int row)
                 destName = "Broadcast";
             }
             if (!destName.isEmpty()) {
-                detailsText += QString("Dest Device:   %1\n").arg(destName);
+                destDeviceInfo = QString(" (%1)").arg(destName);
             }
         }
     }
     
-    detailsText += "\n";
-    
-    // Raw data section
-    detailsText += "Raw Data:\n";
-    detailsText += "---------\n";
-    if (!rawData.isEmpty() && rawData != "(no data)") {
-        // Format raw data with better spacing
-        QStringList hexBytes = rawData.split(" ", Qt::SkipEmptyParts);
-        QString formattedRawData;
-        for (int i = 0; i < hexBytes.size(); i++) {
-            if (i > 0 && i % 8 == 0) {
-                formattedRawData += "\n          ";
-            }
-            formattedRawData += hexBytes[i].rightJustified(2, '0').toUpper() + " ";
-        }
-        detailsText += QString("Hex:      %1\n").arg(formattedRawData.trimmed());
-        
-#if 0
-        // Add byte positions for reference
-        QString bytePositions;
-        for (int i = 0; i < hexBytes.size(); i++) {
-            if (i > 0 && i % 8 == 0) {
-                bytePositions += "\n          ";
-            }
-            bytePositions += QString("%1  ").arg(i, 2);
-        }
-        detailsText += QString("Positions:%1\n").arg(bytePositions);
-#endif
-    } else {
-        detailsText += "No data\n";
-    }
+    // Rewrite the Source/Destination line with device names inline
+    QString sourceLine = QString("Source:       0x%1%2").arg(source).arg(sourceDeviceInfo);
+    sourceLine = sourceLine.leftJustified(leftColumnWidth, ' ');
+    detailsText += sourceLine + QString("Destination:  0x%1%2\n").arg(destination).arg(destDeviceInfo);
     
     detailsText += "\n";
     
@@ -2178,6 +2162,38 @@ void PGNLogDialog::showDecodeDetails(int row)
             detailsText += "No decoded information available\n";
         }
     }
+
+    detailsText += "\n";
+    
+    // Raw data section (moved after decoded information)
+    detailsText += "Raw Data:\n";
+    detailsText += "---------\n";
+    if (!rawData.isEmpty() && rawData != "(no data)") {
+        // Format raw data with better spacing
+        QStringList hexBytes = rawData.split(" ", Qt::SkipEmptyParts);
+        QString formattedRawData;
+        for (int i = 0; i < hexBytes.size(); i++) {
+            if (i > 0 && i % 8 == 0) {
+                formattedRawData += "\n          ";
+            }
+            formattedRawData += hexBytes[i].rightJustified(2, '0').toUpper() + " ";
+        }
+        detailsText += QString("Hex:      %1\n").arg(formattedRawData.trimmed());
+        
+#if 0
+        // Add byte positions for reference
+        QString bytePositions;
+        for (int i = 0; i < hexBytes.size(); i++) {
+            if (i > 0 && i % 8 == 0) {
+                bytePositions += "\n          ";
+            }
+            bytePositions += QString("%1  ").arg(i, 2);
+        }
+        detailsText += QString("Positions:%1\n").arg(bytePositions);
+#endif
+    } else {
+        detailsText += "No data\n";
+    }
     
     // Set the text in the display
     textDisplay->setPlainText(detailsText);
@@ -2221,32 +2237,43 @@ void PGNLogDialog::showDecodeDetails(int row)
         // Build the detailed information text (same logic as original)
         QString detailsText;
         
-        // Header information
-        detailsText += "NMEA2000 Message Details\n";
-        detailsText += "========================\n\n";
-        
-        // Basic message information
+        // Basic message information in compact format
         detailsText += "Message Information:\n";
         detailsText += "-------------------\n";
-        detailsText += QString("Timestamp:    %1\n").arg(timestamp);
+        
+        // Use consistent column width for alignment
+        const int leftColumnWidth = 35;
+        
+        detailsText += QString("Timestamp:    %1").arg(timestamp);
+        
+        // Add relative timestamp in parentheses  
+        if (newRow > 0 && newRow < m_messageTimestamps.size()) {
+            qint64 deltaMs = m_messageTimestamps[newRow-1].msecsTo(m_messageTimestamps[newRow]);
+            detailsText += QString(" (+%1ms)").arg(deltaMs);
+        }
+        detailsText += "\n";
+        
+        // PGN on its own line to handle long names
         detailsText += QString("PGN:          %1").arg(pgn);
         if (!messageName.isEmpty() && messageName != QString("PGN %1").arg(pgn)) {
             detailsText += QString(" (%1)").arg(messageName);
         }
         detailsText += "\n";
-        detailsText += QString("Priority:     %1\n").arg(priority);
-        detailsText += QString("Source:       0x%1\n").arg(source);
-        detailsText += QString("Destination:  0x%1\n").arg(destination);
-        detailsText += QString("Length:       %1 bytes\n").arg(length);
         
-        // Add device name information if available
+        // Priority and Length on same line
+        QString priorityLine = QString("Priority:     %1").arg(priority);
+        priorityLine = priorityLine.leftJustified(leftColumnWidth, ' ');
+        detailsText += priorityLine + QString("Length:       %1 bytes\n").arg(length);
+        
+        // Add device name information if available (inline with addresses)
+        QString sourceDeviceInfo, destDeviceInfo;
         if (m_deviceNameResolver) {
             bool ok;
             uint8_t srcAddr = source.toUInt(&ok, 16);
             if (ok) {
                 QString sourceName = m_deviceNameResolver(srcAddr);
                 if (!sourceName.isEmpty()) {
-                    detailsText += QString("Source Device: %1\n").arg(sourceName);
+                    sourceDeviceInfo = QString(" (%1)").arg(sourceName);
                 }
             }
             
@@ -2257,30 +2284,15 @@ void PGNLogDialog::showDecodeDetails(int row)
                     destName = "Broadcast";
                 }
                 if (!destName.isEmpty()) {
-                    detailsText += QString("Dest Device:   %1\n").arg(destName);
+                    destDeviceInfo = QString(" (%1)").arg(destName);
                 }
             }
         }
         
-        detailsText += "\n";
-        
-        // Raw data section
-        detailsText += "Raw Data:\n";
-        detailsText += "---------\n";
-        if (!rawData.isEmpty() && rawData != "(no data)") {
-            // Format raw data with better spacing
-            QStringList hexBytes = rawData.split(" ", Qt::SkipEmptyParts);
-            QString formattedRawData;
-            for (int i = 0; i < hexBytes.size(); i++) {
-                if (i > 0 && i % 8 == 0) {
-                    formattedRawData += "\n          ";
-                }
-                formattedRawData += hexBytes[i].rightJustified(2, '0').toUpper() + " ";
-            }
-            detailsText += QString("Hex:      %1\n").arg(formattedRawData.trimmed());
-        } else {
-            detailsText += "No data\n";
-        }
+        // Rewrite the Source/Destination line with device names inline
+        QString sourceLine = QString("Source:       0x%1%2").arg(source).arg(sourceDeviceInfo);
+        sourceLine = sourceLine.leftJustified(leftColumnWidth, ' ');
+        detailsText += sourceLine + QString("Destination:  0x%1%2\n").arg(destination).arg(destDeviceInfo);
         
         detailsText += "\n";
         
@@ -2336,6 +2348,26 @@ void PGNLogDialog::showDecodeDetails(int row)
             } else {
                 detailsText += "No decoded information available\n";
             }
+        }
+        
+        detailsText += "\n";
+        
+        // Raw data section (moved after decoded information)
+        detailsText += "Raw Data:\n";
+        detailsText += "---------\n";
+        if (!rawData.isEmpty() && rawData != "(no data)") {
+            // Format raw data with better spacing
+            QStringList hexBytes = rawData.split(" ", Qt::SkipEmptyParts);
+            QString formattedRawData;
+            for (int i = 0; i < hexBytes.size(); i++) {
+                if (i > 0 && i % 8 == 0) {
+                    formattedRawData += "\n          ";
+                }
+                formattedRawData += hexBytes[i].rightJustified(2, '0').toUpper() + " ";
+            }
+            detailsText += QString("Hex:      %1\n").arg(formattedRawData.trimmed());
+        } else {
+            detailsText += "No data\n";
         }
         
         // Update the text display
