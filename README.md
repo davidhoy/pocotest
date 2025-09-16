@@ -24,12 +24,14 @@ A professional Qt-based NMEA2000 network diagnostic tool featuring real-time dev
 ## Prerequisites
 
 ### Native Build
+
 - **Qt 6** (6.4.2 or later) - `qt6-base-dev qt6-widgets-dev qt6-network-dev`
 - **CMake** (version 3.16+) or **qmake**
 - **C++17 Compiler** (e.g., `g++`, `clang`, MSVC)
 - **CAN Interface Drivers** (platform-specific)
 
 ### WebAssembly (WASM) Build
+
 - **Qt 6.9.2+ with WebAssembly support** (via Qt Online Installer)
 - **Emscripten SDK** (version 3.1.70 - must match Qt's requirement)
 - **Python 3** (for local testing server)
@@ -39,6 +41,7 @@ A professional Qt-based NMEA2000 network diagnostic tool featuring real-time dev
 ### Native Build (Desktop)
 
 #### Linux (Ubuntu/Debian)
+
 ```bash
 # Install dependencies
 sudo apt update
@@ -55,6 +58,7 @@ make -j$(nproc)
 ```
 
 #### Installation
+
 ```bash
 # Install to system (creates desktop entry)
 sudo ./install.sh
@@ -63,6 +67,7 @@ sudo ./install.sh
 ### WebAssembly (WASM) Build
 
 #### Prerequisites Setup
+
 ```bash
 # 1. Install Qt 6.9.2+ with WebAssembly support using Qt Online Installer
 #    - Download from: https://www.qt.io/download
@@ -77,6 +82,7 @@ source ./emsdk_env.sh
 ```
 
 #### Build WASM Version
+
 ```bash
 # Configure and build for WebAssembly
 source ~/emsdk/emsdk_env.sh
@@ -87,6 +93,7 @@ make -j$(nproc)
 ```
 
 #### Deploy and Test
+
 ```bash
 # Serve locally for testing
 cd wasm-deploy/
@@ -97,12 +104,15 @@ python3 -m http.server 8080
 ## Deployment Options
 
 ### Desktop Application
+
 Build and run natively on Windows, Linux, or macOS with full CAN interface support.
 
 ### WebAssembly in Browser  
+
 Run in any modern browser with simulated CAN data for demonstration purposes.
 
 ### Headless Raspberry Pi
+
 Deploy as a web-accessible service on a Raspberry Pi with CAN HAT:
 
 ```bash
@@ -113,18 +123,21 @@ cd bridge-daemon
 ```
 
 This creates a headless marine network analyzer accessible via web browser:
+
 - **Hardware**: Raspberry Pi + PiCAN2 HAT connects to NMEA2000 network
 - **Bridge**: SocketCAN-to-WebSocket daemon provides real-time CAN data
 - **Web App**: Browser-based interface with full analysis capabilities
 
 See `bridge-daemon/README_DEPLOYMENT.md` for detailed deployment instructions.
+
 # Open browser to: http://localhost:8080/pocotest.html
+
 ```
 
 ### Linux (Fedora)
 
-```sh
-sudo dnf install qt5-qtbase-devel cmake gcc-c++ can-utils
+```bash
+sudo dnf install qt6-qtbase-devel qt6-qtwidgets-devel qt6-qtnetwork-devel cmake gcc-c++ can-utils
 ```
 
 ### Windows CAN Interfaces
@@ -138,7 +151,7 @@ cd vcpkg
 .\bootstrap-vcpkg.bat
 
 # Install Qt and dependencies
-.\vcpkg install qt5-base qt5-widgets
+.\vcpkg install qt6-base qt6-widgets qt6-network
 ```
 
 #### Option 2: Manual Installation
@@ -149,8 +162,10 @@ cd vcpkg
 
 ### macOS (using Homebrew)
 
-```sh
-brew install qt cmake
+```bash
+brew install qt@6 cmake
+# Note: You may need to add Qt6 to your PATH:
+export PATH="/opt/homebrew/opt/qt@6/bin:$PATH"
 ```
 
 ## CAN Interface Support
@@ -410,14 +425,14 @@ Building directly on the Raspberry Pi is the **recommended approach** because:
 
 #### 1. Install Dependencies
 
-```sh
+```bash
 sudo apt update
-sudo apt install -y build-essential cmake qtbase5-dev qt5-default libqt5widgets5 libqt5gui5 libqt5core5a can-utils git
+sudo apt install -y build-essential cmake qt6-base-dev qt6-widgets-dev qt6-network-dev can-utils git
 ```
 
 #### 2. Clone and Build
 
-```sh
+```bash
 git clone --recurse-submodules https://github.com/davidhoy/pocotest.git
 cd pocotest
 
@@ -434,7 +449,7 @@ make -j$(nproc)
 
 #### 3. Setup CAN Interface
 
-```sh
+```bash
 # If you have CAN hardware (e.g., MCP2515, CAN HAT), use can0 directly:
 sudo ip link set can0 up type can bitrate 250000
 
@@ -729,16 +744,19 @@ n2kd -d vcan2
 ### IPG100 Configuration Tips
 
 #### Network Setup
+
 1. **Static IP**: Assign a static IP to the IPG100 for reliable connections
 2. **VLAN**: Consider placing on a dedicated marine network VLAN
 3. **Firewall**: Open required ports (2597 for Actisense, 80 for web interface)
 
 #### Service Configuration
+
 1. **Enable Raw NMEA 2000**: For best compatibility with analysis tools
 2. **Set Update Rate**: Configure for your analysis needs (1-10 Hz typical)
 3. **Message Filtering**: Enable all PGNs or filter for specific messages
 
 #### Performance Considerations
+
 - **Network Latency**: Ethernet adds ~1-5ms vs direct CAN
 - **Bandwidth**: IPG100 can handle full NMEA 2000 bus traffic
 - **Reliability**: More robust than USB-CAN in marine environments
