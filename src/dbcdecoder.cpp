@@ -1541,7 +1541,12 @@ DecodedMessage DBCDecoder::decodePGN126208(const tN2kMsg& msg)
 
     DecodedSignal sigPGN;
     sigPGN.name = "Target PGN";
-    sigPGN.value = QString("%1").arg(targetPGN);
+    QString pgnName = getPGNDescription(targetPGN);
+    if (!pgnName.isEmpty() && pgnName != "Unknown Range") {
+        sigPGN.value = QString("%1 (%2)").arg(targetPGN).arg(pgnName);
+    } else {
+        sigPGN.value = QString("%1").arg(targetPGN);
+    }
     sigPGN.isValid = true;
     decoded.signalList.append(sigPGN);
 
