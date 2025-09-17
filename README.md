@@ -30,19 +30,13 @@ A professional Qt-based NMEA2000 network diagnostic tool featuring real-time dev
 - **C++17 Compiler** (e.g., `g++`, `clang`, MSVC)
 - **CAN Interface Drivers** (platform-specific)
 
-### WebAssembly (WASM) Build
-
-- **Qt 6.9.2+ with WebAssembly support** (via Qt Online Installer)
-- **Emscripten SDK** (version 3.1.70 - must match Qt's requirement)
-- **Python 3** (for local testing server)
-
 ## Building
 
 ### Native Build (Desktop)
 
 Build and run natively on Windows, Linux, or macOS with full CAN interface support.
 
-#### Prerequisites
+#### Repository Setup
 
 First, clone the repository with all submodules:
 
@@ -64,8 +58,8 @@ sudo apt install qt6-base-dev qt6-widgets-dev qt6-network-dev cmake g++ can-util
 
 #### ⚠️ Note for VS Code Users
 
-If you are using **VS Code** on Linux, **do not** use the Snap build of VS Code to build or run this project.  
-The Snap version injects Snap base library paths (e.g., `/snap/core20/...`) into the integrated terminal environment,  
+If you are using **VS Code** on Linux, **do not** use the Snap build of VS Code to build or run this project.
+The Snap version injects Snap base library paths (e.g., `/snap/core20/...`) into the integrated terminal environment,
 which can cause the app to link against the wrong version of `glibc`/`libpthread` and fail at runtime with errors like:
 
 - **How to Avoid the Issue (Recommended):** Install the official `.deb` package from Microsoft’s repository instead of the Snap:
@@ -83,6 +77,7 @@ which can cause the app to link against the wrong version of `glibc`/`libpthread
   ```
 
 #### 2. Build
+
 ```sh
 cd pocotest
 # Build with qmake6 (Qt6)
@@ -128,6 +123,7 @@ sudo ./install.sh
 ```
 
 ### WebAssembly (WASM) Build
+
 Run in any modern browser with simulated CAN data for demonstration purposes.
 
 #### Prerequisites Setup
@@ -171,7 +167,7 @@ python3 -m http.server 8080
 
 Build and run natively on Windows, Linux, or macOS with full CAN interface support.
 
-### WebAssembly in Browser  
+### WebAssembly in Browser
 
 Run in any modern browser with simulated CAN data for demonstration purposes.
 
@@ -454,257 +450,11 @@ Enable with: `sudo systemctl enable kvaser-can.service`
 The application can be adapted for Windows CAN interfaces:
 
 - **Peak PCAN**: Popular USB-CAN adapters
-- **Vector**: Professional CAN interfaces  
+- **Vector**: Professional CAN interfaces
 - **Kvaser**: Industrial CAN solutions
 - **Ixxat**: HMS CAN interfaces
 
 *Note: Windows CAN support requires platform-specific drivers and slight code modifications to replace SocketCAN calls.*
-
-## Building the Project
-
-### Linux (Desktop)
-
-```bash
-git clone --recurse-submodules https://github.com/davidhoy/pocotest.git
-cd pocotest
-qmake6 pocotest.pro
-make
-```
-
-## ⚠️ Note for VS Code Users
-
-If you are using **VS Code** on Linux, **do not** use the Snap build of VS Code to build or run this project.  
-The Snap version injects Snap base library paths (e.g., `/snap/core20/...`) into the integrated terminal environment,  
-which can cause the app to link against the wrong version of `glibc`/`libpthread` and fail at runtime with errors like:
-
-### How to Avoid the Issue
-
-- **Recommended:** Install the official `.deb` package from Microsoft's repository instead of the Snap:
-
-  ```bash
-  sudo snap remove code
-  wget -qO- https://packages.microsoft.com/keys/microsoft.asc \
-    | gpg --dearmor \
-    | sudo tee /usr/share/keyrings/ms_vscode.gpg >/dev/null
-  echo "deb [arch=amd64,arm64 signed-by=/usr/share/keyrings/ms_vscode.gpg] \
-    https://packages.microsoft.com/repos/code stable main" \
-    | sudo tee /etc/apt/sources.list.d/vscode.list
-  sudo apt update
-  sudo apt install code
-  ```
-
-### Raspberry Pi (Native Build - Recommended)
-
-Building directly on the Raspberry Pi is the **recommended approach** because:
-
-- ✅ **Perfect compatibility** - uses exact Pi libraries and ABI
-- ✅ **No cross-compilation complexity** - avoids toolchain issues  
-- ✅ **Optimal performance** - compiler optimizes for actual hardware
-- ✅ **Easy debugging** - native development tools available
-- ✅ **Reliable builds** - standard package management
-
-#### 1. Install Dependencies
-
-```bash
-sudo apt update
-sudo apt install -y build-essential cmake qt6-base-dev qt6-widgets-dev qt6-network-dev can-utils git
-```
-
-#### 2. Clone and Build
-
-```bash
-git clone --recurse-submodules https://github.com/davidhoy/pocotest.git
-cd pocotest
-
-# Option A: Using CMake (recommended)
-mkdir build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-make -j$(nproc)
-
-# Option B: Using qmake6 (Qt6)
-# cd pocotest  # if using CMake, go back to project root
-qmake6 pocotest.pro
-make -j$(nproc)
-```
-
-#### 3. Setup CAN Interface
-
-```bash
-# If you have CAN hardware (e.g., MCP2515, CAN HAT), use can0 directly:
-sudo ip link set can0 up type can bitrate 250000
-
-# For testing without hardware, use virtual CAN:
-sudo modprobe vcan
-sudo ip link add dev vcan0 type vcan
-sudo ip link set up vcan0
-
-# For MCP2515 CAN controller, add to /boot/config.txt:
-# dtparam=spi=on
-# dtoverlay=mcp2515-can0,oscillator=16000000,interrupt=25
-# Then reboot and use the can0 command above
-```
-
-#### 4. Run
-
-```bash
-./pocotest  # or ./build/pocotest if using CMake
-```
-
-### Windows (Visual Studio)
-
-```bash
-git clone --recurse-submodules https://github.com/davidhoy/pocotest.git
-cd pocotest
-# Open pocotest.pro in Qt Creator or use qmake
-qmake
-nmake  # or use Visual Studio
-```
-
-### Windows (MinGW)
-
-```bash
-git clone --recurse-submodules https://github.com/davidhoy/pocotest.git
-cd pocotest
-qmake
-mingw32-make
-```
-
-## Windows CAN Interface Implementation
-
-To adapt this application for Windows CAN interfaces, you would need to:
-### Linux (Desktop)
-
-```sh
-git clone --recurse-submodules https://github.com/davidhoy/pocotest.git
-cd pocotest
-qmake
-make
-```
-
-## ⚠️ Note for VS Code Users
-
-If you are using **VS Code** on Linux, **do not** use the Snap build of VS Code to build or run this project.  
-The Snap version injects Snap base library paths (e.g., `/snap/core20/...`) into the integrated terminal environment,  
-which can cause the app to link against the wrong version of `glibc`/`libpthread` and fail at runtime with errors like:
-
-### How to Avoid the Issue
-
-- **Recommended:** Install the official `.deb` package from Microsoft’s repository instead of the Snap:
-
-  ```bash
-  sudo snap remove code
-  wget -qO- https://packages.microsoft.com/keys/microsoft.asc \
-    | gpg --dearmor \
-    | sudo tee /usr/share/keyrings/ms_vscode.gpg >/dev/null
-  echo "deb [arch=amd64,arm64 signed-by=/usr/share/keyrings/ms_vscode.gpg] \
-    https://packages.microsoft.com/repos/code stable main" \
-    | sudo tee /etc/apt/sources.list.d/vscode.list
-  sudo apt update
-  sudo apt install code
-
-
-### Raspberry Pi (Native Build - Recommended)
-
-Building directly on the Raspberry Pi is the **recommended approach** because:
-
-- ✅ **Perfect compatibility** - uses exact Pi libraries and ABI
-- ✅ **No cross-compilation complexity** - avoids toolchain issues  
-- ✅ **Optimal performance** - compiler optimizes for actual hardware
-- ✅ **Easy debugging** - native development tools available
-- ✅ **Reliable builds** - standard package management
-
-#### 1. Install Dependencies
-
-```bash
-sudo apt update
-sudo apt install -y build-essential cmake qt6-base-dev qt6-widgets-dev qt6-network-dev can-utils git
-```
-
-#### 2. Clone and Build
-
-```bash
-git clone --recurse-submodules https://github.com/davidhoy/pocotest.git
-cd pocotest
-
-# Option A: Using CMake (recommended)
-mkdir build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-make -j$(nproc)
-
-# Option B: Using qmake6 (Qt6)
-# cd pocotest  # if using CMake, go back to project root
-qmake6 pocotest.pro
-make -j$(nproc)
-```
-
-#### 3. Setup CAN Interface
-
-```bash
-# If you have CAN hardware (e.g., MCP2515, CAN HAT), use can0 directly:
-sudo ip link set can0 up type can bitrate 250000
-
-# For testing without hardware, use virtual CAN:
-sudo modprobe vcan
-sudo ip link add dev vcan0 type vcan
-sudo ip link set up vcan0
-
-# For MCP2515 CAN controller, add to /boot/config.txt:
-# dtparam=spi=on
-# dtoverlay=mcp2515-can0,oscillator=16000000,interrupt=25
-# Then reboot and use the can0 command above
-```
-
-#### 4. Run
-
-```sh
-./pocotest  # or ./build/pocotest if using CMake
-```
-
-### Windows (Visual Studio)
-
-```sh
-git clone --recurse-submodules https://github.com/davidhoy/pocotest.git
-cd pocotest
-# Open pocotest.pro in Qt Creator or use qmake
-qmake
-nmake  # or use Visual Studio
-```
-
-### Windows (MinGW)
-
-```sh
-git clone --recurse-submodules https://github.com/davidhoy/pocotest.git
-cd pocotest
-qmake
-mingw32-make
-```
-
-## Windows CAN Interface Implementation
-
-To adapt this application for Windows CAN interfaces, you would need to:
-
-1. **Replace SocketCAN Backend**: Create a Windows-specific CAN interface class
-2. **Add CAN Driver Support**: Integrate with Peak PCAN, Vector, or Kvaser APIs
-3. **Update Build System**: Modify the .pro file for Windows-specific libraries
-
-### Example Windows CAN Integration
-
-```cpp
-// For Peak PCAN (example)
-#ifdef _WIN32
-#include "PCANBasic.h"
-class tNMEA2000_PCAN : public tNMEA2000 {
-    // Implement Windows PCAN interface
-};
-#endif
-```
-
-Popular Windows CAN APIs:
-
-- **Peak PCAN-Basic API**: Simple USB-CAN integration
-- **Vector XL Driver Library**: Professional CAN/LIN/FlexRay
-- **Kvaser CANlib**: Wide hardware support
-- **Ixxat VCI**: HMS industrial interfaces
 
 ## Tunneling CAN Traffic with canneloni
 
@@ -786,60 +536,60 @@ def setup_vcan():
 def actisense_to_can():
     """Bridge Actisense NGT-1 data to SocketCAN"""
     setup_vcan()
-    
+
     # Connect to IPG100
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect((IPG100_IP, IPG100_PORT))
-    
+
     print(f"Connected to IPG100 at {IPG100_IP}:{IPG100_PORT}")
     print(f"Bridging to {VCAN_INTERFACE}")
-    
+
     # Open CAN socket
     can_sock = socket.socket(socket.PF_CAN, socket.SOCK_RAW, socket.CAN_RAW)
     can_sock.bind((VCAN_INTERFACE,))
-    
+
     buffer = b""
-    
+
     while True:
         try:
             data = sock.recv(1024)
             if not data:
                 break
-                
+
             buffer += data
-            
+
             # Process Actisense frames
             while len(buffer) >= 3:
                 if buffer[0:2] != b'\x10\x02':  # Actisense start sequence
                     buffer = buffer[1:]
                     continue
-                    
+
                 if len(buffer) < 3:
                     break
-                    
+
                 msg_len = buffer[2]
                 if len(buffer) < msg_len + 3:
                     break
-                    
+
                 # Extract and convert to CAN frame
                 frame_data = buffer[3:3+msg_len]
                 buffer = buffer[3+msg_len:]
-                
+
                 if len(frame_data) >= 8:  # Valid N2K frame
                     # Convert to SocketCAN frame format
                     can_id = struct.unpack('<I', frame_data[0:4])[0]
                     can_data = frame_data[4:4+8]
-                    
+
                     # Send to CAN interface
                     can_frame = struct.pack('<IB3x8s', can_id, len(can_data), can_data)
                     can_sock.send(can_frame)
-                    
+
         except KeyboardInterrupt:
             break
         except Exception as e:
             print(f"Error: {e}")
             break
-    
+
     sock.close()
     can_sock.close()
 
@@ -880,11 +630,11 @@ private:
     int tcp_socket;
     std::string ipg100_ip;
     int ipg100_port;
-    
+
 public:
-    tNMEA2000_IPG100(const char* ip, int port = 2597) 
+    tNMEA2000_IPG100(const char* ip, int port = 2597)
         : ipg100_ip(ip), ipg100_port(port), tcp_socket(-1) {}
-    
+
     bool CANOpen() override {
         // Connect to IPG100 TCP port
         tcp_socket = socket(AF_INET, SOCK_STREAM, 0);
@@ -892,16 +642,16 @@ public:
         addr.sin_family = AF_INET;
         addr.sin_port = htons(ipg100_port);
         inet_pton(AF_INET, ipg100_ip.c_str(), &addr.sin_addr);
-        
+
         return connect(tcp_socket, (struct sockaddr*)&addr, sizeof(addr)) == 0;
     }
-    
+
     bool CANGetFrame(unsigned long &id, unsigned char &len, unsigned char *buf) override {
         // Receive and parse Actisense/raw data from TCP
         // Convert to NMEA2000 frame format
         // Implementation depends on IPG100 output format
     }
-    
+
     bool CANSendFrame(unsigned long id, unsigned char len, const unsigned char *buf, bool wait_sent) override {
         // Convert NMEA2000 frame to IPG100 format and send via TCP
         // Note: IPG100 may be read-only depending on configuration
@@ -953,19 +703,19 @@ n2kd -d vcan2
 
 ### Advantages of IPG100 Interface
 
-✅ **Network-based**: Access from anywhere on your network  
-✅ **Professional grade**: Marine-certified, robust hardware  
-✅ **Multiple protocols**: Supports various connection methods  
-✅ **Web management**: Easy configuration and monitoring  
-✅ **Galvanic isolation**: Protects your computer from ground loops  
-✅ **Multiple clients**: Can serve data to multiple applications  
+✅ **Network-based**: Access from anywhere on your network
+✅ **Professional grade**: Marine-certified, robust hardware
+✅ **Multiple protocols**: Supports various connection methods
+✅ **Web management**: Easy configuration and monitoring
+✅ **Galvanic isolation**: Protects your computer from ground loops
+✅ **Multiple clients**: Can serve data to multiple applications
 
 ### Disadvantages
 
-❌ **Network dependency**: Requires stable Ethernet connection  
-❌ **Added latency**: Small delay vs direct CAN interface  
-❌ **Complexity**: Requires bridge software or custom integration  
-❌ **Cost**: More expensive than basic USB-CAN adapters  
+❌ **Network dependency**: Requires stable Ethernet connection
+❌ **Added latency**: Small delay vs direct CAN interface
+❌ **Complexity**: Requires bridge software or custom integration
+❌ **Cost**: More expensive than basic USB-CAN adapters
 
 ### Troubleshooting IPG100 Connection
 
@@ -985,8 +735,6 @@ candump vcan1
 # Verify IPG100 is receiving NMEA 2000 data
 # Check web interface statistics page
 ```
-
-
 
 ## Platform-Specific Notes
 
