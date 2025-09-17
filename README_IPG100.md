@@ -3,37 +3,45 @@
 The IPG100 support in this application is implemented using conditional compilation, allowing you to easily enable or disable the feature at build time.
 
 ## Current Status
+
 IPG100 support is **DISABLED** by default.
 
 ## Building with IPG100 Support
 
 ### Method 1: Using qmake (Recommended)
 
-#### Disabled (Default)
+#### Disabled (Default, Make)
+
 ```bash
-qmake && make
+qmake6 && make
 ```
 
-#### Enabled  
+#### Enabled (With CPPFLAGS)
+
 ```bash
-qmake "CONFIG+=ipg100" && make
+qmake6 "CONFIG+=ipg100" && make
 ```
 
 ### Method 2: Using make with CPPFLAGS
 
 #### Disabled (Default)
+
 ```bash
 make
 ```
 
 #### Enabled
+
 ```bash
 make CPPFLAGS="-DENABLE_IPG100_SUPPORT"
 ```
 
 ### Method 3: Modifying the .pro file permanently
+
 You can also modify `pocotest.pro` to include the define permanently:
-```qmake
+
+```bash
+qmake6
 DEFINES += ENABLE_IPG100_SUPPORT
 ```
 
@@ -55,7 +63,7 @@ When IPG100 support is disabled, these features are compiled out entirely, resul
 The conditional compilation uses `#ifdef ENABLE_IPG100_SUPPORT` blocks around:
 
 - **src/devicemainwindow.h**: Function declarations
-- **src/devicemainwindow.cpp**: 
+- **src/devicemainwindow.cpp**:
   - Header includes
   - UI elements (buttons, etc.)
   - Interface creation logic

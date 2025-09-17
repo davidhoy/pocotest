@@ -216,7 +216,6 @@ cd vcpkg
 2. **Install Visual Studio**: Community Edition with C++ support
 3. **Install CAN Driver**: Peak PCAN, Vector, or Kvaser drivers
 
-
 #### Windows (Visual Studio)
 
 ```sh
