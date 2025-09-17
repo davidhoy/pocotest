@@ -1999,8 +1999,29 @@ void DeviceMainWindow::showPGNLog()
 void DeviceMainWindow::showSendPGNDialog()
 {
     PGNDialog* pgnDialog = new PGNDialog(this);
-    pgnDialog->exec();
-    delete pgnDialog;
+    
+    // Connect to the messageTransmitted signal to track bandwidth and blink TX indicator
+    connect(pgnDialog, &PGNDialog::messageTransmitted, this, [this](const tN2kMsg& message) {
+        blinkTxIndicator(message.DataLen);
+        
+        // Log the sent message to all PGN log dialogs - safer iteration
+        QList<PGNLogDialog*> dialogsCopy = m_pgnLogDialogs;  // Make a copy to avoid iterator invalidation
+        for (PGNLogDialog* dialog : dialogsCopy) {
+            if (dialog && dialog->isVisible()) {
+                // Additional safety check to ensure dialog is still in the original list
+                if (m_pgnLogDialogs.contains(dialog)) {
+                    dialog->appendSentMessage(message);
+                }
+            }
+        }
+    });
+    
+    // Auto-delete when dialog is closed
+    pgnDialog->setAttribute(Qt::WA_DeleteOnClose);
+    
+    pgnDialog->show();
+    pgnDialog->raise();
+    pgnDialog->activateWindow();
 }
 
 void DeviceMainWindow::showSendPGNToDevice(uint8_t targetAddress, const QString& nodeAddress)
@@ -2042,6 +2063,9 @@ void DeviceMainWindow::showSendPGNToDevice(uint8_t targetAddress, const QString&
                  << "with" << message.DataLen << "bytes";
     });
     
+    // Auto-delete when dialog is closed
+    pgnDialog->setAttribute(Qt::WA_DeleteOnClose);
+    
     // Center dialog on parent before showing
     QTimer::singleShot(0, [this, pgnDialog]() {
         if (pgnDialog) {
@@ -2068,12 +2092,9 @@ void DeviceMainWindow::showSendPGNToDevice(uint8_t targetAddress, const QString&
         }
     });
     
-    pgnDialog->exec();
-    
-    // Process any pending events to ensure messageTransmitted signal is handled
-    QCoreApplication::processEvents();
-    
-    delete pgnDialog;
+    pgnDialog->show();
+    pgnDialog->raise();
+    pgnDialog->activateWindow();
 }
 
 void DeviceMainWindow::showDeviceDetails(int row)

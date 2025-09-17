@@ -417,6 +417,9 @@ void PGNLogDialog::appendMessage(const tN2kMsg& msg)
 
     // Auto-scroll to bottom if enabled
     scrollToBottom();
+    
+    // Emit signal to notify that a new message was added
+    emit messageCountChanged(m_logTable->rowCount());
 }
 
 void PGNLogDialog::appendSentMessage(const tN2kMsg& msg)
@@ -538,6 +541,9 @@ void PGNLogDialog::appendSentMessage(const tN2kMsg& msg)
     
     // Auto-scroll to bottom if enabled
     scrollToBottom();
+    
+    // Emit signal to notify that a new message was added
+    emit messageCountChanged(m_logTable->rowCount());
 }
 
 void PGNLogDialog::clearLog()
@@ -2425,6 +2431,13 @@ void PGNLogDialog::showDecodeDetails(int row)
     connect(nextShortcut, &QShortcut::activated, nextButton, &QPushButton::click);
     connect(prevShortcut2, &QShortcut::activated, prevButton, &QPushButton::click);
     connect(nextShortcut2, &QShortcut::activated, nextButton, &QPushButton::click);
+    
+    // Connect to messageCountChanged signal to update navigation button states when new messages are added
+    connect(this, &PGNLogDialog::messageCountChanged, [currentRow, prevButton, nextButton](int newRowCount) {
+        // Update button states based on current row and new row count
+        prevButton->setEnabled(*currentRow > 0);
+        nextButton->setEnabled(*currentRow < newRowCount - 1);
+    });
     
     // Show the dialog as non-modal (won't block other dialogs)
     detailsDialog->show();

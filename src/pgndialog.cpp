@@ -38,7 +38,7 @@ PGNDialog::PGNDialog(QWidget *parent)
     populateCommonPGNs();
     
     setWindowTitle("Send NMEA2000 PGN");
-    setModal(true);
+    setModal(false);  // Make dialog non-modal
     
     // Set initial size - let dialog size itself first
     resize(600, 500);

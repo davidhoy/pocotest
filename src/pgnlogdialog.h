@@ -49,6 +49,9 @@ public:
     // Set device name resolver function
     void setDeviceNameResolver(DeviceNameResolver resolver);
 
+signals:
+    void messageCountChanged(int newRowCount);
+
 private slots:
     void clearLog();
     void clearLogForLoad(); // Clear log without restarting live logging
