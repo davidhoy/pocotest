@@ -14,6 +14,7 @@
 #include <QTextEdit>
 #include <QSplitter>
 #include <N2kMsg.h>
+#include <QShowEvent>
 
 class PGNDialog : public QDialog
 {
@@ -22,6 +23,13 @@ class PGNDialog : public QDialog
 public:
     explicit PGNDialog(QWidget *parent = nullptr);
     void setDestinationAddress(uint8_t address);
+    
+    // Override to provide reasonable default size
+    QSize sizeHint() const override;
+
+protected:
+    // Override to apply size constraints after dialog is shown
+    void showEvent(QShowEvent* event) override;
 
 signals:
     void messageTransmitted(const tN2kMsg& message);
@@ -30,11 +38,14 @@ private slots:
     void onSendPGN();
     void onPGNSelectionChanged();
     void onClearData();
+    void toggleDataSection();
+    void onParameterChanged();  // New slot for when parameters change
 
 private:
     void setupUI();
     void populateCommonPGNs();
     void updateDataFieldsForPGN(unsigned long pgn);
+    void updateRawDataFromParameters();  // New method to generate hex from parameters
     tN2kMsg createMessageFromInputs();
     
     // UI Components
@@ -43,10 +54,14 @@ private:
     QSpinBox* m_sourceSpinBox;
     QSpinBox* m_destinationSpinBox;
     QTextEdit* m_dataTextEdit;
-    QTextEdit* m_previewTextEdit;
     QPushButton* m_sendButton;
     QPushButton* m_clearButton;
     QPushButton* m_cancelButton;
+    
+    // Collapsible sections
+    QGroupBox* m_dataGroup;
+    QPushButton* m_dataToggleButton;
+    QWidget* m_dataContent;
     
     // PGN-specific parameter widgets
     QWidget* m_parameterWidget;

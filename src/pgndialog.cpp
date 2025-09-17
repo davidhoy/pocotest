@@ -14,6 +14,9 @@
 #include <QRegularExpression>
 #include <QCheckBox>
 #include <QLabel>
+#include <QScreen>
+#include <QScrollArea>
+#include <QTimer>
 
 extern tNMEA2000* nmea2000;
 
@@ -24,7 +27,6 @@ PGNDialog::PGNDialog(QWidget *parent)
     , m_sourceSpinBox(nullptr)
     , m_destinationSpinBox(nullptr)
     , m_dataTextEdit(nullptr)
-    , m_previewTextEdit(nullptr)
     , m_sendButton(nullptr)
     , m_clearButton(nullptr)
     , m_cancelButton(nullptr)
@@ -37,6 +39,8 @@ PGNDialog::PGNDialog(QWidget *parent)
     
     setWindowTitle("Send NMEA2000 PGN");
     setModal(true);
+    
+    // Set initial size - let dialog size itself first
     resize(600, 500);
 }
 
@@ -86,12 +90,28 @@ void PGNDialog::setupUI()
     
     // PGN-specific Parameters Group
     QGroupBox* paramGroup = new QGroupBox("PGN-specific Parameters");
+    
+    // Create scroll area for parameters to handle large parameter lists
+    QScrollArea* paramScrollArea = new QScrollArea();
+    paramScrollArea->setWidgetResizable(true);
+    paramScrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    paramScrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    paramScrollArea->setMinimumHeight(150);  // Increased minimum height for better visibility
+    paramScrollArea->setMaximumHeight(500);  // Increased maximum height to allow more parameters
+    paramScrollArea->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    
     m_parameterLayout = new QFormLayout();
+    m_parameterLayout->setContentsMargins(5, 5, 5, 5);  // Reduce margins
+    m_parameterLayout->setVerticalSpacing(4);            // Reduce spacing
     m_parameterWidget = new QWidget();
     m_parameterWidget->setLayout(m_parameterLayout);
+    m_parameterWidget->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
+    
+    paramScrollArea->setWidget(m_parameterWidget);
     
     QVBoxLayout* paramGroupLayout = new QVBoxLayout(paramGroup);
-    paramGroupLayout->addWidget(m_parameterWidget);
+    paramGroupLayout->setContentsMargins(5, 5, 5, 5);   // Reduce group margins
+    paramGroupLayout->addWidget(paramScrollArea);
     
     topLayout->addWidget(paramGroup);
     
@@ -101,31 +121,38 @@ void PGNDialog::setupUI()
     QWidget* bottomWidget = new QWidget();
     QVBoxLayout* bottomLayout = new QVBoxLayout(bottomWidget);
     
-    // Raw Data Input Group
-    QGroupBox* dataGroup = new QGroupBox("Raw Data (Hex)");
-    QVBoxLayout* dataLayout = new QVBoxLayout(dataGroup);
+    // Raw Data Input Group (Collapsible)
+    m_dataGroup = new QGroupBox();
+    m_dataGroup->setFlat(true);
+    QVBoxLayout* dataGroupLayout = new QVBoxLayout(m_dataGroup);
+    dataGroupLayout->setContentsMargins(0, 0, 0, 0);
+    
+    // Create toggle button for raw data section
+    m_dataToggleButton = new QPushButton("▶ Raw Data (Hex)");
+    m_dataToggleButton->setFlat(true);
+    m_dataToggleButton->setStyleSheet("QPushButton { text-align: left; padding: 5px; }");
+    connect(m_dataToggleButton, &QPushButton::clicked, this, &PGNDialog::toggleDataSection);
+    dataGroupLayout->addWidget(m_dataToggleButton);
+    
+    // Raw data content
+    m_dataContent = new QWidget();
+    QVBoxLayout* dataLayout = new QVBoxLayout(m_dataContent);
+    dataLayout->setContentsMargins(10, 0, 10, 10);
     
     m_dataTextEdit = new QTextEdit();
     m_dataTextEdit->setMaximumHeight(80);
     m_dataTextEdit->setPlaceholderText("Enter hex data separated by spaces (e.g., FF 00 A1 B2)");
     dataLayout->addWidget(m_dataTextEdit);
     
-    bottomLayout->addWidget(dataGroup);
+    // Start collapsed
+    m_dataContent->hide();
     
-    // Preview Group
-    QGroupBox* previewGroup = new QGroupBox("Message Preview");
-    QVBoxLayout* previewLayout = new QVBoxLayout(previewGroup);
-    
-    m_previewTextEdit = new QTextEdit();
-    m_previewTextEdit->setReadOnly(true);
-    m_previewTextEdit->setMaximumHeight(100);
-    previewLayout->addWidget(m_previewTextEdit);
-    
-    bottomLayout->addWidget(previewGroup);
+    dataGroupLayout->addWidget(m_dataContent);
+    bottomLayout->addWidget(m_dataGroup);
     
     splitter->addWidget(bottomWidget);
-    splitter->setStretchFactor(0, 1);
-    splitter->setStretchFactor(1, 0);
+    splitter->setStretchFactor(0, 3);  // Give 3x more space to parameters section
+    splitter->setStretchFactor(1, 1);  // Bottom section gets minimal space when collapsed
     
     mainLayout->addWidget(splitter);
     
@@ -190,16 +217,6 @@ void PGNDialog::onPGNSelectionChanged()
     
     unsigned long pgn = data.toULongLong();
     updateDataFieldsForPGN(pgn);
-    
-    // Update preview
-    if (pgn > 0) {
-        QString preview = QString("PGN: %1\nPriority: %2\nSource: %3\nDestination: %4\n")
-                            .arg(pgn)
-                            .arg(m_prioritySpinBox->value())
-                            .arg(m_sourceSpinBox->value())
-                            .arg(m_destinationSpinBox->value());
-        m_previewTextEdit->setPlainText(preview);
-    }
 }
 
 void PGNDialog::updateDataFieldsForPGN(unsigned long pgn)
@@ -233,6 +250,7 @@ void PGNDialog::updateDataFieldsForPGN(unsigned long pgn)
             QLineEdit* instanceEdit = new QLineEdit();
             instanceEdit->setPlaceholderText("0-255");
             instanceEdit->setText("0");
+            connect(instanceEdit, &QLineEdit::textChanged, this, &PGNDialog::onParameterChanged);
             m_parameterLayout->addRow("Instance:", instanceEdit);
             
             // Add checkboxes for switches 1-28 (as per NMEA2000 spec)
@@ -242,6 +260,7 @@ void PGNDialog::updateDataFieldsForPGN(unsigned long pgn)
                 switchBox->setText(QString("Switch %1").arg(i));
                 switchBox->setObjectName(QString("switch_%1").arg(i));
                 switchBox->setToolTip(QString("Switch %1: Unchecked=Off, Checked=On").arg(i));
+                connect(switchBox, &QCheckBox::toggled, this, &PGNDialog::onParameterChanged);
                 m_parameterLayout->addRow(switchBox);
             }
         } else {
@@ -249,6 +268,7 @@ void PGNDialog::updateDataFieldsForPGN(unsigned long pgn)
             for (const QString& param : pgnInfo->parameters) {
                 QLineEdit* paramEdit = new QLineEdit();
                 paramEdit->setPlaceholderText("Enter value");
+                connect(paramEdit, &QLineEdit::textChanged, this, &PGNDialog::onParameterChanged);
                 m_parameterLayout->addRow(param + ":", paramEdit);
             }
         }
@@ -258,6 +278,9 @@ void PGNDialog::updateDataFieldsForPGN(unsigned long pgn)
         note->setStyleSheet("color: #666; font-style: italic;");
         m_parameterLayout->addRow(note);
     }
+    
+    // Update raw data to reflect initial parameter values
+    updateRawDataFromParameters();
 }
 
 void PGNDialog::onSendPGN()
@@ -289,7 +312,7 @@ void PGNDialog::onSendPGN()
             ToastManager::instance()->showSuccess(
                 QString("PGN %1 sent successfully! (%2 bytes)")
                 .arg(msgCopy.PGN).arg(msgCopy.DataLen), this);
-            accept();  // Close the dialog
+            // Keep dialog open for multiple sends - user can close manually
         } else {
             ToastManager::instance()->showError(
                 QString("Failed to send PGN %1! Check NMEA2000 interface connection.")
@@ -305,7 +328,6 @@ void PGNDialog::onSendPGN()
 void PGNDialog::onClearData()
 {
     m_dataTextEdit->clear();
-    m_previewTextEdit->clear();
     m_prioritySpinBox->setValue(6);
     m_sourceSpinBox->setValue(22);
     m_destinationSpinBox->setValue(255);
@@ -486,4 +508,196 @@ void PGNDialog::setDestinationAddress(uint8_t address)
     if (m_destinationSpinBox) {
         m_destinationSpinBox->setValue(address);
     }
+}
+
+QSize PGNDialog::sizeHint() const
+{
+    // Provide a more conservative default size
+    return QSize(550, 450);
+}
+
+void PGNDialog::showEvent(QShowEvent* event)
+{
+    QDialog::showEvent(event);
+    
+    // Apply size constraints after the dialog is shown and has sized itself
+    QTimer::singleShot(0, this, [this]() {
+        QScreen* screen = QApplication::primaryScreen();
+        if (!screen && !QApplication::screens().isEmpty()) {
+            screen = QApplication::screens().first();
+        }
+        
+        if (screen) {
+            QRect screenGeometry = screen->availableGeometry();
+            
+            // Only apply constraints if dialog is larger than screen
+            QSize dialogSize = size();
+            int maxWidth = static_cast<int>(screenGeometry.width() * 0.9);
+            int maxHeight = static_cast<int>(screenGeometry.height() * 0.9);
+            
+            bool needsResize = false;
+            int newWidth = dialogSize.width();
+            int newHeight = dialogSize.height();
+            
+            if (dialogSize.width() > maxWidth) {
+                newWidth = maxWidth;
+                needsResize = true;
+            }
+            
+            if (dialogSize.height() > maxHeight) {
+                newHeight = maxHeight;
+                needsResize = true;
+            }
+            
+            if (needsResize) {
+                resize(newWidth, newHeight);
+                
+                // Center the dialog on screen
+                int x = (screenGeometry.width() - newWidth) / 2 + screenGeometry.x();
+                int y = (screenGeometry.height() - newHeight) / 2 + screenGeometry.y();
+                
+                // Ensure dialog is fully on screen
+                x = qMax(screenGeometry.x(), qMin(x, screenGeometry.right() - newWidth));
+                y = qMax(screenGeometry.y(), qMin(y, screenGeometry.bottom() - newHeight));
+                
+                move(x, y);
+            }
+        }
+    });
+}
+
+void PGNDialog::toggleDataSection()
+{
+    if (m_dataContent->isVisible()) {
+        m_dataContent->hide();
+        m_dataToggleButton->setText("▶ Raw Data (Hex)");
+    } else {
+        m_dataContent->show();
+        m_dataToggleButton->setText("▼ Raw Data (Hex)");
+    }
+    
+    // Force layout update
+    adjustSize();
+}
+
+void PGNDialog::onParameterChanged()
+{
+    // Update raw data whenever parameters change
+    updateRawDataFromParameters();
+}
+
+void PGNDialog::updateRawDataFromParameters()
+{
+    QVariant pgnData = m_pgnComboBox->currentData();
+    if (!pgnData.isValid()) return;
+    
+    unsigned long pgn = pgnData.toULongLong();
+    if (pgn == 0) return;
+    
+    // Create a temporary message to generate hex data
+    tN2kMsg tempMsg;
+    tempMsg.SetPGN(pgn);
+    tempMsg.Priority = m_prioritySpinBox->value();
+    tempMsg.Source = m_sourceSpinBox->value();
+    tempMsg.Destination = m_destinationSpinBox->value();
+    
+    // Generate data based on current parameter values
+    switch (pgn) {
+        case 127502: // Binary Switch Bank Control
+        {
+            // Get instance value
+            unsigned char instance = 0;
+            for (int i = 0; i < m_parameterLayout->rowCount(); ++i) {
+                QLayoutItem* labelItem = m_parameterLayout->itemAt(i, QFormLayout::LabelRole);
+                QLayoutItem* fieldItem = m_parameterLayout->itemAt(i, QFormLayout::FieldRole);
+                
+                if (labelItem && fieldItem) {
+                    QLabel* label = qobject_cast<QLabel*>(labelItem->widget());
+                    if (label && label->text() == "Instance:") {
+                        QLineEdit* edit = qobject_cast<QLineEdit*>(fieldItem->widget());
+                        if (edit) {
+                            bool ok;
+                            instance = edit->text().toUInt(&ok);
+                            if (!ok) instance = 0;
+                        }
+                        break;
+                    }
+                }
+            }
+            
+            // Build switch data bytes
+            unsigned char switchData[7] = {0}; // 7 bytes for switch data (bytes 1-7)
+            
+            // Collect switch states from checkboxes
+            for (int i = 0; i < m_parameterLayout->rowCount(); ++i) {
+                QLayoutItem* fieldItem = m_parameterLayout->itemAt(i, QFormLayout::FieldRole);
+                if (fieldItem) {
+                    QCheckBox* checkBox = qobject_cast<QCheckBox*>(fieldItem->widget());
+                    if (checkBox && checkBox->objectName().startsWith("switch_")) {
+                        QString switchNumStr = checkBox->objectName().mid(7); // Remove "switch_" prefix
+                        bool ok;
+                        int switchNum = switchNumStr.toInt(&ok);
+                        if (ok && switchNum >= 1 && switchNum <= 28) {
+                            int byteIndex = (switchNum - 1) / 4;  // 4 switches per byte
+                            int bitIndex = ((switchNum - 1) % 4) * 2;  // 2 bits per switch
+                            
+                            if (checkBox->isChecked()) {
+                                switchData[byteIndex] |= (0x01 << bitIndex);  // Set switch to ON (01)
+                            } else {
+                                switchData[byteIndex] |= (0x00 << bitIndex);  // Set switch to OFF (00)
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Add data to message
+            tempMsg.AddByte(instance);
+            for (int i = 0; i < 7; i++) {
+                tempMsg.AddByte(switchData[i]);
+            }
+            break;
+        }
+        case 127250: // Vessel Heading
+        {
+            // Add basic vessel heading data with default values
+            tempMsg.AddByte(0xFF);  // SID
+            tempMsg.Add2ByteUDouble(0.0, 0.0001);  // Heading
+            tempMsg.Add2ByteDouble(0.0, 0.0001);   // Deviation  
+            tempMsg.Add2ByteDouble(0.0, 0.0001);   // Variation
+            tempMsg.AddByte(0);  // Reference
+            break;
+        }
+        default:
+        {
+            // For other PGNs, create basic data from parameters
+            for (int i = 0; i < m_parameterLayout->rowCount(); ++i) {
+                QLayoutItem* fieldItem = m_parameterLayout->itemAt(i, QFormLayout::FieldRole);
+                if (fieldItem) {
+                    QLineEdit* edit = qobject_cast<QLineEdit*>(fieldItem->widget());
+                    if (edit) {
+                        QString value = edit->text();
+                        bool ok;
+                        unsigned char byteVal = value.toUInt(&ok);
+                        if (ok) {
+                            tempMsg.AddByte(byteVal);
+                        } else {
+                            tempMsg.AddByte(0); // Default value
+                        }
+                    }
+                }
+            }
+            break;
+        }
+    }
+    
+    // Convert message data to hex string
+    QString hexData;
+    for (int i = 0; i < tempMsg.DataLen; i++) {
+        if (i > 0) hexData += " ";
+        hexData += QString("%1").arg(tempMsg.Data[i], 2, 16, QChar('0')).toUpper();
+    }
+    
+    // Update the raw data field
+    m_dataTextEdit->setPlainText(hexData);
 }

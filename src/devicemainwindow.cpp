@@ -48,6 +48,7 @@
 #include <QPixmap>
 #include <QSlider>
 #include <QDialog>
+#include <QScreen>
 #include <QVBoxLayout>
 #include <QRadioButton>
 #include <QButtonGroup>
@@ -2039,6 +2040,32 @@ void DeviceMainWindow::showSendPGNToDevice(uint8_t targetAddress, const QString&
         qDebug() << "PGN" << message.PGN << "sent from dialog to destination" 
                  << QString("0x%1").arg(message.Destination, 2, 16, QChar('0')).toUpper()
                  << "with" << message.DataLen << "bytes";
+    });
+    
+    // Center dialog on parent before showing
+    QTimer::singleShot(0, [this, pgnDialog]() {
+        if (pgnDialog) {
+            // Get screen geometry for centering
+            QScreen* screen = QApplication::primaryScreen();
+            if (!screen && !QApplication::screens().isEmpty()) {
+                screen = QApplication::screens().first();
+            }
+            
+            if (screen) {
+                QRect screenGeometry = screen->availableGeometry();
+                QRect dialogGeometry = pgnDialog->geometry();
+                
+                // Center the dialog
+                int x = (screenGeometry.width() - dialogGeometry.width()) / 2 + screenGeometry.x();
+                int y = (screenGeometry.height() - dialogGeometry.height()) / 2 + screenGeometry.y();
+                
+                // Ensure the dialog is fully on screen
+                x = qMax(screenGeometry.x(), qMin(x, screenGeometry.right() - dialogGeometry.width()));
+                y = qMax(screenGeometry.y(), qMin(y, screenGeometry.bottom() - dialogGeometry.height()));
+                
+                pgnDialog->move(x, y);
+            }
+        }
     });
     
     pgnDialog->exec();
