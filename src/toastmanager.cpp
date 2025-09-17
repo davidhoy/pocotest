@@ -6,6 +6,8 @@
 #include <QPropertyAnimation>
 #include <QParallelAnimationGroup>
 #include <QMap>
+#include <QPointer>
+#include <QDebug>
 
 ToastManager* ToastManager::m_instance = nullptr;
 
@@ -128,6 +130,12 @@ void ToastManager::addToast(ToastNotification* toast)
     // Connect to the toast's closed signal
     connect(toast, &ToastNotification::closed, this, &ToastManager::onToastClosed);
     
+    // Also connect to destroyed signal as a safety net
+    connect(toast, &QObject::destroyed, this, [this](QObject* obj) {
+        // Remove the destroyed toast from active list
+        m_activeToasts.removeAll(static_cast<ToastNotification*>(obj));
+    });
+    
     // Add to active toasts
     m_activeToasts.append(toast);
     
@@ -197,11 +205,27 @@ void ToastManager::updateToastPositions()
         }
     } else {
         // Position toasts relative to their parent windows
-        // Group toasts by parent
+        // Group toasts by parent - with defensive programming
         QMap<QWidget*, QList<ToastNotification*>> toastGroups;
         
-        for (ToastNotification* toast : m_activeToasts) {
-            if (!toast || !toast->isVisible()) continue;
+        // Make a copy of the list to avoid modification during iteration
+        QList<ToastNotification*> toastsCopy = m_activeToasts;
+        
+        for (ToastNotification* toast : toastsCopy) {
+            // Skip null pointers
+            if (!toast) {
+                continue;
+            }
+            
+            // Verify toast is still in our active list (may have been removed by destroyed signal)
+            if (!m_activeToasts.contains(toast)) {
+                continue;
+            }
+            
+            // Only proceed if toast is visible
+            if (!toast->isVisible()) {
+                continue;
+            }
             
             QWidget* parent = qobject_cast<QWidget*>(toast->parent());
             toastGroups[parent].append(toast);
