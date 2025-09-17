@@ -2025,10 +2025,14 @@ void DeviceMainWindow::showSendPGNToDevice(uint8_t targetAddress, const QString&
         
         blinkTxIndicator(message.DataLen);
         
-        // Log the sent message to all PGN log dialogs
-        for (PGNLogDialog* dialog : m_pgnLogDialogs) {
+        // Log the sent message to all PGN log dialogs - safer iteration
+        QList<PGNLogDialog*> dialogsCopy = m_pgnLogDialogs;  // Make a copy to avoid iterator invalidation
+        for (PGNLogDialog* dialog : dialogsCopy) {
             if (dialog && dialog->isVisible()) {
-                dialog->appendSentMessage(message);
+                // Additional safety check to ensure dialog is still in the original list
+                if (m_pgnLogDialogs.contains(dialog)) {
+                    dialog->appendSentMessage(message);
+                }
             }
         }
         
@@ -2038,6 +2042,10 @@ void DeviceMainWindow::showSendPGNToDevice(uint8_t targetAddress, const QString&
     });
     
     pgnDialog->exec();
+    
+    // Process any pending events to ensure messageTransmitted signal is handled
+    QCoreApplication::processEvents();
+    
     delete pgnDialog;
 }
 
