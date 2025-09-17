@@ -1,4 +1,5 @@
 #include "pgnlogdialog.h"
+#include "actionrecorder.h"
 #include <QMessageBox>
 #include <QRegularExpression>
 #include <QDebug>
@@ -550,6 +551,11 @@ void PGNLogDialog::clearLog()
 {
     int messageCount = m_logTable->rowCount();
     
+    // Record the action if recording is active
+    if (m_actionRecorder && m_actionRecorder->isRecording()) {
+        m_actionRecorder->recordLogClear();
+    }
+    
     m_logTable->setRowCount(0);
     m_messageTimestamps.clear();
     
@@ -1049,6 +1055,12 @@ void PGNLogDialog::onSourceFilterChanged()
 {
     QString text = m_sourceFilterCombo->currentText();
     
+    // Record the filter change if recording is active
+    if (m_actionRecorder && m_actionRecorder->isRecording()) {
+        QString destText = m_destinationFilterCombo->currentText();
+        m_actionRecorder->recordFilterChange(text, destText);
+    }
+    
     if (text == "Any") {
         m_sourceFilterActive = false; // Disable filtering when "Any" is selected
     } else {
@@ -1076,6 +1088,12 @@ void PGNLogDialog::onDestinationFilterChanged()
 {
     QString text = m_destinationFilterCombo->currentText();
     //qDebug() << "onDestinationFilterChanged called with text:" << text;
+    
+    // Record the filter change if recording is active
+    if (m_actionRecorder && m_actionRecorder->isRecording()) {
+        QString sourceText = m_sourceFilterCombo->currentText();
+        m_actionRecorder->recordFilterChange(sourceText, text);
+    }
     
     if (text == "Any") {
         m_destinationFilterActive = false; // Disable filtering when "Any" is selected
@@ -2735,4 +2753,9 @@ void PGNLogDialog::resizeEvent(QResizeEvent* event)
     if (m_searchPopup && m_searchPopup->isVisible()) {
         updateSearchPopupPosition();
     }
+}
+
+void PGNLogDialog::setActionRecorder(ActionRecorder* recorder)
+{
+    m_actionRecorder = recorder;
 }

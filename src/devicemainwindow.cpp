@@ -6,6 +6,8 @@
 #include "pocodevicedialog.h"
 #include "zonelightingdialog.h"
 #include "LumitecPoco.h"
+#include "actionrecorder.h"
+#include "testscriptengine.h"
 
 #ifdef WASM_BUILD
 #include "NMEA2000_WASM.h"
@@ -53,6 +55,9 @@
 #include <QRadioButton>
 #include <QButtonGroup>
 #include <QDateTime>
+#include <QFileDialog>
+#include <QTextStream>
+#include <QFile>
 
 tNMEA2000* nmea2000;
 extern char can_interface[80];
@@ -90,6 +95,11 @@ DeviceMainWindow::DeviceMainWindow(QWidget *parent)
     
     // Initialize the instance conflict analyzer
     m_conflictAnalyzer = new InstanceConflictAnalyzer(this);
+    
+    // Initialize recording and scripting components
+    m_actionRecorder = new ActionRecorder(this, this);
+    m_scriptEngine = new TestScriptEngine(this, this);
+    m_recordingWidget = nullptr; // Created on demand
     
     setupUI();
     setupMenuBar();
@@ -295,6 +305,15 @@ void DeviceMainWindow::setupMenuBar()
     toolsMenu->addSeparator();
     toolsMenu->addAction("&Analyze Instance Conflicts", this, &DeviceMainWindow::analyzeInstanceConflicts);
     toolsMenu->addAction("&Clear Conflict History", this, &DeviceMainWindow::clearConflictHistory);
+    
+    // Scripting menu
+    QMenu* scriptMenu = menuBar->addMenu("&Scripting");
+    scriptMenu->addAction("&Recording Controls...", this, &DeviceMainWindow::showRecordingControls);
+    scriptMenu->addAction("&Script Editor...", this, &DeviceMainWindow::showScriptEditor);
+    scriptMenu->addSeparator();
+    scriptMenu->addAction("&Execute Script...", this, &DeviceMainWindow::executeScript);
+    scriptMenu->addAction("&Load Script...", this, &DeviceMainWindow::loadScript);
+    scriptMenu->addAction("&Save Script...", this, &DeviceMainWindow::saveScript);
     
     // Help menu
     QMenu* helpMenu = menuBar->addMenu("&Help");
@@ -1970,6 +1989,9 @@ void DeviceMainWindow::showPGNLog()
         return getDeviceName(address);
     });
     
+    // Set up action recorder for recording user interactions
+    newDialog->setActionRecorder(m_actionRecorder);
+    
     // Connect the destroyed signal to our cleanup slot
     connect(newDialog, &QObject::destroyed, this, &DeviceMainWindow::onPGNLogDialogDestroyed);
     
@@ -2003,6 +2025,16 @@ void DeviceMainWindow::showSendPGNDialog()
     // Connect to the messageTransmitted signal to track bandwidth and blink TX indicator
     connect(pgnDialog, &PGNDialog::messageTransmitted, this, [this](const tN2kMsg& message) {
         blinkTxIndicator(message.DataLen);
+        
+        // Record the PGN sending action if recording is active
+        if (m_actionRecorder && m_actionRecorder->isRecording()) {
+            QString hexData;
+            for (int i = 0; i < message.DataLen; i++) {
+                if (i > 0) hexData += " ";
+                hexData += QString("%1").arg(message.Data[i], 2, 16, QChar('0')).toUpper();
+            }
+            m_actionRecorder->recordPGNSent(message.PGN, hexData, message.Destination);
+        }
         
         // Log the sent message to all PGN log dialogs - safer iteration
         QList<PGNLogDialog*> dialogsCopy = m_pgnLogDialogs;  // Make a copy to avoid iterator invalidation
@@ -2041,11 +2073,21 @@ void DeviceMainWindow::showSendPGNToDevice(uint8_t targetAddress, const QString&
     pgnDialog->setWindowTitle(QString("Send PGN to Device 0x%1").arg(nodeAddress));
     
     // Connect to the messageTransmitted signal to track bandwidth and blink TX indicator
-    connect(pgnDialog, &PGNDialog::messageTransmitted, this, [this](const tN2kMsg& message) {
+    connect(pgnDialog, &PGNDialog::messageTransmitted, this, [this, nodeAddress](const tN2kMsg& message) {
         qDebug() << "DeviceMainWindow: Received messageTransmitted signal with destination:" 
                  << QString("0x%1").arg(message.Destination, 2, 16, QChar('0')).toUpper();
         
         blinkTxIndicator(message.DataLen);
+        
+        // Record the PGN sending action if recording is active
+        if (m_actionRecorder && m_actionRecorder->isRecording()) {
+            QString hexData;
+            for (int i = 0; i < message.DataLen; i++) {
+                if (i > 0) hexData += " ";
+                hexData += QString("%1").arg(message.Data[i], 2, 16, QChar('0')).toUpper();
+            }
+            m_actionRecorder->recordPGNSentToDevice(message.PGN, hexData, nodeAddress);
+        }
         
         // Log the sent message to all PGN log dialogs - safer iteration
         QList<PGNLogDialog*> dialogsCopy = m_pgnLogDialogs;  // Make a copy to avoid iterator invalidation
@@ -2581,6 +2623,9 @@ void DeviceMainWindow::showPGNLogForDevice(uint8_t sourceAddress)
     deviceDialog->setDeviceNameResolver([this](uint8_t address) {
         return getDeviceName(address);
     });
+    
+    // Set up action recorder for recording user interactions
+    deviceDialog->setActionRecorder(m_actionRecorder);
     
     // Connect the destroyed signal to our cleanup slot
     connect(deviceDialog, &QObject::destroyed, this, &DeviceMainWindow::onPGNLogDialogDestroyed);
@@ -4000,5 +4045,166 @@ void DeviceMainWindow::onThemeChanged()
                 m_statusLabel->setStyleSheet(ThemeManager::instance()->getStatusStyle());
             }
         });
+    }
+}
+
+// Recording and scripting interface implementation
+bool DeviceMainWindow::isRecording() const
+{
+    return m_actionRecorder && m_actionRecorder->isRecording();
+}
+
+bool DeviceMainWindow::sendPGNMessage(int pgn, const QString& hexData, int destination)
+{
+    if (!m_isConnected || !nmea2000) {
+        qWarning() << "Cannot send PGN: Not connected to NMEA2000 interface";
+        return false;
+    }
+    
+    // Parse hex data into bytes
+    QStringList hexBytes = hexData.split(' ', Qt::SkipEmptyParts);
+    if (hexBytes.size() > 8) {
+        qWarning() << "PGN data too long:" << hexBytes.size() << "bytes (max 8)";
+        return false;
+    }
+    
+    // Create NMEA2000 message
+    tN2kMsg message;
+    message.SetPGN(pgn);
+    message.Destination = destination;
+    message.Priority = 6; // Normal priority
+    
+    // Convert hex strings to bytes
+    for (const QString& hexByte : hexBytes) {
+        bool ok;
+        uint8_t byte = hexByte.toUInt(&ok, 16);
+        if (!ok) {
+            qWarning() << "Invalid hex byte:" << hexByte;
+            return false;
+        }
+        message.AddByte(byte);
+    }
+    
+    // Send the message
+    bool success = nmea2000->SendMsg(message);
+    
+    if (success) {
+        qDebug() << "Script sent PGN" << pgn << "to destination" << destination;
+        blinkTxIndicator(message.DataLen);
+        
+        // Log to PGN dialogs
+        QList<PGNLogDialog*> dialogsCopy = m_pgnLogDialogs;
+        for (PGNLogDialog* dialog : dialogsCopy) {
+            if (dialog && dialog->isVisible() && m_pgnLogDialogs.contains(dialog)) {
+                dialog->appendSentMessage(message);
+            }
+        }
+    } else {
+        qWarning() << "Failed to send PGN" << pgn;
+    }
+    
+    return success;
+}
+
+bool DeviceMainWindow::sendPGNToDeviceAddress(int pgn, const QString& hexData, const QString& deviceAddress)
+{
+    // Convert device address from hex string to uint8_t
+    bool ok;
+    uint8_t address = deviceAddress.toUInt(&ok, 16);
+    if (!ok) {
+        qWarning() << "Invalid device address:" << deviceAddress;
+        return false;
+    }
+    
+    return sendPGNMessage(pgn, hexData, address);
+}
+
+void DeviceMainWindow::showRecordingControls()
+{
+    if (!m_recordingWidget) {
+        m_recordingWidget = new RecordingControlWidget(m_actionRecorder, this);
+        m_recordingWidget->setAttribute(Qt::WA_DeleteOnClose, false); // Keep it alive
+    }
+    
+    m_recordingWidget->show();
+    m_recordingWidget->raise();
+    m_recordingWidget->activateWindow();
+}
+
+void DeviceMainWindow::showScriptEditor()
+{
+    // TODO: Implement script editor dialog
+    QMessageBox::information(this, "Script Editor", "Script editor coming soon!");
+}
+
+void DeviceMainWindow::executeScript()
+{
+    QString fileName = QFileDialog::getOpenFileName(this, 
+        "Execute Script", "", "JavaScript Files (*.js);;JSON Test Files (*.json);;All Files (*)");
+    
+    if (!fileName.isEmpty() && m_scriptEngine) {
+        bool success;
+        if (fileName.endsWith(".js")) {
+            success = m_scriptEngine->executeScriptFile(fileName);
+        } else if (fileName.endsWith(".json")) {
+            success = m_scriptEngine->executeJsonTestFile(fileName);
+        } else {
+            QMessageBox::warning(this, "Unsupported Format", 
+                "Please select a JavaScript (.js) or JSON test (.json) file.");
+            return;
+        }
+        
+        if (!success) {
+            QMessageBox::warning(this, "Script Error", "Failed to execute script. Check console for details.");
+        }
+    }
+}
+
+void DeviceMainWindow::loadScript()
+{
+    QString fileName = QFileDialog::getOpenFileName(this, 
+        "Load Script", "", "JavaScript Files (*.js);;JSON Test Files (*.json);;All Files (*)");
+    
+    if (!fileName.isEmpty()) {
+        // TODO: Load script into editor
+        QMessageBox::information(this, "Load Script", 
+            QString("Script loading from %1 - Script editor coming soon!").arg(fileName));
+    }
+}
+
+void DeviceMainWindow::saveScript()
+{
+    if (!m_actionRecorder || m_actionRecorder->actionCount() == 0) {
+        QMessageBox::information(this, "No Recording", 
+            "No recorded actions to save. Please record some actions first.");
+        return;
+    }
+    
+    QString fileName = QFileDialog::getSaveFileName(this, 
+        "Save Script", "", "JavaScript Files (*.js);;JSON Test Files (*.json);;All Files (*)");
+    
+    if (!fileName.isEmpty()) {
+        QString script;
+        if (fileName.endsWith(".js")) {
+            script = m_actionRecorder->generateJavaScript();
+        } else if (fileName.endsWith(".json")) {
+            script = m_actionRecorder->generateJsonTest();
+        } else {
+            // Default to JavaScript
+            script = m_actionRecorder->generateJavaScript();
+        }
+        
+        QFile file(fileName);
+        if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            QTextStream out(&file);
+            out << script;
+            file.close();
+            
+            QMessageBox::information(this, "Script Saved", 
+                QString("Script saved to %1").arg(fileName));
+        } else {
+            QMessageBox::warning(this, "Save Error", 
+                QString("Failed to save script to %1").arg(fileName));
+        }
     }
 }

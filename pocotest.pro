@@ -1,4 +1,4 @@
-QT += core gui widgets network
+QT += core gui widgets network qml
 
 CONFIG += c++17
 
@@ -85,6 +85,8 @@ SOURCES += \
     src/toastnotification.cpp \
     src/toastmanager.cpp \
     src/thememanager.cpp \
+    src/actionrecorder.cpp \
+    src/testscriptengine.cpp \
     components/external/NMEA2000/src/NMEA2000.cpp \
     components/external/NMEA2000/src/N2kTimer.cpp \
     components/external/NMEA2000/src/N2kMsg.cpp \
@@ -117,7 +119,9 @@ HEADERS += \
     src/instanceconflictanalyzer.h \
     src/toastnotification.h \
     src/toastmanager.h \
-    src/thememanager.h
+    src/thememanager.h \
+    src/actionrecorder.h \
+    src/testscriptengine.h
 
 # Platform-specific headers
 wasm {

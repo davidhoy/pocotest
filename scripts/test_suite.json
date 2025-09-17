@@ -1,0 +1,236 @@
+{
+  "test_suite": {
+    "name": "Lumitec Poco Automated Test Suite",
+    "version": "1.0",
+    "description": "Comprehensive automated testing for Lumitec Poco lighting devices",
+    "setup": {
+      "interface": "vcan0",
+      "timeout_seconds": 60,
+      "filters": {
+        "log_all_traffic": true,
+        "ignore_pgns": [127250, 129026, 129029]
+      }
+    },
+    "tests": [
+      {
+        "name": "Device Discovery",
+        "description": "Verify devices are present and responding",
+        "timeout_seconds": 30,
+        "steps": [
+          {
+            "action": "clear_log",
+            "description": "Clear existing message log"
+          },
+          {
+            "action": "send_pgn",
+            "pgn": 59904,
+            "data": "FF FF FF FF FF FF FF FF",
+            "destination": 255,
+            "description": "Request ISO address claim from all devices"
+          },
+          {
+            "action": "wait",
+            "duration_ms": 3000,
+            "description": "Allow time for device responses"
+          },
+          {
+            "action": "validate",
+            "condition": "device_count >= 1",
+            "description": "At least one device must be present"
+          },
+          {
+            "action": "validate",
+            "condition": "lumitec_device_present",
+            "description": "At least one Lumitec device must be present"
+          }
+        ]
+      },
+      {
+        "name": "Basic Lighting Control",
+        "description": "Test basic zone on/off functionality",
+        "timeout_seconds": 20,
+        "steps": [
+          {
+            "action": "clear_log"
+          },
+          {
+            "action": "send_pgn",
+            "pgn": 130561,
+            "data": "00 FF 00 00 64 01 00 FF",
+            "destination": "0E",
+            "description": "Turn zone 1 ON at 100% brightness"
+          },
+          {
+            "action": "wait_for_pgn",
+            "pgn": 126208,
+            "source": "0E",
+            "timeout_ms": 3000,
+            "description": "Wait for acknowledgment"
+          },
+          {
+            "action": "wait",
+            "duration_ms": 1000,
+            "description": "Allow device processing time"
+          },
+          {
+            "action": "send_pgn",
+            "pgn": 130561,
+            "data": "00 FF 00 00 00 01 00 FF",
+            "destination": "0E",
+            "description": "Turn zone 1 OFF"
+          },
+          {
+            "action": "wait_for_pgn",
+            "pgn": 126208,
+            "source": "0E",
+            "timeout_ms": 3000,
+            "description": "Wait for acknowledgment"
+          }
+        ]
+      },
+      {
+        "name": "Multi-Zone Test",
+        "description": "Test multiple zones simultaneously",
+        "timeout_seconds": 45,
+        "loops": [
+          {
+            "variable": "zone",
+            "values": [1, 2, 3, 4],
+            "steps": [
+              {
+                "action": "send_pgn",
+                "pgn": 130561,
+                "data": "00 FF 00 00 64 {zone:02X} 00 FF",
+                "destination": "0E",
+                "description": "Turn zone {zone} ON"
+              },
+              {
+                "action": "wait_for_pgn",
+                "pgn": 126208,
+                "source": "0E",
+                "timeout_ms": 2000
+              },
+              {
+                "action": "wait",
+                "duration_ms": 500
+              }
+            ]
+          },
+          {
+            "action": "send_pgn",
+            "pgn": 130561,
+            "data": "00 FF 00 00 00 FF 00 FF",
+            "destination": "0E",
+            "description": "Turn all zones OFF"
+          },
+          {
+            "action": "wait_for_pgn",
+            "pgn": 126208,
+            "source": "0E",
+            "timeout_ms": 2000
+          }
+        ]
+      },
+      {
+        "name": "Brightness Levels",
+        "description": "Test various brightness levels",
+        "timeout_seconds": 60,
+        "loops": [
+          {
+            "variable": "brightness",
+            "values": [25, 50, 75, 100],
+            "steps": [
+              {
+                "action": "send_pgn",
+                "pgn": 130561,
+                "data": "00 FF 00 00 {brightness_hex} 01 00 FF",
+                "destination": "0E",
+                "description": "Set zone 1 to {brightness}% brightness"
+              },
+              {
+                "action": "wait_for_pgn",
+                "pgn": 126208,
+                "source": "0E",
+                "timeout_ms": 2000
+              },
+              {
+                "action": "wait",
+                "duration_ms": 1000,
+                "description": "Observe brightness level"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Error Handling",
+        "description": "Test device error responses",
+        "timeout_seconds": 30,
+        "steps": [
+          {
+            "action": "clear_log"
+          },
+          {
+            "action": "send_pgn",
+            "pgn": 130561,
+            "data": "00 FF 00 00 64 FF 00 FF",
+            "destination": "0E",
+            "description": "Send invalid zone number (FF)"
+          },
+          {
+            "action": "wait_for_pgn",
+            "pgn": 126208,
+            "source": "0E",
+            "timeout_ms": 3000,
+            "description": "Should receive NACK for invalid zone"
+          },
+          {
+            "action": "validate",
+            "condition": "last_message_data[1] == 1",
+            "description": "Verify NACK response (not ACK)"
+          }
+        ]
+      },
+      {
+        "name": "Message Timing",
+        "description": "Test rapid message transmission",
+        "timeout_seconds": 30,
+        "steps": [
+          {
+            "action": "clear_log"
+          },
+          {
+            "action": "loop",
+            "count": 20,
+            "delay_ms": 100,
+            "steps": [
+              {
+                "action": "send_pgn",
+                "pgn": 130561,
+                "data": "00 FF 00 00 32 01 00 FF",
+                "destination": "0E",
+                "description": "Rapid message test"
+              }
+            ]
+          },
+          {
+            "action": "wait",
+            "duration_ms": 2000,
+            "description": "Allow all responses to arrive"
+          },
+          {
+            "action": "validate",
+            "condition": "message_count >= 10",
+            "description": "Should receive multiple acknowledgments"
+          }
+        ]
+      }
+    ],
+    "reporting": {
+      "output_format": "json",
+      "include_message_log": true,
+      "include_timing": true,
+      "export_path": "test_results_{timestamp}.json"
+    }
+  }
+}

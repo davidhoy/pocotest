@@ -27,6 +27,8 @@
 #include <N2kMsg.h>
 #include "dbcdecoder.h"
 
+class ActionRecorder;
+
 class PGNLogDialog : public QDialog
 {
     Q_OBJECT
@@ -48,6 +50,9 @@ public:
     
     // Set device name resolver function
     void setDeviceNameResolver(DeviceNameResolver resolver);
+    
+    // Set action recorder for recording user interactions
+    void setActionRecorder(ActionRecorder* recorder);
 
 signals:
     void messageCountChanged(int newRowCount);
@@ -201,6 +206,9 @@ private:
     // Settings persistence
     void saveSettings();
     void loadSettings();
+    
+    // Recording support
+    ActionRecorder* m_actionRecorder = nullptr;
 };
 
 #endif // PGNLOGDIALOG_H

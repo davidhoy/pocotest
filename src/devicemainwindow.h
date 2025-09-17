@@ -28,6 +28,9 @@ class tNMEA2000_SocketCAN;
 class PGNLogDialog;
 class PocoDeviceDialog;
 class InstanceConflictAnalyzer;
+class ActionRecorder;
+class TestScriptEngine;
+class RecordingControlWidget;
 
 class DeviceMainWindow : public QMainWindow
 {
@@ -49,6 +52,15 @@ public:
     
     // Version information
     QString getVersionString() const;
+    
+    // Recording and scripting interface
+    ActionRecorder* getActionRecorder() const { return m_actionRecorder; }
+    TestScriptEngine* getScriptEngine() const { return m_scriptEngine; }
+    bool isRecording() const;
+    
+    // Message sending interface for scripts
+    bool sendPGNMessage(int pgn, const QString& hexData, int destination = 255);
+    bool sendPGNToDeviceAddress(int pgn, const QString& hexData, const QString& deviceAddress);
 
 private slots:
     void updateDeviceList();
@@ -63,6 +75,13 @@ private slots:
     void showDeviceContextMenu(const QPoint& position);
     void editInstallationLabels(uint8_t sourceAddress, const QString& nodeAddress);
     void onThemeChanged();
+    
+    // Recording and scripting slots
+    void showRecordingControls();
+    void showScriptEditor();
+    void executeScript();
+    void loadScript();
+    void saveScript();
 
 private:
     void setupUI();
@@ -244,6 +263,11 @@ private:
     // Follow-up device query tracking
     bool m_followUpQueriesScheduled;
     static const int FOLLOWUP_QUERY_DELAY_MS = 5000; // Wait 5 seconds after auto-discovery
+    
+    // Recording and scripting functionality
+    ActionRecorder* m_actionRecorder;
+    TestScriptEngine* m_scriptEngine;
+    RecordingControlWidget* m_recordingWidget;
     
     // Helper methods
     void updatePGNDialogDeviceList();

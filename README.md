@@ -4,6 +4,7 @@ A professional Qt-based NMEA2000 network diagnostic tool featuring real-time dev
 
 ## Recent Updates
 
+- **Test Recording & Scripting**: New action recording system with JavaScript and JSON test execution
 - **Qt6 Migration**: Upgraded from Qt5 to Qt6 for improved performance and modern API support
 - **WebAssembly Support**: Now includes WASM build configuration for browser-based deployment
 - **Headless Deployment**: Added SocketCAN-to-WebSocket bridge for Raspberry Pi deployment
@@ -18,6 +19,9 @@ A professional Qt-based NMEA2000 network diagnostic tool featuring real-time dev
 - **Live PGN Log**: Secondary window for detailed message analysis with pause/stop/start controls
 - **Advanced Signal Extraction**: Proper scaling, offsets, enumerated values, and unit conversion
 - **Intelligent Message Naming**: Clean PGN names with proprietary message detection
+- **Test Recording & Playback**: Record user interactions for automated test generation
+- **JavaScript Test Engine**: Execute custom test scripts with full API access
+- **JSON Test Definitions**: Create structured test configurations for complex scenarios
 - **Cross-Platform Support**: Linux, Windows, and macOS compatibility
 - **Multiple CAN Interface Support**: SocketCAN (Linux), Peak CAN, Vector, and other Windows drivers
 
@@ -25,10 +29,19 @@ A professional Qt-based NMEA2000 network diagnostic tool featuring real-time dev
 
 ### Native Build
 
-- **Qt 6** (6.4.2 or later) - `qt6-base-dev qt6-widgets-dev qt6-network-dev`
+- **Qt 6** (6.4.2 or later) - `qt6-base-dev qt6-widgets-dev qt6-network-dev qt6-declarative-dev`
 - **CMake** (version 3.16+) or **qmake**
 - **C++17 Compiler** (e.g., `g++`, `clang`, MSVC)
 - **CAN Interface Drivers** (platform-specific)
+
+### Scripting and Recording Features
+
+The application now includes advanced test recording and scripting functionality:
+
+- **JavaScript Test Engine** - For automated test execution
+- **JSON Test Definitions** - Structured test configuration support
+- **Action Recording** - Record user interactions for test replay
+- **Qt QML Module** - Required for JavaScript engine integration
 
 ## Building
 
@@ -53,7 +66,7 @@ git submodule update --init --recursive
 ```bash
 # Install dependencies
 sudo apt update
-sudo apt install qt6-base-dev qt6-widgets-dev qt6-network-dev cmake g++ can-utils
+sudo apt install qt6-base-dev qt6-widgets-dev qt6-network-dev qt6-declarative-dev cmake g++ can-utils
 ```
 
 #### ⚠️ Note for VS Code Users
@@ -206,13 +219,13 @@ git clone https://github.com/Microsoft/vcpkg.git
 cd vcpkg
 .\bootstrap-vcpkg.bat
 
-# Install Qt and dependencies
-.\vcpkg install qt6-base qt6-widgets qt6-network
+# Install Qt and dependencies (including QML for scripting features)
+.\vcpkg install qt6-base qt6-widgets qt6-network qt6-declarative
 ```
 
 #### Option 2: Manual Installation
 
-1. **Install Qt**: Download from [qt.io](https://www.qt.io/download)
+1. **Install Qt**: Download from [qt.io](https://www.qt.io/download) - ensure QML modules are included for scripting features
 2. **Install Visual Studio**: Community Edition with C++ support
 3. **Install CAN Driver**: Peak PCAN, Vector, or Kvaser drivers
 
@@ -241,6 +254,9 @@ mingw32-make
 brew install qt@6 cmake
 # Note: You may need to add Qt6 to your PATH:
 export PATH="/opt/homebrew/opt/qt@6/bin:$PATH"
+
+# For scripting features, ensure QML support is available:
+# Qt6 from Homebrew typically includes QML modules by default
 ```
 
 ## CAN Interface Support
