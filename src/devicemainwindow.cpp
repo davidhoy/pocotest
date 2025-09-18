@@ -57,6 +57,49 @@
 tNMEA2000* nmea2000;
 extern char can_interface[80];
 
+// Custom delegate implementation for consistent text alignment
+void AlignedTextDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const
+{
+    QStyleOptionViewItem opt = option;
+    
+    // Force consistent alignment based on column
+    int column = index.column();
+    if (column == 0 || column == 4) { // Node Address and Instance - center aligned
+        opt.displayAlignment = Qt::AlignCenter;
+    } else { // All other columns - left aligned
+        opt.displayAlignment = Qt::AlignLeft | Qt::AlignVCenter;
+    }
+    
+    // Use the table's font (no longer forcing monospace)
+    QFont font = opt.font;
+    font.setPointSize(9); // Keep consistent with table font size
+    opt.font = font;
+    
+    // Draw with exact positioning
+    painter->save();
+    painter->setFont(font);
+    
+    // Get the item text
+    QString text = index.data(Qt::DisplayRole).toString();
+    
+    // Calculate text rect with consistent margins
+    QRect textRect = opt.rect;
+    textRect.adjust(8, 0, -8, 0); // 8px left/right margins
+    
+    // Draw background if needed
+    if (opt.state & QStyle::State_Selected) {
+        painter->fillRect(opt.rect, opt.palette.highlight());
+        painter->setPen(opt.palette.highlightedText().color());
+    } else {
+        painter->setPen(opt.palette.text().color());
+    }
+    
+    // Draw text with exact alignment
+    painter->drawText(textRect, opt.displayAlignment, text);
+    
+    painter->restore();
+}
+
 // Static instance for message handling
 DeviceMainWindow* DeviceMainWindow::instance = nullptr;
 
@@ -240,6 +283,10 @@ void DeviceMainWindow::setupUI()
     QFont tableFont = m_deviceTable->font();
     tableFont.setPointSize(9);
     m_deviceTable->setFont(tableFont);
+    
+    // Set custom delegate for pixel-perfect text alignment (this is what actually fixed the alignment issue)
+    AlignedTextDelegate* delegate = new AlignedTextDelegate(this);
+    m_deviceTable->setItemDelegate(delegate);
     
     // Connect row selection signal for conflict highlighting
     connect(m_deviceTable->selectionModel(), &QItemSelectionModel::currentRowChanged,
@@ -1431,6 +1478,7 @@ void DeviceMainWindow::editInstallationLabels(uint8_t sourceAddress, const QStri
                 QTableWidgetItem* label1Item = m_deviceTable->item(row, 6);
                 if (!label1Item) {
                     label1Item = new QTableWidgetItem();
+                    //label1Item->setTextAlignment(Qt::AlignLeft | Qt::AlignVCenter);
                     m_deviceTable->setItem(row, 6, label1Item);
                 }
                 label1Item->setText(newLabel1);
@@ -1439,6 +1487,7 @@ void DeviceMainWindow::editInstallationLabels(uint8_t sourceAddress, const QStri
                 QTableWidgetItem* label2Item = m_deviceTable->item(row, 7);
                 if (!label2Item) {
                     label2Item = new QTableWidgetItem();
+                    //label2Item->setTextAlignment(Qt::AlignLeft | Qt::AlignVCenter);
                     m_deviceTable->setItem(row, 7, label2Item);
                 }
                 label2Item->setText(newLabel2);

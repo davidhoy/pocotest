@@ -21,6 +21,8 @@
 #include "LumitecPoco.h"
 #include "instanceconflictanalyzer.h"
 #include "thememanager.h"
+#include <QStyledItemDelegate>
+#include <QPainter>
 
 // Forward declarations
 class tN2kDeviceList;
@@ -28,6 +30,16 @@ class tNMEA2000_SocketCAN;
 class PGNLogDialog;
 class PocoDeviceDialog;
 class InstanceConflictAnalyzer;
+
+// Custom delegate for consistent text alignment
+class AlignedTextDelegate : public QStyledItemDelegate
+{
+    Q_OBJECT
+public:
+    explicit AlignedTextDelegate(QObject *parent = nullptr) : QStyledItemDelegate(parent) {}
+    
+    void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const override;
+};
 
 class DeviceMainWindow : public QMainWindow
 {
