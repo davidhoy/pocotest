@@ -15,6 +15,7 @@
 #include <QClipboard>
 #include <QTimer>
 #include <QTime>
+#include <QPointer>
 
 PGNLogDialog::PGNLogDialog(QWidget *parent)
     : QDialog(parent)
@@ -2433,10 +2434,17 @@ void PGNLogDialog::showDecodeDetails(int row)
     connect(nextShortcut2, &QShortcut::activated, nextButton, &QPushButton::click);
     
     // Connect to messageCountChanged signal to update navigation button states when new messages are added
-    connect(this, &PGNLogDialog::messageCountChanged, [currentRow, prevButton, nextButton](int newRowCount) {
-        // Update button states based on current row and new row count
-        prevButton->setEnabled(*currentRow > 0);
-        nextButton->setEnabled(*currentRow < newRowCount - 1);
+    // Use QPointer to safely check if buttons still exist when signal is emitted
+    QPointer<QPushButton> prevButtonPtr(prevButton);
+    QPointer<QPushButton> nextButtonPtr(nextButton);
+    
+    connect(this, &PGNLogDialog::messageCountChanged, [currentRow, prevButtonPtr, nextButtonPtr](int newRowCount) {
+        // Only update if buttons still exist
+        if (prevButtonPtr && nextButtonPtr && currentRow) {
+            // Update button states based on current row and new row count
+            prevButtonPtr->setEnabled(*currentRow > 0);
+            nextButtonPtr->setEnabled(*currentRow < newRowCount - 1);
+        }
     });
     
     // Show the dialog as non-modal (won't block other dialogs)
