@@ -65,7 +65,8 @@
         "streambuf": "cpp",
         "thread": "cpp",
         "typeinfo": "cpp",
-        "variant": "cpp"
+        "variant": "cpp",
+        "codecvt": "cpp"
     },
     "cmake.configureOnOpen": false,
     "C_Cpp.default.configurationProvider": "ms-vscode.makefile-tools",
