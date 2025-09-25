@@ -37,7 +37,10 @@ DBCDecoder::DBCDecoder(QObject *parent)
         initializeStandardNMEA2000();
     }
     
-    qDebug() << "DBCDecoder initialized with" << m_messages.size() << "message definitions";
+    // Initialize custom decoder lookup table
+    initializeCustomDecoders();
+    
+    qDebug() << "DBCDecoder initialized with" << m_messages.size() << "message definitions and" << m_customDecoders.size() << "custom decoders";
 }
 
 DBCDecoder::~DBCDecoder()
@@ -249,49 +252,13 @@ DecodedMessage DBCDecoder::decodeMessage(const tN2kMsg& msg)
     DecodedMessage decoded;
     decoded.isDecoded = false;
 
-    // Special handling for PGN 126208 (Request/Command/Acknowledge Group Function)
-    if (msg.PGN == 126208) {
-        return decodePGN126208(msg);
+    // Check if we have a custom decoder for this PGN
+    auto customDecoderIt = m_customDecoders.find(msg.PGN);
+    if (customDecoderIt != m_customDecoders.end()) {
+        return customDecoderIt.value().decoder(this, msg);
     }
 
-    // Special handling for PGN 126464 (PGN List)
-    if (msg.PGN == 126464) {
-        return decodePGN126464(msg);
-    }
-
-    // Special handling for PGN 126996 (Product Information)
-    if (msg.PGN == 126996) {
-        return decodePGN126996(msg);
-    }
-
-    // Special handling for PGN 126998 (Configuration Information)
-    if (msg.PGN == 126998) {
-        return decodePGN126998(msg);
-    }
-
-    // Special handling for lighting PGNs
-    if (msg.PGN == 130330) {
-        return decodePGN130330(msg);
-    }
-    if (msg.PGN == 130561) {
-        return decodePGN130561(msg);
-    }
-    if (msg.PGN == 130562) {
-        return decodePGN130562(msg);
-    }
-    if (msg.PGN == 130563) {
-        return decodePGN130563(msg);
-    }
-    if (msg.PGN == 130564) {
-        return decodePGN130564(msg);
-    }
-    if (msg.PGN == 130565) {
-        return decodePGN130565(msg);
-    }
-    if (msg.PGN == 130566) {
-        return decodePGN130566(msg);
-    }
-
+    // Fall back to DBC-based decoding if no custom decoder exists
     if (!m_messages.contains(msg.PGN)) {
         return decoded;
     }
@@ -406,46 +373,23 @@ bool DBCDecoder::isSignalValid(double rawValue, const DBCSignal& signal)
 
 bool DBCDecoder::canDecode(unsigned long pgn) const
 {
-    // Special handling for PGN 126208 (Group Function)
-    if (pgn == 126208) {
+    // Check if we have a custom decoder for this PGN
+    if (m_customDecoders.contains(pgn)) {
         return true;
     }
     
-    // Special handling for lighting PGNs
-    if (pgn == 130330 || pgn == 130561 || pgn == 130562 || pgn == 130563 || pgn == 130564 || pgn == 130565 || pgn == 130566) {
-        return true;
-    }
-    
+    // Check if we have a DBC definition for this PGN
     return m_messages.contains(pgn);
 }
 
 QString DBCDecoder::getMessageName(unsigned long pgn) const
 {
-    // Special handling for PGN 126208 (Group Function)
-    if (pgn == 126208) {
-        return "Group Function";
+    // First check if we have a custom decoder with a name for this PGN
+    if (m_customDecoders.contains(pgn)) {
+        return m_customDecoders[pgn].name;
     }
     
-    // Special handling for lighting PGNs
-    if (pgn == 130330) {
-        return "Lighting System Settings";
-    }
-    if (pgn == 130561) {
-        return "Zone Lighting Control";
-    }
-    if (pgn == 130563) {
-        return "Lighting Device";
-    }
-    if (pgn == 130564) {
-        return "Lighting Device Enumeration";
-    }
-    if (pgn == 130565) {
-        return "Lighting Color Sequence";
-    }
-    if (pgn == 130566) {
-        return "Lighting Program";
-    }
-    
+    // Fall back to DBC message names
     if (m_messages.contains(pgn)) {
         return m_messages[pgn].name;
     }
@@ -585,6 +529,16 @@ QString DBCDecoder::getDecoderInfo() const
     return info;
 }
 
+QList<unsigned long> DBCDecoder::getCustomDecoderPGNs() const
+{
+    return m_customDecoders.keys();
+}
+
+bool DBCDecoder::hasCustomDecoder(unsigned long pgn) const
+{
+    return m_customDecoders.contains(pgn);
+}
+
 QString DBCDecoder::formatSignalValue(const DecodedSignal& signal)
 {
     if (!signal.isValid || signal.value.toString() == "N/A") {
@@ -619,6 +573,28 @@ QString DBCDecoder::decodePGN(const tN2kMsg& msg)
     }
     
     return decoded;
+}
+
+void DBCDecoder::initializeCustomDecoders()
+{
+    // Initialize the custom decoder lookup table with PGN number, name, and decoder function
+    // This makes it easy to add new custom decoders and maintain them in one place
+    
+    // NMEA2000 Standard PGN decoders
+    m_customDecoders[126208] = {126208, "Group Function",              [](DBCDecoder* decoder, const tN2kMsg& msg) { return decoder->decodePGN126208(msg); }};
+    m_customDecoders[126464] = {126464, "PGN List",                    [](DBCDecoder* decoder, const tN2kMsg& msg) { return decoder->decodePGN126464(msg); }};
+    m_customDecoders[126996] = {126996, "Product Information",         [](DBCDecoder* decoder, const tN2kMsg& msg) { return decoder->decodePGN126996(msg); }};
+    m_customDecoders[126998] = {126998, "Configuration Information",   [](DBCDecoder* decoder, const tN2kMsg& msg) { return decoder->decodePGN126998(msg); }};
+    m_customDecoders[127501] = {127501, "Binary Switch Bank Status",   [](DBCDecoder* decoder, const tN2kMsg& msg) { return decoder->decodePGN127501(msg); }};
+    
+    // Lighting PGN decoders
+    m_customDecoders[130330] = {130330, "Lighting System Settings",    [](DBCDecoder* decoder, const tN2kMsg& msg) { return decoder->decodePGN130330(msg); }};
+    m_customDecoders[130561] = {130561, "Zone Lighting Control",       [](DBCDecoder* decoder, const tN2kMsg& msg) { return decoder->decodePGN130561(msg); }};
+    m_customDecoders[130562] = {130562, "Lighting Scene",              [](DBCDecoder* decoder, const tN2kMsg& msg) { return decoder->decodePGN130562(msg); }};
+    m_customDecoders[130563] = {130563, "Lighting Device",             [](DBCDecoder* decoder, const tN2kMsg& msg) { return decoder->decodePGN130563(msg); }};
+    m_customDecoders[130564] = {130564, "Lighting Device Enumeration", [](DBCDecoder* decoder, const tN2kMsg& msg) { return decoder->decodePGN130564(msg); }};
+    m_customDecoders[130565] = {130565, "Lighting Color Sequence",     [](DBCDecoder* decoder, const tN2kMsg& msg) { return decoder->decodePGN130565(msg); }};
+    m_customDecoders[130566] = {130566, "Lighting Program",            [](DBCDecoder* decoder, const tN2kMsg& msg) { return decoder->decodePGN130566(msg); }};
 }
 
 // Lighting PGN Decoders
@@ -1490,6 +1466,106 @@ DecodedMessage DBCDecoder::decodePGN130330(const tN2kMsg& msg)
     sigIdentifyDevice.value = QString("0x%1").arg(identifyDevice, 1, 16, QChar('0')).toUpper();
     sigIdentifyDevice.isValid = true;
     decoded.signalList.append(sigIdentifyDevice);
+
+    return decoded;
+}
+
+// Binary Switch Bank Status Decoder
+DecodedMessage DBCDecoder::decodePGN127501(const tN2kMsg& msg)
+{
+    DecodedMessage decoded;
+    decoded.messageName = "Binary Switch Bank Status (127501)";
+    decoded.description = "NMEA2000 Binary Switch Bank Status Message";
+    decoded.isDecoded = true;
+
+    if (msg.DataLen < 2) {
+        DecodedSignal sig;
+        sig.name = "Error";
+        sig.value = "Message too short for PGN 127501";
+        sig.isValid = false;
+        decoded.signalList.append(sig);
+        return decoded;
+    }
+
+    int index = 0;
+
+    // Field 1 - Device/Bank Instance (1 byte)
+    uint8_t bankInstance = msg.GetByte(index);
+    DecodedSignal sigBankInstance;
+    sigBankInstance.name = "Bank Instance";
+    sigBankInstance.value = QString::number(bankInstance);
+    sigBankInstance.isValid = true;
+    decoded.signalList.append(sigBankInstance);
+
+    // The remaining bytes contain the binary status data for up to 28 switches
+    // Each switch uses 2 bits (4 switches per byte)
+    // Bits 0-1: Switch 1, Bits 2-3: Switch 2, etc.
+    
+    // Calculate how many switches we can decode based on available data
+    int availableDataBytes = msg.DataLen - 1; // Subtract 1 for instance byte
+    int maxSwitches = qMin(28, availableDataBytes * 4); // 4 switches per byte, max 28
+    
+    for (int switchNum = 1; switchNum <= maxSwitches; switchNum++) {
+        // Calculate which byte and which bits within that byte
+        int byteIndex = (switchNum - 1) / 4;
+        int bitOffset = ((switchNum - 1) % 4) * 2;
+        
+        if (index + byteIndex >= msg.DataLen) {
+            break; // Safety check
+        }
+        
+        uint8_t dataByte = msg.Data[index + byteIndex];
+        uint8_t switchValue = (dataByte >> bitOffset) & 0x03; // Extract 2 bits
+        
+        DecodedSignal sigSwitch;
+        sigSwitch.name = QString("Switch %1").arg(switchNum);
+        sigSwitch.isValid = true;
+        
+        // Decode the 2-bit status value according to tN2kOnOff enumeration
+        switch (switchValue) {
+            case 0:
+                sigSwitch.value = "Off";
+                break;
+            case 1:
+                sigSwitch.value = "On";
+                break;
+            case 2:
+                sigSwitch.value = "Error";
+                break;
+            case 3:
+                sigSwitch.value = "Unavailable";
+                break;
+            default:
+                sigSwitch.value = QString("Unknown (%1)").arg(switchValue);
+                break;
+        }
+        
+        decoded.signalList.append(sigSwitch);
+    }
+    
+    // Add summary information
+    if (maxSwitches > 0) {
+        // Count active switches
+        int activeCount = 0, errorCount = 0, unavailableCount = 0;
+        for (const DecodedSignal& sig : decoded.signalList) {
+            if (sig.name.startsWith("Switch ")) {
+                if (sig.value == "On") activeCount++;
+                else if (sig.value == "Error") errorCount++;
+                else if (sig.value == "Unavailable") unavailableCount++;
+            }
+        }
+        
+        DecodedSignal sigSummary;
+        sigSummary.name = "Summary";
+        sigSummary.value = QString("%1 switches decoded: %2 on, %3 off, %4 error, %5 unavailable")
+                          .arg(maxSwitches)
+                          .arg(activeCount)
+                          .arg(maxSwitches - activeCount - errorCount - unavailableCount)
+                          .arg(errorCount)
+                          .arg(unavailableCount);
+        sigSummary.isValid = true;
+        decoded.signalList.append(sigSummary);
+    }
 
     return decoded;
 }

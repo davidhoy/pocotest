@@ -6,6 +6,7 @@
 #include <QList>
 #include <QMap>
 #include <QVariant>
+#include <functional>
 #include <N2kMsg.h>
 
 struct DBCSignal {
@@ -74,6 +75,8 @@ public:
     QStringList getAvailablePGNs() const;
     bool isInitialized() const;  // Status check for compatibility
     QString getDecoderInfo() const;  // Enhanced decoder status info
+    QList<unsigned long> getCustomDecoderPGNs() const;  // Get list of PGNs with custom decoders
+    bool hasCustomDecoder(unsigned long pgn) const;     // Check if PGN has custom decoder
 
 private:
     void initializeStandardNMEA2000();
@@ -109,9 +112,24 @@ private:
     DecodedMessage decodePGN126464(const tN2kMsg& msg);  // PGN List
     DecodedMessage decodePGN126996(const tN2kMsg& msg);  // Product Information
     DecodedMessage decodePGN126998(const tN2kMsg& msg);  // Configuration Information
+    DecodedMessage decodePGN127501(const tN2kMsg& msg);  // Binary Switch Bank Status
 
 private:
+    // Custom decoder function pointer type
+    using CustomDecoderFunction = std::function<DecodedMessage(DBCDecoder*, const tN2kMsg&)>;
+    
+    // Custom decoder entry structure
+    struct CustomDecoderEntry {
+        unsigned long pgn;
+        QString name;
+        CustomDecoderFunction decoder;
+    };
+    
     QMap<unsigned long, DBCMessage> m_messages;
+    QMap<unsigned long, CustomDecoderEntry> m_customDecoders;
+    
+    // Initialize custom decoder lookup table
+    void initializeCustomDecoders();
 };
 
 #endif // DBCDECODER_H
