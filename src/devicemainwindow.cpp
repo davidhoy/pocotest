@@ -903,11 +903,11 @@ void DeviceMainWindow::populateDeviceTable()
     
     // Add the local device (this application) to the device list
     uint8_t localSource = nmea2000->GetN2kSource();
-    qDebug() << "Adding local device to device list with source:" << QString("0x%1").arg(localSource, 2, 16, QChar('0')).toUpper();
     
     // Create a local device entry if it doesn't exist in the device list
     const tNMEA2000::tDevice* localDevice = m_deviceList->FindDeviceBySource(localSource);
     if (!localDevice) {
+        qDebug() << "Adding local device to device list with source:" << QString("0x%1").arg(localSource, 2, 16, QChar('0')).toUpper();
         // Force add the local device to the device list by creating a fake address claim message
         tN2kMsg addressClaimMsg;
         uint32_t uniqueNumber = 12345; // Match our device info
@@ -944,17 +944,34 @@ void DeviceMainWindow::populateDeviceTable()
         qDebug() << "Registered local device with product and configuration information";
     }
     
+    // Ensure the local device has proper activity tracking
+    updateDeviceActivity(localSource);
+    
     // First pass: update existing devices and mark active ones
     for (uint8_t source = 0; source < N2kMaxBusDevices; source++) {
         const tNMEA2000::tDevice* device = m_deviceList->FindDeviceBySource(source);
         if (device) {
-            bool isActive = (source == localSource) || (m_deviceActivity.contains(source) && m_deviceActivity[source].isActive);
+            // Determine if device is active based on activity tracking
+            bool isActive;
+            if (source == localSource) {
+                // Local device is always considered active
+                isActive = true;
+            } else if (m_deviceActivity.contains(source)) {
+                // Use existing activity status
+                isActive = m_deviceActivity[source].isActive;
+            } else {
+                // Device not in activity tracking - consider it inactive until it sends a message
+                isActive = false;
+            }
             
             if (existingDeviceRows.contains(source)) {
                 // Update existing device
                 int row = existingDeviceRows[source];
                 updateDeviceTableRow(row, source, device, isActive);
-                m_deviceActivity[source].tableRow = row;
+                if (m_deviceActivity.contains(source)) {
+                    m_deviceActivity[source].tableRow = row;
+                }
+                // Don't create activity entries here - let updateDeviceActivity() handle it when messages arrive
                 deviceCount++;
                 
                 // Add to known devices if not already there
@@ -964,7 +981,10 @@ void DeviceMainWindow::populateDeviceTable()
                 int newRow = m_deviceTable->rowCount();
                 m_deviceTable->insertRow(newRow);
                 updateDeviceTableRow(newRow, source, device, isActive);
-                m_deviceActivity[source].tableRow = newRow;
+                if (m_deviceActivity.contains(source)) {
+                    m_deviceActivity[source].tableRow = newRow;
+                }
+                // Don't create activity entries here - let updateDeviceActivity() handle it when messages arrive
                 deviceCount++;
                 
                 // Check if this is truly a new device (not just a reconnection)
@@ -3362,11 +3382,13 @@ void DeviceMainWindow::updateDeviceActivity(uint8_t sourceAddress) {
     if (m_deviceActivity.contains(sourceAddress)) {
         m_deviceActivity[sourceAddress].lastSeen = now;
         m_deviceActivity[sourceAddress].isActive = true;
+        m_deviceActivity[sourceAddress].isoRequestSent = false; // Reset ISO request flag on activity
     } else {
         DeviceActivity activity;
         activity.lastSeen = now;
         activity.isActive = true;
         activity.tableRow = -1; // Will be set when device is added to table
+        activity.isoRequestSent = false;
         m_deviceActivity[sourceAddress] = activity;
     }
 }
@@ -3382,8 +3404,18 @@ void DeviceMainWindow::checkDeviceTimeouts() {
             // Device has been inactive for removal timeout - mark for removal
             devicesToRemove.append(it.key());
         } else if (msSinceLastSeen > DEVICE_TIMEOUT_MS) {
-            // Device has been inactive for timeout - mark as inactive but don't remove yet
+            // Device has been inactive for 65+ seconds - mark as inactive
+            if (it->isActive) {
+                qDebug() << "Device" << QString("0x%1").arg(it.key(), 2, 16, QChar('0')).toUpper() 
+                         << "timed out after" << msSinceLastSeen << "ms (threshold:" << DEVICE_TIMEOUT_MS << "ms)";
+            }
             it->isActive = false;
+        } else if (msSinceLastSeen > DEVICE_ISO_REQUEST_MS && !it->isoRequestSent) {
+            // Device has been inactive for 60+ seconds - send ISO request (fire and forget)
+            qDebug() << "Device" << QString("0x%1").arg(it.key(), 2, 16, QChar('0')).toUpper() 
+                     << "silent for" << msSinceLastSeen << "ms - sending connectivity check";
+            sendIsoRequestToDevice(it.key());
+            it->isoRequestSent = true; // Mark as sent to avoid duplicate requests
         }
     }
     
@@ -3449,6 +3481,22 @@ void DeviceMainWindow::grayOutInactiveDevices() {
                 }
             }
         }
+    }
+}
+
+void DeviceMainWindow::sendIsoRequestToDevice(uint8_t deviceAddress) {
+    // Don't send ISO request to local device
+    if (deviceAddress == nmea2000->GetN2kSource()) {
+        return;
+    }
+    
+    // Send ISO Request for Configuration Information (PGN 126998) to test connectivity
+    tN2kMsg isoRequest;
+    SetN2kPGN59904(isoRequest, deviceAddress, N2kPGNConfigurationInformation);
+    
+    if (nmea2000->SendMsg(isoRequest)) {
+        qDebug() << "Sent ISO request (PGN 126998) to device" << QString("0x%1").arg(deviceAddress, 2, 16, QChar('0')).toUpper()
+                 << "for connectivity test";
     }
 }
 

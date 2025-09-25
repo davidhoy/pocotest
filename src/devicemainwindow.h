@@ -108,6 +108,7 @@ private:
     void checkDeviceTimeouts();
     void removeInactiveDevice(uint8_t deviceAddress);
     void grayOutInactiveDevices();
+    void sendIsoRequestToDevice(uint8_t deviceAddress);
     void updateDeviceTableRow(int row, uint8_t source, const tNMEA2000::tDevice* device, bool isActive);
     
     // Context menu methods
@@ -219,10 +220,14 @@ private:
         QDateTime lastSeen;
         bool isActive;
         int tableRow; // Track table row to avoid reordering
+        bool isoRequestSent; // Track if ISO request has been sent for this timeout period
     };
     QMap<uint8_t, DeviceActivity> m_deviceActivity; // key: source address
-    static const int DEVICE_TIMEOUT_MS = 30000; // 30 seconds
-    static const int DEVICE_REMOVAL_TIMEOUT_MS = 120000; // 2 minutes - remove inactive devices
+
+    static const int DEVICE_HEARTBEAT_MS       = 60000;                         // 60 seconds - consider device active if seen within this time
+    static const int DEVICE_ISO_REQUEST_MS     = (DEVICE_HEARTBEAT_MS + 2000);  // 62 seconds - send ISO request (hysteresis for 60s heartbeat)
+    static const int DEVICE_TIMEOUT_MS         = (DEVICE_HEARTBEAT_MS + 7000);  // 67 seconds - mark device as inactive
+    static const int DEVICE_REMOVAL_TIMEOUT_MS = 180000;                        // 3 minutes - remove truly disconnected devices
     
     // Product information request tracking
     QSet<uint8_t> m_pendingProductInfoRequests; // Track which devices we've requested info from
