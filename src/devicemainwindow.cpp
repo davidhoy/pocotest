@@ -19,6 +19,7 @@
 #include "instanceconflictanalyzer.h"
 #include <NMEA2000.h>
 #include <N2kGroupFunction.h>
+#include <N2kMessages.h>
 #include <QDir>
 #ifndef WASM_BUILD
 #include <QProcess>
@@ -70,14 +71,21 @@ void AlignedTextDelegate::paint(QPainter *painter, const QStyleOptionViewItem &o
         opt.displayAlignment = Qt::AlignLeft | Qt::AlignVCenter;
     }
     
-    // Use the table's font (no longer forcing monospace)
-    QFont font = opt.font;
-    font.setPointSize(9); // Keep consistent with table font size
-    opt.font = font;
+    // Use custom font if set, otherwise use table's font
+    QFont font = index.data(Qt::FontRole).value<QFont>();
+    if (!font.family().isEmpty()) {
+        // Custom font is set, use it
+        opt.font = font;
+    } else {
+        // No custom font, use default with consistent size
+        font = opt.font;
+        font.setPointSize(9);
+        opt.font = font;
+    }
     
     // Draw with exact positioning
     painter->save();
-    painter->setFont(font);
+    painter->setFont(opt.font);
     
     // Get the item text
     QString text = index.data(Qt::DisplayRole).toString();
@@ -91,7 +99,14 @@ void AlignedTextDelegate::paint(QPainter *painter, const QStyleOptionViewItem &o
         painter->fillRect(opt.rect, opt.palette.highlight());
         painter->setPen(opt.palette.highlightedText().color());
     } else {
-        painter->setPen(opt.palette.text().color());
+        // Check for custom text color, otherwise use default
+        QVariant foregroundData = index.data(Qt::ForegroundRole);
+        if (foregroundData.isValid()) {
+            QBrush brush = foregroundData.value<QBrush>();
+            painter->setPen(brush.color());
+        } else {
+            painter->setPen(opt.palette.text().color());
+        }
     }
     
     // Draw text with exact alignment
@@ -422,12 +437,58 @@ void DeviceMainWindow::initNMEA2000()
     // Verify the actual interface being used
     verifyCanInterface();
     
-    // Set device information
-    nmea2000->SetDeviceInformation(1, // Unique number for this device
+    // Set device information - Use Lumitec manufacturer code for legitimate network presence
+    nmea2000->SetDeviceInformation(12345, // Unique number for this device (should be unique)
                                   130, // Device function - PC Gateway
                                   25,  // Device class - Internetwork Device
-                                  2046, // Manufacturer code (use a generic one)
-                                  4);   // Industry group - Marine
+                                  LUMITEC_MANUFACTURER_CODE, // Lumitec manufacturer code (1512)
+                                  MARINE_INDUSTRY_CODE);   // Industry group - Marine
+    
+    // Set product information to identify this as a Lumitec diagnostic tool
+    nmea2000->SetProductInformation("POCO-DIAG-001",      // Model Serial Code
+                                   1000,                   // Product Code (diagnostic tool)
+                                   "NMEA2000 Analyzer",    // Model ID  
+                                   "1.0.0",                // Software Code
+                                   "1.0",                  // Model Version
+                                   1,                      // Load Equivalency (1 * 50mA = 50mA)
+                                   2101,                   // NMEA2000 Version
+                                   1);                     // Certification Level
+    
+    // Set configuration information
+    nmea2000->SetConfigurationInformation("Lumitec, Inc. - www.lumitec.com",           // Manufacturer Info
+                                         "NMEA2000 Network Diagnostic Tool",            // Installation Description 1
+                                         "Poco Protocol Analyzer and Tester");          // Installation Description 2
+    
+    // Declare supported PGNs to appear as a legitimate diagnostic tool
+    const unsigned long TransmitPGNs[] = {
+        126208L,  // Group Function (ISO Command/Request)
+        126464L,  // PGN List
+        126996L,  // Product Information
+        126998L,  // Configuration Information
+        LUMITEC_PGN_61184,  // Lumitec Poco protocol messages
+        0  // End marker
+    };
+    
+    const unsigned long ReceivePGNs[] = {
+        126208L,  // Group Function
+        126464L,  // PGN List
+        126996L,  // Product Information
+        126998L,  // Configuration Information
+        127501L,  // Binary Switch Bank Status
+        130330L,  // Lighting System Settings
+        130561L,  // Zone Lighting Control
+        130562L,  // Lighting Scene
+        130563L,  // Lighting Device
+        130564L,  // Lighting Device Enumeration
+        130565L,  // Lighting Color Sequence
+        130566L,  // Lighting Program
+        LUMITEC_PGN_61184,  // Lumitec Poco protocol messages
+        0  // End marker
+    };
+    
+    // Set the PGN lists
+    nmea2000->ExtendTransmitMessages(TransmitPGNs);
+    nmea2000->ExtendReceiveMessages(ReceivePGNs);
     
     nmea2000->SetMode(tNMEA2000::N2km_ListenAndNode, 22);
     nmea2000->EnableForward(false);
@@ -840,11 +901,54 @@ void DeviceMainWindow::populateDeviceTable()
     
     int deviceCount = 0;
     
+    // Add the local device (this application) to the device list
+    uint8_t localSource = nmea2000->GetN2kSource();
+    qDebug() << "Adding local device to device list with source:" << QString("0x%1").arg(localSource, 2, 16, QChar('0')).toUpper();
+    
+    // Create a local device entry if it doesn't exist in the device list
+    const tNMEA2000::tDevice* localDevice = m_deviceList->FindDeviceBySource(localSource);
+    if (!localDevice) {
+        // Force add the local device to the device list by creating a fake address claim message
+        tN2kMsg addressClaimMsg;
+        uint32_t uniqueNumber = 12345; // Match our device info
+        uint16_t manufacturerCode = LUMITEC_MANUFACTURER_CODE;
+        uint8_t deviceFunction = 130; // PC Gateway
+        uint8_t deviceClass = 25; // Internetwork Device
+        uint8_t deviceInstance = 0;
+        uint8_t systemInstance = 0;
+        uint8_t industryGroup = MARINE_INDUSTRY_CODE;
+        
+        // Build ISO Address Claim message (PGN 60928)
+        SetN2kPGN60928(addressClaimMsg, uniqueNumber, manufacturerCode, deviceFunction, 
+                       deviceClass, deviceInstance, systemInstance, industryGroup);
+        addressClaimMsg.Source = localSource;
+        
+        // Let the device list handle this message to register our local device
+        m_deviceList->HandleMsg(addressClaimMsg);
+        
+        // Also send product information for the local device
+        tN2kMsg productInfoMsg;
+        SetN2kPGN126996(productInfoMsg, 1000, 2101, "POCO-DIAG-001", "1.0.0", "NMEA2000 Analyzer", "1.0", 1, 1);
+        productInfoMsg.Source = localSource;
+        m_deviceList->HandleMsg(productInfoMsg);
+        
+        // Send configuration information for the local device
+        tN2kMsg configInfoMsg;
+        SetN2kPGN126998(configInfoMsg, 
+                       "Lumitec, Inc. - www.lumitec.com",          // Manufacturer Info
+                       "NMEA2000 Network Diagnostic Tool",         // Installation Description 1
+                       "Poco Protocol Analyzer and Tester");       // Installation Description 2
+        configInfoMsg.Source = localSource;
+        m_deviceList->HandleMsg(configInfoMsg);
+        
+        qDebug() << "Registered local device with product and configuration information";
+    }
+    
     // First pass: update existing devices and mark active ones
     for (uint8_t source = 0; source < N2kMaxBusDevices; source++) {
         const tNMEA2000::tDevice* device = m_deviceList->FindDeviceBySource(source);
         if (device) {
-            bool isActive = m_deviceActivity.contains(source) && m_deviceActivity[source].isActive;
+            bool isActive = (source == localSource) || (m_deviceActivity.contains(source) && m_deviceActivity[source].isActive);
             
             if (existingDeviceRows.contains(source)) {
                 // Update existing device
@@ -3349,6 +3453,9 @@ void DeviceMainWindow::grayOutInactiveDevices() {
 }
 
 void DeviceMainWindow::updateDeviceTableRow(int row, uint8_t source, const tNMEA2000::tDevice* device, bool isActive) {
+    // Check if this is the local device (own node)
+    bool isLocalDevice = (source == nmea2000->GetN2kSource());
+    
     // Node Address (Source) - in hex format like Maretron
     QTableWidgetItem* nodeAddressItem = new QTableWidgetItem(QString("%1").arg(source, 2, 16, QChar('0')).toUpper());
     nodeAddressItem->setTextAlignment(Qt::AlignCenter);
@@ -3405,12 +3512,27 @@ void DeviceMainWindow::updateDeviceTableRow(int row, uint8_t source, const tNMEA
     m_deviceTable->setItem(row, 6, new QTableWidgetItem(installDesc1));
     m_deviceTable->setItem(row, 7, new QTableWidgetItem(installDesc2));
     
-    // Set text color based on activity status
-    QColor textColor = isActive ? QColor(Qt::black) : QColor(Qt::gray);
+    // Set text color and formatting based on activity status and local device
+    QColor textColor;
+    QFont font;
+    
+    if (isLocalDevice) {
+        // Local device (own node) - use a distinctive blue-green color that works in light and dark themes
+        textColor = QColor(0, 128, 128);  // Teal color - good contrast in both themes
+        font.setBold(false);  // Keep regular weight
+        font.setItalic(true); // Just italic for subtle distinction
+    } else {
+        // Regular devices - black if active, gray if inactive
+        textColor = isActive ? QColor(Qt::black) : QColor(Qt::gray);
+        font.setBold(false);
+        font.setItalic(false);
+    }
+    
     for (int col = 0; col < m_deviceTable->columnCount(); col++) {
         QTableWidgetItem* item = m_deviceTable->item(row, col);
         if (item) {
             item->setForeground(QBrush(textColor));
+            item->setFont(font);
         }
     }
 }
