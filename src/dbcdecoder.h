@@ -95,6 +95,9 @@ private:
     // Field name mapping for group functions
     QString getFieldName(unsigned long pgn, uint8_t fieldNumber) const;
     
+    // Field size mapping for group functions
+    int getFieldSize(unsigned long pgn, uint8_t fieldNumber) const;
+    
     // Helper functions for PGN descriptions
     QString getPGNDescription(uint32_t pgn);
     

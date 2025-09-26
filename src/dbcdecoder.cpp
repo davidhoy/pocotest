@@ -1578,12 +1578,12 @@ DecodedMessage DBCDecoder::decodePGN126208(const tN2kMsg& msg)
     decoded.description = "NMEA2000 Group Function Command/Request/Ack";
     decoded.isDecoded = true;
 
-    // Minimum length check - Group Function needs at least 6 bytes
-    // (Function Code + PGN[3] + Priority + Number of Parameters)
-    if (msg.DataLen < 6) {
+    // Minimum length check - Group Function needs at least 4 bytes
+    // (Function Code + PGN[3])
+    if (msg.DataLen < 4) {
         DecodedSignal sig;
         sig.name = "Error";
-        sig.value = "Too short for 126208 decode (minimum 6 bytes)";
+        sig.value = "Too short for 126208 decode (minimum 4 bytes)";
         sig.isValid = true;
         decoded.signalList.append(sig);
         return decoded;
@@ -1593,10 +1593,6 @@ DecodedMessage DBCDecoder::decodePGN126208(const tN2kMsg& msg)
     uint8_t functionCode = msg.Data[0];
     // Bytes 1-3: Target PGN (little endian)
     uint32_t targetPGN = msg.Data[1] | (msg.Data[2] << 8) | (msg.Data[3] << 16);
-    // Byte 4: Priority
-    uint8_t priority = msg.Data[4];
-    // Byte 5: Number of parameters
-    uint8_t numParams = msg.Data[5];
 
     DecodedSignal sigFC;
     sigFC.name = "Function Code";
@@ -1626,30 +1622,99 @@ DecodedMessage DBCDecoder::decodePGN126208(const tN2kMsg& msg)
     sigPGN.isValid = true;
     decoded.signalList.append(sigPGN);
 
-    DecodedSignal sigPrio;
-    sigPrio.name = "Priority";
-    sigPrio.value = priority;
-    sigPrio.isValid = true;
-    decoded.signalList.append(sigPrio);
+    // Check message length to determine format
+    if (msg.DataLen >= 5) {
+        // Byte 4: Priority (in extended format) or Number of Parameters (in simple format)
+        uint8_t byte4 = msg.Data[4];
+        
+        // Detect extended format: if we have > 11 bytes and byte 4 is 0xFF (priority), 
+        // then look for actual parameter count later in the message
+        uint8_t numParams = 0;
+        int paramStart = 5;
+        
+        if (msg.DataLen > 11 && byte4 == 0xFF) {
+            // Extended format detected - look for parameter count after padding
+            
+            // Skip padding bytes (typically bytes 5-9 are 0xFF)
+            int paramCountIdx = 10; // Parameter count typically at byte 10
+            if (paramCountIdx < msg.DataLen) {
+                numParams = msg.Data[paramCountIdx];
+                paramStart = paramCountIdx + 1;
+                
+                DecodedSignal sigPrio;
+                sigPrio.name = "Priority";
+                sigPrio.value = byte4;
+                sigPrio.isValid = true;
+                decoded.signalList.append(sigPrio);
+            }
+        } else {
+            // Simple format - byte 4 is number of parameters
+            numParams = byte4;
+            paramStart = 5;
+        }
 
-    DecodedSignal sigNumParams;
-    sigNumParams.name = "Number of Parameters";
-    sigNumParams.value = numParams;
-    sigNumParams.isValid = true;
-    decoded.signalList.append(sigNumParams);
+        DecodedSignal sigNumParams;
+        sigNumParams.name = "Number of Parameters";
+        sigNumParams.value = numParams;
+        sigNumParams.isValid = true;
+        decoded.signalList.append(sigNumParams);
 
-    // Each parameter: Byte 6 + 2*i: Field Number, Byte 7 + 2*i: Value
-    int paramStart = 6;
-    for (uint8_t i = 0; i < numParams; ++i) {
-        int fieldIdx = paramStart + i * 2;
-        if (fieldIdx + 1 >= msg.DataLen) break;
-        uint8_t fieldNum = msg.Data[fieldIdx];
-        uint8_t fieldVal = msg.Data[fieldIdx + 1];
-        DecodedSignal sigField;
-        sigField.name = getFieldName(targetPGN, fieldNum);
-        sigField.value = fieldVal;
-        sigField.isValid = true;
-        decoded.signalList.append(sigField);
+        // Decode parameters: Variable length based on field type
+        int paramPos = paramStart;
+        for (uint8_t i = 0; i < numParams && paramPos < msg.DataLen; ++i) {
+            if (paramPos >= msg.DataLen) break;
+            
+            uint8_t fieldNum = msg.Data[paramPos++];
+            if (paramPos >= msg.DataLen) break;
+            
+            uint32_t fieldVal = 0;
+            int valueBytes = 1; // Default
+            
+            // Determine value size based on field number and PGN
+            int expectedSize = getFieldSize(targetPGN, fieldNum);
+            
+            if (expectedSize == -1) {
+                // Variable length field - next byte is length
+                if (paramPos < msg.DataLen) {
+                    valueBytes = msg.Data[paramPos++]; // Read length byte
+                    if (paramPos + valueBytes <= msg.DataLen) {
+                        // For string fields, store as string (up to first 4 chars as uint32)
+                        fieldVal = 0;
+                        for (int i = 0; i < std::min(valueBytes, 4); i++) {
+                            fieldVal |= (msg.Data[paramPos + i] << (i * 8));
+                        }
+                    } else {
+                        fieldVal = 0;
+                        valueBytes = 0;
+                    }
+                } else {
+                    fieldVal = 0;
+                    valueBytes = 0;
+                }
+            } else if (expectedSize == 2 && paramPos + 1 < msg.DataLen) {
+                fieldVal = msg.Data[paramPos] | (msg.Data[paramPos + 1] << 8);
+                valueBytes = 2;
+            } else if (expectedSize == 3 && paramPos + 2 < msg.DataLen) {
+                fieldVal = msg.Data[paramPos] | (msg.Data[paramPos + 1] << 8) | (msg.Data[paramPos + 2] << 16);
+                valueBytes = 3;
+            } else if (expectedSize == 4 && paramPos + 3 < msg.DataLen) {
+                fieldVal = msg.Data[paramPos] | (msg.Data[paramPos + 1] << 8) | 
+                          (msg.Data[paramPos + 2] << 16) | (msg.Data[paramPos + 3] << 24);
+                valueBytes = 4;
+            } else {
+                // Default to 1 byte
+                fieldVal = msg.Data[paramPos];
+                valueBytes = 1;
+            }
+            
+            DecodedSignal sigField;
+            sigField.name = getFieldName(targetPGN, fieldNum);
+            sigField.value = fieldVal;
+            sigField.isValid = true;
+            decoded.signalList.append(sigField);
+            
+            paramPos += valueBytes;
+        }
     }
     
     return decoded;
@@ -2018,7 +2083,7 @@ QString DBCDecoder::getFieldName(unsigned long pgn, uint8_t fieldNumber) const
             switch (fieldNumber) {
                 case 1: return "Field 1 - Device Index";
                 case 2: return "Field 2 - Device Instance";
-                case 3: return "Field 3 - Device Name";
+                case 3: return "Field 3 - Number of Devices";
                 case 4: return "Field 4 - Device Type";
                 default: return QString("Field %1").arg(fieldNumber);
             }
@@ -2243,5 +2308,149 @@ QString DBCDecoder::getPGNDescription(uint32_t pgn)
         return "Proprietary/Lighting";
     } else {
         return "Unknown Range";
+    }
+}
+
+int DBCDecoder::getFieldSize(unsigned long pgn, uint8_t fieldNumber) const
+{
+    switch (pgn) {
+        case 126996: // Product Information
+            switch (fieldNumber) {
+                case 1: return 2; // NMEA 2000 Version
+                case 2: return 2; // Product Code
+                case 3: return -1; // Model ID (variable length string)
+                case 4: return -1; // Software Version (variable length string)
+                case 5: return -1; // Model Version (variable length string)
+                case 6: return -1; // Model Serial Code (variable length string)
+                case 7: return 1; // Certification Level
+                case 8: return 1; // Load Equivalency
+                default: return 1;
+            }
+            
+        case 126998: // Configuration Information
+            switch (fieldNumber) {
+                case 1: return -1; // Station ID (variable length string)
+                case 2: return -1; // Station Name (variable length string)
+                case 3: return -1; // A to N Designation (variable length string)
+                default: return 1;
+            }
+            
+        case 130330: // Lighting System Settings
+            switch (fieldNumber) {
+                case 1: return 1; // System Instance
+                case 2: return -1; // Controller Name (variable length string)
+                case 3: return 1; // Max Scenes
+                case 4: return 1; // Max Scene Config Count
+                case 5: return 1; // Max Zones
+                case 6: return 1; // Max Color Sequences
+                case 7: return 1; // Max Color Seq Color Count
+                case 8: return 1; // Number of Programs
+                case 9: return 1; // Controller Capabilities
+                case 10: return 2; // Identify Device
+                default: return 1;
+            }
+            
+        case 130561: // Zone Lighting Control
+            switch (fieldNumber) {
+                case 1: return 1; // Zone ID
+                case 2: return -1; // Zone Name (variable length string)
+                case 3: return 1; // Red
+                case 4: return 1; // Green
+                case 5: return 1; // Blue
+                case 6: return 2; // Color Temperature
+                case 7: return 1; // Intensity
+                case 8: return 1; // Program ID
+                case 9: return 1; // Color Sequence Index
+                case 10: return 1; // Program Intensity
+                case 11: return 1; // Program Rate
+                case 12: return 1; // Color Sequence Rate
+                case 13: return 1; // Zone Enabled
+                default: return 1;
+            }
+            
+        case 130562: // Lighting Scene
+            switch (fieldNumber) {
+                case 1: return 1; // Scene ID
+                case 2: return -1; // Scene Name (variable length string)
+                case 3: return 1; // Control
+                case 4: return 1; // Config Count
+                default: return 1;
+            }
+            
+        case 130563: // Lighting Device Information
+            switch (fieldNumber) {
+                case 1: return 4; // Device ID (4 bytes)
+                case 2: return 1; // Device Capabilities
+                case 3: return 1; // Color Capabilities
+                case 4: return 1; // Zone Index
+                case 5: return -1; // Device Name (variable length string)
+                case 6: return 1; // Device Status
+                case 7: return 1; // Red
+                case 8: return 1; // Green
+                case 9: return 1; // Blue
+                case 10: return 2; // Color Temperature
+                case 11: return 1; // Intensity
+                case 12: return 1; // Program ID
+                case 13: return 1; // Color Sequence ID
+                case 14: return 1; // Program Intensity
+                case 15: return 1; // Program Rate
+                case 16: return 1; // Color Sequence Rate
+                case 17: return 1; // Program Enabled
+                default: return 1;
+            }
+            
+        case 130564: // Lighting Device Enumeration
+            switch (fieldNumber) {
+                case 1: return 2; // Device Index - 2 bytes
+                case 2: return 1; // Device Instance - 1 byte  
+                case 3: return 2; // Number of devices - 2 bytes
+                case 4: return 1; // Device Type - 1 byte
+                default: return 1;
+            }
+            
+        case 130565: // Lighting Color Sequence
+            switch (fieldNumber) {
+                case 1: return 1; // Sequence Index
+                case 2: return 1; // Color Count
+                case 3: return 1; // Color Index
+                case 4: return 1; // Red
+                case 5: return 1; // Green
+                case 6: return 1; // Blue
+                case 7: return 2; // Color Temperature
+                case 8: return 1; // Intensity
+                default: return 1;
+            }
+            
+        case 130566: // Lighting Program
+            switch (fieldNumber) {
+                case 1: return 1; // Program ID
+                case 2: return -1; // Program Name (variable length string)
+                case 3: return -1; // Program Description (variable length string)
+                case 4: return 1; // Program Capabilities
+                default: return 1;
+            }
+            
+        case 59904: // ISO Request
+            switch (fieldNumber) {
+                case 1: return 3; // Requested PGN (3 bytes)
+                default: return 1;
+            }
+            
+        case 59392: // ISO Acknowledgement
+            switch (fieldNumber) {
+                case 1: return 1; // Control
+                case 2: return 1; // Group Function
+                case 3: return 3; // PGN (3 bytes)
+                default: return 1;
+            }
+            
+        case 60928: // ISO Address Claim
+            switch (fieldNumber) {
+                case 1: return 8; // NAME field is 8 bytes total
+                default: return 1;
+            }
+            
+        default:
+            return 1; // Default to 1 byte for unknown PGNs
     }
 }
