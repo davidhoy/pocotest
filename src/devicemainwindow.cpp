@@ -3504,8 +3504,8 @@ void DeviceMainWindow::updateDeviceTableRow(int row, uint8_t source, const tNMEA
     // Check if this is the local device (own node)
     bool isLocalDevice = (source == nmea2000->GetN2kSource());
     
-    // Node Address (Source) - in hex format like Maretron
-    QTableWidgetItem* nodeAddressItem = new QTableWidgetItem(QString("%1").arg(source, 2, 16, QChar('0')).toUpper());
+    // Node Address (Source) - in hex format with 0x prefix like standard NMEA2000 tools
+    QTableWidgetItem* nodeAddressItem = new QTableWidgetItem(QString("0x%1").arg(QString("%1").arg(source, 2, 16, QChar('0')).toUpper()));
     nodeAddressItem->setTextAlignment(Qt::AlignCenter);
     m_deviceTable->setItem(row, 0, nodeAddressItem);
     

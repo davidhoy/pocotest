@@ -79,11 +79,15 @@ void PGNDialog::setupUI()
     m_sourceSpinBox = new QSpinBox();
     m_sourceSpinBox->setRange(0, 251);
     m_sourceSpinBox->setValue(22);  // Default source address
+    m_sourceSpinBox->setDisplayIntegerBase(16);
+    m_sourceSpinBox->setPrefix("0x");
     msgLayout->addRow("Source:", m_sourceSpinBox);
     
     m_destinationSpinBox = new QSpinBox();
     m_destinationSpinBox->setRange(0, 255);
     m_destinationSpinBox->setValue(255);  // Broadcast
+    m_destinationSpinBox->setDisplayIntegerBase(16);
+    m_destinationSpinBox->setPrefix("0x");
     msgLayout->addRow("Destination:", m_destinationSpinBox);
     
     topLayout->addWidget(msgGroup);
