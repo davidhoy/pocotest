@@ -5,7 +5,6 @@ moc*.*
 *.stash
 /Makefile
 pocotest
-*.pgnlog
 .vscode/*.log
 .vscode/Verbose
 
