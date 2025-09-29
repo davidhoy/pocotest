@@ -98,6 +98,9 @@ private:
     // Field size mapping for group functions
     int getFieldSize(unsigned long pgn, uint8_t fieldNumber) const;
     
+    // Special group function decoders
+    void decodePGN130565GroupFunction(DecodedMessage& decoded, const tN2kMsg& msg, int& paramPos, uint8_t numParams);
+    
     // Helper functions for PGN descriptions
     QString getPGNDescription(uint32_t pgn);
     

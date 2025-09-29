@@ -12,6 +12,32 @@
 #include "N2kMessages.h"
 #include "NMEA2000.h"
 
+
+/**
+ * @brief Map intensity value from 0~255 space to 0~200 space.
+ * Linear 1-1 mapping
+ */
+int mapIntensity255To200(int value)
+{
+    if (value <= 0) return 0;
+    if (value >= 255) return 200;
+    // Round to nearest integer
+    return (int)((value * 200 + 127) / 255);
+}
+
+/**
+ * @brief Map intensity value from 0~200 space to 0~255 space.
+ * Linear 1-1 mapping
+ */
+int mapIntensity200To255(int value)
+{
+    if (value < 0) return 0;
+    if (value > 200) return 255;
+    // Round to nearest integer
+    return (int)((value * 255 + 100) / 200);
+}
+
+
 DBCDecoder::DBCDecoder(QObject *parent)
     : QObject(parent)
 {
@@ -675,8 +701,8 @@ DecodedMessage DBCDecoder::decodePGN130561(const tN2kMsg& msg)
     DecodedSignal sigIntensity;
     sigIntensity.name = "Intensity";
     sigIntensity.isValid = true;
-    if (intensity <= 200) {
-        sigIntensity.value = QString("%1 (%2%)").arg(intensity).arg((intensity / 2.0), 0, 'f', 1);
+    if (intensity <= 100) {
+        sigIntensity.value = QString("%1").arg(intensity);
     } else {
         sigIntensity.value = QString("Out of range (%1)").arg(intensity);
     }
@@ -709,12 +735,12 @@ DecodedMessage DBCDecoder::decodePGN130561(const tN2kMsg& msg)
     // Field 10 - Program Intensity (0-255)
     uint8_t programIntensity = msg.GetByte(index);
     DecodedSignal sigProgramIntensity;
-    sigProgramIntensity.name = "Intensity";
+    sigProgramIntensity.name = "Program Intensity";
     sigProgramIntensity.isValid = true;
-    if (programIntensity == 255) {
-        sigProgramIntensity.value = "Not Available";
+    if (programIntensity <= 100) {
+        sigProgramIntensity.value = QString("%1").arg(programIntensity);
     } else {
-        sigProgramIntensity.value = QString("%1 (%2%)").arg(programIntensity).arg((programIntensity * 100.0 / 255.0), 0, 'f', 1);
+        sigProgramIntensity.value = "Not Available";
     }
     decoded.signalList.append(sigProgramIntensity);
 
@@ -865,7 +891,7 @@ DecodedMessage DBCDecoder::decodePGN130562(const tN2kMsg& msg)
         // Field 10 - Program Intensity (0-255)
         uint8_t programIntensity = msg.GetByte(index);
         DecodedSignal sigProgramIntensity;
-        sigProgramIntensity.name = QString("Intensity [%1]").arg(i);
+        sigProgramIntensity.name = QString("Program Intensity [%1]").arg(i);
         sigProgramIntensity.isValid = true;
         sigProgramIntensity.value = QString::number(programIntensity);
         decoded.signalList.append(sigProgramIntensity);
@@ -1659,65 +1685,178 @@ DecodedMessage DBCDecoder::decodePGN126208(const tN2kMsg& msg)
         sigNumParams.isValid = true;
         decoded.signalList.append(sigNumParams);
 
-        // Decode parameters: Variable length based on field type
+        // Decode parameters: Handle complex structures like PGN 130565
         int paramPos = paramStart;
-        for (uint8_t i = 0; i < numParams && paramPos < msg.DataLen; ++i) {
-            if (paramPos >= msg.DataLen) break;
-            
-            uint8_t fieldNum = msg.Data[paramPos++];
-            if (paramPos >= msg.DataLen) break;
-            
-            uint32_t fieldVal = 0;
-            int valueBytes = 1; // Default
-            
-            // Determine value size based on field number and PGN
-            int expectedSize = getFieldSize(targetPGN, fieldNum);
-            
-            if (expectedSize == -1) {
-                // Variable length field - next byte is length
-                if (paramPos < msg.DataLen) {
-                    valueBytes = msg.Data[paramPos++]; // Read length byte
-                    if (paramPos + valueBytes <= msg.DataLen) {
-                        // For string fields, store as string (up to first 4 chars as uint32)
-                        fieldVal = 0;
-                        for (int i = 0; i < std::min(valueBytes, 4); i++) {
-                            fieldVal |= (msg.Data[paramPos + i] << (i * 8));
+        
+        if (targetPGN == 130565) {
+            // Special handling for PGN 130565 (Lighting Color Sequence)
+            decodePGN130565GroupFunction(decoded, msg, paramPos, numParams);
+        } else {
+            // Standard parameter decoding for other PGNs
+            for (uint8_t i = 0; i < numParams && paramPos < msg.DataLen; ++i) {
+                if (paramPos >= msg.DataLen) break;
+                
+                uint8_t fieldNum = msg.Data[paramPos++];
+                if (paramPos >= msg.DataLen) break;
+                
+                uint32_t fieldVal = 0;
+                int valueBytes = 1; // Default
+                
+                // Determine value size based on field number and PGN
+                int expectedSize = getFieldSize(targetPGN, fieldNum);
+                
+                if (expectedSize == -1) {
+                    // Variable length field - next byte is length
+                    if (paramPos < msg.DataLen) {
+                        valueBytes = msg.Data[paramPos++]; // Read length byte
+                        if (paramPos + valueBytes <= msg.DataLen) {
+                            // For string fields, store as string (up to first 4 chars as uint32)
+                            fieldVal = 0;
+                            for (int i = 0; i < std::min(valueBytes, 4); i++) {
+                                fieldVal |= (msg.Data[paramPos + i] << (i * 8));
+                            }
+                        } else {
+                            fieldVal = 0;
+                            valueBytes = 0;
                         }
                     } else {
                         fieldVal = 0;
                         valueBytes = 0;
                     }
+                } else if (expectedSize == 2 && paramPos + 1 < msg.DataLen) {
+                    fieldVal = msg.Data[paramPos] | (msg.Data[paramPos + 1] << 8);
+                    valueBytes = 2;
+                } else if (expectedSize == 3 && paramPos + 2 < msg.DataLen) {
+                    fieldVal = msg.Data[paramPos] | (msg.Data[paramPos + 1] << 8) | (msg.Data[paramPos + 2] << 16);
+                    valueBytes = 3;
+                } else if (expectedSize == 4 && paramPos + 3 < msg.DataLen) {
+                    fieldVal = msg.Data[paramPos] | (msg.Data[paramPos + 1] << 8) | 
+                              (msg.Data[paramPos + 2] << 16) | (msg.Data[paramPos + 3] << 24);
+                    valueBytes = 4;
                 } else {
-                    fieldVal = 0;
-                    valueBytes = 0;
+                    // Default to 1 byte
+                    fieldVal = msg.Data[paramPos];
+                    valueBytes = 1;
                 }
-            } else if (expectedSize == 2 && paramPos + 1 < msg.DataLen) {
-                fieldVal = msg.Data[paramPos] | (msg.Data[paramPos + 1] << 8);
-                valueBytes = 2;
-            } else if (expectedSize == 3 && paramPos + 2 < msg.DataLen) {
-                fieldVal = msg.Data[paramPos] | (msg.Data[paramPos + 1] << 8) | (msg.Data[paramPos + 2] << 16);
-                valueBytes = 3;
-            } else if (expectedSize == 4 && paramPos + 3 < msg.DataLen) {
-                fieldVal = msg.Data[paramPos] | (msg.Data[paramPos + 1] << 8) | 
-                          (msg.Data[paramPos + 2] << 16) | (msg.Data[paramPos + 3] << 24);
-                valueBytes = 4;
-            } else {
-                // Default to 1 byte
-                fieldVal = msg.Data[paramPos];
-                valueBytes = 1;
+                
+                DecodedSignal sigField;
+                sigField.name = getFieldName(targetPGN, fieldNum);
+                sigField.value = fieldVal;
+                sigField.isValid = true;
+                decoded.signalList.append(sigField);
+                
+                paramPos += valueBytes;
             }
-            
-            DecodedSignal sigField;
-            sigField.name = getFieldName(targetPGN, fieldNum);
-            sigField.value = fieldVal;
-            sigField.isValid = true;
-            decoded.signalList.append(sigField);
-            
-            paramPos += valueBytes;
         }
     }
     
     return decoded;
+}
+
+// Special group function decoder for PGN 130565 (Lighting Color Sequence)
+void DBCDecoder::decodePGN130565GroupFunction(DecodedMessage& decoded, const tN2kMsg& msg, int& paramPos, uint8_t numParams)
+{
+    // PGN 130565 has a complex structure: Sequence Index, Color Count, then repeating color entries
+    // Each color entry has: Color Index, Red, Green, Blue, Color Temperature (2 bytes), Intensity
+    
+    for (uint8_t i = 0; i < numParams && paramPos < msg.DataLen; ++i) {
+        if (paramPos >= msg.DataLen) break;
+        
+        uint8_t fieldNum = msg.Data[paramPos++];
+        if (paramPos >= msg.DataLen) break;
+        
+        DecodedSignal sigField;
+        sigField.isValid = true;
+        
+        // Handle fields based on their number and expected structure
+        if (fieldNum == 1) {
+            // Field 1 - Sequence Index (1 byte)
+            sigField.name = "Sequence Index";
+            sigField.value = msg.Data[paramPos];
+            paramPos += 1;
+        } else if (fieldNum == 2) {
+            // Field 2 - Color Count (1 byte)
+            sigField.name = "Color Count";
+            sigField.value = msg.Data[paramPos];
+            paramPos += 1;
+        } else if (fieldNum >= 3) {
+            // Fields 3+ are part of color entries (repeating pattern of 6 fields per color)
+            // Calculate which color entry this belongs to and which field within that entry
+            int colorFieldOffset = (fieldNum - 3) % 6; // 0-5: Color Index, Red, Green, Blue, Color Temp, Intensity
+            int colorIndex = (fieldNum - 3) / 6;       // Which color entry (0, 1, 2, ...)
+            
+            switch (colorFieldOffset) {
+                case 0: // Color Index
+                    sigField.name = QString("Color Index [%1]").arg(colorIndex);
+                    sigField.value = msg.Data[paramPos];
+                    paramPos += 1;
+                    break;
+                case 1: // Red
+                    sigField.name = QString("Red [%1]").arg(colorIndex);
+                    {
+                        uint8_t redValue = msg.Data[paramPos];
+                        sigField.value = QString("%1 (0x%2)").arg(redValue).arg(redValue, 2, 16, QChar('0')).toUpper();
+                    }
+                    paramPos += 1;
+                    break;
+                case 2: // Green
+                    sigField.name = QString("Green [%1]").arg(colorIndex);
+                    {
+                        uint8_t greenValue = msg.Data[paramPos];
+                        sigField.value = QString("%1 (0x%2)").arg(greenValue).arg(greenValue, 2, 16, QChar('0')).toUpper();
+                    }
+                    paramPos += 1;
+                    break;
+                case 3: // Blue
+                    sigField.name = QString("Blue [%1]").arg(colorIndex);
+                    {
+                        uint8_t blueValue = msg.Data[paramPos];
+                        sigField.value = QString("%1 (0x%2)").arg(blueValue).arg(blueValue, 2, 16, QChar('0')).toUpper();
+                    }
+                    paramPos += 1;
+                    break;
+                case 4: // Color Temperature (2 bytes)
+                    sigField.name = QString("Color Temperature [%1]").arg(colorIndex);
+                    if (paramPos + 1 < msg.DataLen) {
+                        uint16_t colorTemp = msg.Data[paramPos] | (msg.Data[paramPos + 1] << 8);
+                        if (colorTemp == 0xFFFF) {
+                            sigField.value = "N/A (65535)";
+                        } else if (colorTemp == 0) {
+                            sigField.value = "Not Available (0)";
+                        } else {
+                            sigField.value = QString("%1K").arg(colorTemp);
+                        }
+                        paramPos += 2;
+                    } else {
+                        sigField.value = "Invalid";
+                        sigField.isValid = false;
+                        paramPos = msg.DataLen; // Stop parsing
+                    }
+                    break;
+                case 5: // Intensity
+                    sigField.name = QString("Intensity [%1]").arg(colorIndex);
+                    {
+                        uint8_t intensityValue = msg.Data[paramPos];
+                        if (intensityValue == 0xFF) {
+                            sigField.value = "N/A (255)";
+                        } else if (intensityValue <= 100) {
+                            sigField.value = QString("%1%").arg(intensityValue);
+                        } else {
+                            sigField.value = QString("%1 (out of range)").arg(intensityValue);
+                        }
+                    }
+                    paramPos += 1;
+                    break;
+            }
+        } else {
+            // Unknown field
+            sigField.name = QString("Field %1").arg(fieldNum);
+            sigField.value = msg.Data[paramPos];
+            paramPos += 1;
+        }
+        
+        decoded.signalList.append(sigField);
+    }
 }
 
 // Dedicated function for decoding PGN 126464 (PGN List)
@@ -2090,14 +2229,14 @@ QString DBCDecoder::getFieldName(unsigned long pgn, uint8_t fieldNumber) const
             
         case 130565: // Lighting Color Sequence
             switch (fieldNumber) {
-                case 1: return "Field 1 - Sequence ID";
-                case 2: return "Field 2 - Sequence Name";
-                case 3: return "Field 3 - Color Count";
-                case 4: return "Field 4 - Color Index";
-                case 5: return "Field 5 - Red";
-                case 6: return "Field 6 - Green";
-                case 7: return "Field 7 - Blue";
-                case 8: return "Field 8 - Duration";
+                case 1: return "Field 1 - Sequence Index";
+                case 2: return "Field 2 - Color Count";
+                case 3: return "Field 3 - Color Index";
+                case 4: return "Field 4 - Red";
+                case 5: return "Field 5 - Green";
+                case 6: return "Field 6 - Blue";
+                case 7: return "Field 7 - Color Temperature";
+                case 8: return "Field 8 - Intensity";
                 default: return QString("Field %1").arg(fieldNumber);
             }
             
@@ -2416,7 +2555,7 @@ int DBCDecoder::getFieldSize(unsigned long pgn, uint8_t fieldNumber) const
                 case 4: return 1; // Red
                 case 5: return 1; // Green
                 case 6: return 1; // Blue
-                case 7: return 2; // Color Temperature
+                case 7: return 2; // Color Temperature (2 bytes)
                 case 8: return 1; // Intensity
                 default: return 1;
             }
