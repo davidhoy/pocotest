@@ -1648,105 +1648,115 @@ DecodedMessage DBCDecoder::decodePGN126208(const tN2kMsg& msg)
     sigPGN.isValid = true;
     decoded.signalList.append(sigPGN);
 
-    // Check message length to determine format
-    if (msg.DataLen >= 5) {
-        // Byte 4: Priority (in extended format) or Number of Parameters (in simple format)
+    // Parse according to NMEA 2000 Group Function specification
+    if (msg.DataLen >= 6) {
+        // Byte 4: Priority Setting (bits 0-3) + Reserved (bits 4-7)
         uint8_t byte4 = msg.Data[4];
+        uint8_t prioritySetting = byte4 & 0x0F;  // Lower 4 bits
+        uint8_t reservedBits = (byte4 >> 4) & 0x0F;  // Upper 4 bits
         
-        // Detect extended format: if we have > 11 bytes and byte 4 is 0xFF (priority), 
-        // then look for actual parameter count later in the message
-        uint8_t numParams = 0;
-        int paramStart = 5;
-        
-        if (msg.DataLen > 11 && byte4 == 0xFF) {
-            // Extended format detected - look for parameter count after padding
-            
-            // Skip padding bytes (typically bytes 5-9 are 0xFF)
-            int paramCountIdx = 10; // Parameter count typically at byte 10
-            if (paramCountIdx < msg.DataLen) {
-                numParams = msg.Data[paramCountIdx];
-                paramStart = paramCountIdx + 1;
-                
-                DecodedSignal sigPrio;
-                sigPrio.name = "Priority";
-                sigPrio.value = byte4;
-                sigPrio.isValid = true;
-                decoded.signalList.append(sigPrio);
-            }
+        QString priorityDesc;
+        if (prioritySetting <= 7) {
+            priorityDesc = QString("Priority %1").arg(prioritySetting);
+        } else if (prioritySetting == 8) {
+            priorityDesc = "Do not change priority";
+        } else if (prioritySetting == 9) {
+            priorityDesc = "Return to default priority";
         } else {
-            // Simple format - byte 4 is number of parameters
-            numParams = byte4;
-            paramStart = 5;
+            priorityDesc = QString("Reserved (%1)").arg(prioritySetting);
         }
-
+        
+        DecodedSignal sigPriority;
+        sigPriority.name = "Priority Setting";
+        sigPriority.value = QString("%1 (0x%2)").arg(priorityDesc).arg(prioritySetting, 1, 16, QChar('0')).toUpper();
+        sigPriority.isValid = true;
+        decoded.signalList.append(sigPriority);
+        
+        DecodedSignal sigReserved;
+        sigReserved.name = "Reserved Bits";
+        sigReserved.value = QString("0x%1").arg(reservedBits, 1, 16, QChar('0')).toUpper();
+        sigReserved.isValid = true;
+        decoded.signalList.append(sigReserved);
+        
+        // Byte 5: Number of parameter pairs
+        uint8_t numParams = msg.Data[5];
+        int paramStart = 6;
+        
+        // Handle special case: 0xFF means "not applicable" (simple request with no parameters)
+        if (numParams == 0xFF) {
+            DecodedSignal sigNumParams;
+            sigNumParams.name = "Number of Parameter Pairs";
+            sigNumParams.value = "Not applicable (simple request)";
+            sigNumParams.isValid = true;
+            decoded.signalList.append(sigNumParams);
+            
+            // No parameters to parse for simple requests
+            return decoded;
+        }
+        
         DecodedSignal sigNumParams;
-        sigNumParams.name = "Number of Parameters";
+        sigNumParams.name = "Number of Parameter Pairs";
         sigNumParams.value = numParams;
         sigNumParams.isValid = true;
         decoded.signalList.append(sigNumParams);
 
-        // Decode parameters: Handle complex structures like PGN 130565
+        // Parse parameter pairs according to NMEA 2000 specification
         int paramPos = paramStart;
         
-        if (targetPGN == 130565) {
-            // Special handling for PGN 130565 (Lighting Color Sequence)
-            decodePGN130565GroupFunction(decoded, msg, paramPos, numParams);
-        } else {
-            // Standard parameter decoding for other PGNs
-            for (uint8_t i = 0; i < numParams && paramPos < msg.DataLen; ++i) {
-                if (paramPos >= msg.DataLen) break;
-                
-                uint8_t fieldNum = msg.Data[paramPos++];
-                if (paramPos >= msg.DataLen) break;
-                
-                uint32_t fieldVal = 0;
-                int valueBytes = 1; // Default
-                
-                // Determine value size based on field number and PGN
-                int expectedSize = getFieldSize(targetPGN, fieldNum);
-                
-                if (expectedSize == -1) {
-                    // Variable length field - next byte is length
-                    if (paramPos < msg.DataLen) {
-                        valueBytes = msg.Data[paramPos++]; // Read length byte
-                        if (paramPos + valueBytes <= msg.DataLen) {
-                            // For string fields, store as string (up to first 4 chars as uint32)
-                            fieldVal = 0;
-                            for (int i = 0; i < std::min(valueBytes, 4); i++) {
-                                fieldVal |= (msg.Data[paramPos + i] << (i * 8));
-                            }
-                        } else {
-                            fieldVal = 0;
-                            valueBytes = 0;
+        for (uint8_t i = 0; i < numParams && paramPos < msg.DataLen - 1; ++i) {
+            // Each parameter pair consists of: Field Number (1 byte) + Value (variable bytes)
+            if (paramPos >= msg.DataLen) break;
+            
+            uint8_t fieldNum = msg.Data[paramPos++];
+            if (paramPos >= msg.DataLen) break;
+            
+            uint32_t fieldVal = 0;
+            int valueBytes = 1; // Default
+            
+            // Determine value size based on field number and target PGN
+            int expectedSize = getFieldSize(targetPGN, fieldNum);
+            
+            if (expectedSize == -1) {
+                // Variable length field - next byte is length
+                if (paramPos < msg.DataLen) {
+                    valueBytes = msg.Data[paramPos++]; // Read length byte
+                    if (paramPos + valueBytes <= msg.DataLen) {
+                        // For string fields, store as string (up to first 4 chars as uint32)
+                        fieldVal = 0;
+                        for (int j = 0; j < std::min(valueBytes, 4); j++) {
+                            fieldVal |= (msg.Data[paramPos + j] << (j * 8));
                         }
                     } else {
                         fieldVal = 0;
                         valueBytes = 0;
                     }
-                } else if (expectedSize == 2 && paramPos + 1 < msg.DataLen) {
-                    fieldVal = msg.Data[paramPos] | (msg.Data[paramPos + 1] << 8);
-                    valueBytes = 2;
-                } else if (expectedSize == 3 && paramPos + 2 < msg.DataLen) {
-                    fieldVal = msg.Data[paramPos] | (msg.Data[paramPos + 1] << 8) | (msg.Data[paramPos + 2] << 16);
-                    valueBytes = 3;
-                } else if (expectedSize == 4 && paramPos + 3 < msg.DataLen) {
-                    fieldVal = msg.Data[paramPos] | (msg.Data[paramPos + 1] << 8) | 
-                              (msg.Data[paramPos + 2] << 16) | (msg.Data[paramPos + 3] << 24);
-                    valueBytes = 4;
                 } else {
-                    // Default to 1 byte
-                    fieldVal = msg.Data[paramPos];
-                    valueBytes = 1;
+                    fieldVal = 0;
+                    valueBytes = 0;
                 }
-                
-                DecodedSignal sigField;
-                sigField.name = getFieldName(targetPGN, fieldNum);
-                sigField.value = fieldVal;
-                sigField.isValid = true;
-                decoded.signalList.append(sigField);
-                
-                paramPos += valueBytes;
+            } else if (expectedSize == 2 && paramPos + 1 < msg.DataLen) {
+                fieldVal = msg.Data[paramPos] | (msg.Data[paramPos + 1] << 8);
+                valueBytes = 2;
+            } else if (expectedSize == 3 && paramPos + 2 < msg.DataLen) {
+                fieldVal = msg.Data[paramPos] | (msg.Data[paramPos + 1] << 8) | (msg.Data[paramPos + 2] << 16);
+                valueBytes = 3;
+            } else if (expectedSize == 4 && paramPos + 3 < msg.DataLen) {
+                fieldVal = msg.Data[paramPos] | (msg.Data[paramPos + 1] << 8) | 
+                          (msg.Data[paramPos + 2] << 16) | (msg.Data[paramPos + 3] << 24);
+                valueBytes = 4;
+            } else {
+                // Default to 1 byte
+                fieldVal = msg.Data[paramPos];
+                valueBytes = 1;
             }
+            
+            DecodedSignal sigField;
+            sigField.name = getFieldName(targetPGN, fieldNum);
+            sigField.value = fieldVal;
+            sigField.isValid = true;
+            decoded.signalList.append(sigField);
+            
+            paramPos += valueBytes;
         }
     }
     
