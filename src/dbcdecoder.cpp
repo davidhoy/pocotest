@@ -647,7 +647,7 @@ DecodedMessage DBCDecoder::decodePGN130561(const tN2kMsg& msg)
     DecodedSignal sigZoneId;
     sigZoneId.name = "Zone ID";
     sigZoneId.isValid = true;
-    sigZoneId.value = zoneId;
+    sigZoneId.value = QString("%1 - %2").arg(zoneId).arg(validateZoneID(zoneId));
     decoded.signalList.append(sigZoneId);
 
     // Field 2 - Zone Name
@@ -696,6 +696,13 @@ DecodedMessage DBCDecoder::decodePGN130561(const tN2kMsg& msg)
     }
     decoded.signalList.append(sigColorTemp);
 
+    // Phase 2: Add color command validation
+    DecodedSignal sigColorValidation;
+    sigColorValidation.name = "Color Command Status";
+    sigColorValidation.isValid = true;
+    sigColorValidation.value = validateColorCommand(red, green, blue, colorTemp == 65535 ? 0 : colorTemp);
+    decoded.signalList.append(sigColorValidation);
+
     // Field 7 - Intensity (0-255)
     uint8_t intensity = msg.GetByte(index);
     DecodedSignal sigIntensity;
@@ -713,23 +720,15 @@ DecodedMessage DBCDecoder::decodePGN130561(const tN2kMsg& msg)
     DecodedSignal sigProgramId;
     sigProgramId.name = "Program Id";
     sigProgramId.isValid = true;
-    if (programId >= 252) {
-        sigProgramId.value = "Not Available";
-    } else {
-        sigProgramId.value = QString::number(programId);
-    }
+    sigProgramId.value = QString("%1 - %2").arg(programId).arg(decodeProgramType(programId));
     decoded.signalList.append(sigProgramId);
 
-    // Field 9 - Program Color Sequence Index (0-255)
+    // Field 9 - Color Sequence Index (0-255)  
     uint8_t programColorSeqIndex = msg.GetByte(index);
     DecodedSignal sigProgramColorSeqIndex;
     sigProgramColorSeqIndex.name = "Color Seq Index";
     sigProgramColorSeqIndex.isValid = true;
-    if (programColorSeqIndex >= 252) {
-        sigProgramColorSeqIndex.value = "Not Available";
-    } else {
-        sigProgramColorSeqIndex.value = QString::number(programColorSeqIndex);
-    }
+    sigProgramColorSeqIndex.value = QString("%1 - %2").arg(programColorSeqIndex).arg(decodeColorSequenceIndex(programColorSeqIndex));
     decoded.signalList.append(sigProgramColorSeqIndex);
 
     // Field 10 - Program Intensity (0-255)
@@ -743,6 +742,15 @@ DecodedMessage DBCDecoder::decodePGN130561(const tN2kMsg& msg)
         sigProgramIntensity.value = "Not Available";
     }
     decoded.signalList.append(sigProgramIntensity);
+
+    // Phase 2: Add combined intensity calculation if both values are valid
+    if (intensity <= 100 && programIntensity <= 100) {
+        DecodedSignal sigCombinedIntensity;
+        sigCombinedIntensity.name = "Combined Intensity";
+        sigCombinedIntensity.isValid = true;
+        sigCombinedIntensity.value = calculateActualIntensity(intensity, programIntensity);
+        decoded.signalList.append(sigCombinedIntensity);
+    }
 
     // Field 11 - Program Rate (0-255)
     uint8_t programRate = msg.GetByte(index);
@@ -954,19 +962,7 @@ DecodedMessage DBCDecoder::decodePGN130563(const tN2kMsg& msg)
     DecodedSignal sigDeviceCapabilities;
     sigDeviceCapabilities.name = "Device Capabilities";
     sigDeviceCapabilities.isValid = true;
-    // Device Capabilities bitfield decoding
-    QStringList capabilities;
-    if (deviceCapabilities & 0x01) capabilities << "Dimmable";
-    if (deviceCapabilities & 0x02) capabilities << "Programmable";
-    if (deviceCapabilities & 0x04) capabilities << "Color Configurable";
-    // Bits 3-7 are reserved for future use
-    //if (deviceCapabilities & 0x08) capabilities << "Reserved (0x08)";
-    //if (deviceCapabilities & 0x10) capabilities << "Reserved (0x10)";
-    //if (deviceCapabilities & 0x20) capabilities << "Reserved (0x20)";
-    //if (deviceCapabilities & 0x40) capabilities << "Reserved (0x40)";
-    //if (deviceCapabilities & 0x80) capabilities << "Reserved (0x80)";
-    if (capabilities.isEmpty()) capabilities << "Default";
-    sigDeviceCapabilities.value = QString("%1 (0x%2)").arg(capabilities.join(", ")).arg(deviceCapabilities, 2, 16, QChar('0')).toUpper();
+    sigDeviceCapabilities.value = QString("0x%1 - %2").arg(deviceCapabilities, 2, 16, QChar('0')).toUpper().arg(decodeDeviceCapabilities(deviceCapabilities));
     decoded.signalList.append(sigDeviceCapabilities);
 
     // Field 3 - Color Capabilities (0-0xff)
@@ -974,22 +970,7 @@ DecodedMessage DBCDecoder::decodePGN130563(const tN2kMsg& msg)
     DecodedSignal sigColorCapabilities;
     sigColorCapabilities.name = "Color Capabilities";
     sigColorCapabilities.isValid = true;
-    QStringList capDesc;
-    if (colorCapabilities == 0) {
-        capDesc << "Not Changeable";
-    } else {
-        if (colorCapabilities & 0x01) capDesc << "R";
-        if (colorCapabilities & 0x02) capDesc << "G";
-        if (colorCapabilities & 0x04) capDesc << "B";
-        if (colorCapabilities & 0x08) capDesc << "K";
-        if (colorCapabilities & 0x10) capDesc << "Daylight (~65XXK)";
-        if (colorCapabilities & 0x20) capDesc << "Warm (~35XXK)";
-        // Join with comma separator
-        capDesc = QStringList{capDesc.join(", ")};
-        //if (colorCapabilities & 0x40) capDesc << "Reserved (future)";
-        //if (colorCapabilities & 0x80) capDesc << "Reserved (future)";
-    }
-    sigColorCapabilities.value = QString("%1 (0x%2)").arg(capDesc.join(", ")).arg(colorCapabilities, 2, 16, QChar('0')).toUpper();
+    sigColorCapabilities.value = QString("0x%1 - %2").arg(colorCapabilities, 2, 16, QChar('0')).toUpper().arg(decodeColorCapabilities(colorCapabilities));
     decoded.signalList.append(sigColorCapabilities);
 
     // Field 4 - Zone Index (0-255)
@@ -2202,10 +2183,10 @@ QString DBCDecoder::getFieldName(unsigned long pgn, uint8_t fieldNumber) const
                 case 6: return "Field 6 - Color Temperature";
                 case 7: return "Field 7 - Intensity";
                 case 8: return "Field 8 - Program ID";
-                case 9: return "Field 9 - Program Color Seq Index";
+                case 9: return "Field 9 - Color Sequence Index";
                 case 10: return "Field 10 - Program Intensity";
                 case 11: return "Field 11 - Program Rate";
-                case 12: return "Field 12 - Program Color Sequence";
+                case 12: return "Field 12 - Color Sequence Rate";
                 case 13: return "Field 13 - Zone Enabled";
                 default: return QString("Field %1").arg(fieldNumber);
             }
@@ -2610,4 +2591,151 @@ int DBCDecoder::getFieldSize(unsigned long pgn, uint8_t fieldNumber) const
         default:
             return 1; // Default to 1 byte for unknown PGNs
     }
+}
+
+// Phase 2: Lighting Appendix D Enhancement Functions
+
+QString DBCDecoder::validateZoneID(uint8_t zoneID) const
+{
+    if (zoneID <= 251) {
+        return QString("Zone %1").arg(zoneID);
+    }
+    
+    switch (zoneID) {
+        case 252: return "No Zone Assignment";
+        case 253: return "Reserved";
+        case 254: return "Out of Range";
+        case 255: return "Data Not Available";
+        default: return QString("Invalid Zone ID (%1)").arg(zoneID);
+    }
+}
+
+QString DBCDecoder::validateColorCommand(uint8_t r, uint8_t g, uint8_t b, uint16_t k) const
+{
+    bool hasRGB = (r > 0 || g > 0 || b > 0);
+    bool hasTemp = (k > 0);
+    
+    if (hasRGB && hasTemp) {
+        return "WARNING: RGB and Color Temperature cannot be set simultaneously per NMEA 2000 specification";
+    }
+    if (k == 0 && !hasRGB) {
+        return "Off (no color specified)";
+    }
+    if (hasRGB) {
+        return QString("RGB Color (R:%1, G:%2, B:%3)").arg(r).arg(g).arg(b);
+    }
+    if (hasTemp) {
+        return QString("Color Temperature %1K").arg(k);
+    }
+    return "Valid color command";
+}
+
+QString DBCDecoder::decodeProgramType(uint8_t programID) const
+{
+    if (programID == 0) {
+        return "No Program/Solid Color";
+    }
+    
+    if (programID <= 100) {
+        // NMEA-defined programs (0-100)
+        switch (programID) {
+            case 1: return "Program Solid (cycles through colors holding each solid)";
+            case 2: return "Program Fade (fades intensity to 0 then switches colors)"; 
+            case 3: return "Program Strobe (quick flashing through color sequence)";
+            case 4: return "Program Music Frequency (maps 3 frequency bands to first 3 colors)";
+            case 5: return "Program Music Intensity (adjusts intensity based on music input)";
+            default: return QString("NMEA Program %1").arg(programID);
+        }
+    } else if (programID <= 252) {
+        return QString("Vendor Custom Program %1").arg(programID);
+    } else {
+        switch (programID) {
+            case 253: return "Reserved Program ID";
+            case 254: return "Out of Range Program ID";
+            case 255: return "Data Not Available";
+            default: return QString("Invalid Program ID (%1)").arg(programID);
+        }
+    }
+}
+
+QString DBCDecoder::decodeDeviceCapabilities(uint8_t capabilities) const
+{
+    QStringList caps;
+    
+    if (capabilities & 0x01) caps << "Default (basic on/off)";
+    if (capabilities & 0x02) caps << "Dimmable (0-100% intensity)"; 
+    if (capabilities & 0x04) caps << "Programmable (can execute programs independently)";
+    if (capabilities & 0x08) caps << "Color Configurable (color capabilities can be modified)";
+    
+    // Check for reserved bits
+    uint8_t reservedBits = capabilities & 0xF0;
+    if (reservedBits != 0) {
+        caps << QString("Reserved bits: 0x%1").arg(reservedBits, 2, 16, QChar('0')).toUpper();
+    }
+    
+    if (caps.isEmpty()) {
+        return "No capabilities specified";
+    }
+    return caps.join(" | ");
+}
+
+QString DBCDecoder::decodeColorCapabilities(uint8_t colorCaps) const
+{
+    QStringList caps;
+    
+    // Based on Appendix D specification - this is a preliminary implementation
+    // The exact bit mapping would need to be verified against the specification
+    if (colorCaps & 0x01) caps << "RGB (full RGB color selector)";
+    if (colorCaps & 0x02) caps << "R only (red channel only)";
+    if (colorCaps & 0x04) caps << "G only (green channel only)"; 
+    if (colorCaps & 0x08) caps << "B only (blue channel only)";
+    if (colorCaps & 0x10) caps << "Color Temperature K (temperature selector)";
+    if (colorCaps & 0x20) caps << "Daylight (K>0=on, 0=off)";
+    if (colorCaps & 0x40) caps << "Warm (warm color bias)";
+    if (colorCaps & 0x80) caps << "Not Changeable (no color control)";
+    
+    if (caps.isEmpty()) {
+        return "No color capabilities specified";
+    }
+    return caps.join(" | ");
+}
+
+QString DBCDecoder::decodeColorSequenceIndex(uint8_t index) const
+{
+    // Predefined color sequences from Appendix D
+    switch (index) {
+        case 220: return "Red (Predefined - R:255, G:0, B:0, I:100%)";
+        case 221: return "Green (Predefined - R:0, G:255, B:0, I:100%)";
+        case 222: return "Blue (Predefined - R:0, G:0, B:255, I:100%)";
+        case 223: return "White (Predefined - R:255, G:255, B:255, I:100%)";
+        case 224: return "Daylight (Predefined - K:6500, I:100%)";
+        case 225: return "Warm (Predefined - K:3000, I:100%)";
+        default: 
+            if (index < 220) {
+                return QString("Custom Sequence %1").arg(index);
+            } else if (index <= 252) {
+                return QString("Reserved Sequence %1").arg(index);
+            } else {
+                switch (index) {
+                    case 253: return "Reserved";
+                    case 254: return "Out of Range";
+                    case 255: return "Data Not Available";
+                    default: return QString("Invalid Sequence Index (%1)").arg(index);
+                }
+            }
+    }
+}
+
+QString DBCDecoder::calculateActualIntensity(uint8_t colorIntensity, uint8_t programIntensity) const
+{
+    // Per Appendix D: actual output = color intensity × program intensity
+    if (colorIntensity > 100) colorIntensity = 100;  // Clamp to valid range
+    if (programIntensity > 100) programIntensity = 100;  // Clamp to valid range
+    
+    double actualIntensity = (colorIntensity / 100.0) * (programIntensity / 100.0) * 100.0;
+    
+    return QString("Actual: %1% (Color: %2% × Program: %3%)")
+           .arg(actualIntensity, 0, 'f', 1)
+           .arg(colorIntensity)
+           .arg(programIntensity);
 }

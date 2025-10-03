@@ -104,6 +104,15 @@ private:
     // Helper functions for PGN descriptions
     QString getPGNDescription(uint32_t pgn);
     
+    // Phase 2: Lighting Appendix D Enhancement Functions
+    QString validateZoneID(uint8_t zoneID) const;
+    QString validateColorCommand(uint8_t r, uint8_t g, uint8_t b, uint16_t k) const;
+    QString decodeProgramType(uint8_t programID) const;
+    QString decodeDeviceCapabilities(uint8_t capabilities) const;
+    QString decodeColorCapabilities(uint8_t colorCaps) const;
+    QString decodeColorSequenceIndex(uint8_t index) const;
+    QString calculateActualIntensity(uint8_t colorIntensity, uint8_t programIntensity) const;
+    
     // Lighting PGN decoders
     DecodedMessage decodePGN130330(const tN2kMsg& msg);  // Lighting System Settings
     DecodedMessage decodePGN130561(const tN2kMsg& msg);  // Zone Lighting Control
