@@ -783,6 +783,14 @@ DecodedMessage DBCDecoder::decodePGN130561(const tN2kMsg& msg)
     }
     decoded.signalList.append(sigZoneEnabled);
 
+    // Field 14 - NMEA Reserved (6 bits) - Added per 2024 Amendments for byte boundary compliance
+    uint8_t reserved = (byte >> 2) & 0x3F;
+    DecodedSignal sigReserved;
+    sigReserved.name = "NMEA Reserved (6 bit)";
+    sigReserved.isValid = true;
+    sigReserved.value = QString("0x%1").arg(reserved, 1, 16, QChar('0')).toUpper();
+    decoded.signalList.append(sigReserved);
+
     return decoded;
 }
 
@@ -1116,12 +1124,12 @@ DecodedMessage DBCDecoder::decodePGN130563(const tN2kMsg& msg)
     }
     decoded.signalList.append(sigProgramEnabled);
 
-    // Field 18 - Reserved (6 bits)
+    // Field 18 - NMEA Reserved (6 bits) - Added per 2024 Amendments for byte boundary compliance
     uint8_t reserved = (byte >> 2) & 0x3F;
     DecodedSignal sigReserved;
-    sigReserved.name = "Reserved";
+    sigReserved.name = "NMEA Reserved (6 bit)";
     sigReserved.isValid = true;
-    sigReserved.value = QString::number(reserved);
+    sigReserved.value = QString("0x%1").arg(reserved, 1, 16, QChar('0')).toUpper();
     decoded.signalList.append(sigReserved);
 
     return decoded;
@@ -1366,12 +1374,12 @@ DecodedMessage DBCDecoder::decodePGN130566(const tN2kMsg& msg)
         decoded.signalList.append(sig);
     }
 
-    // Field 5 - NMEA Reserved (4 bits)
-    uint8_t reserved = byte & 0xF0;
+    // Field 5 - NMEA Reserved (4 bits) - Added per 2024 Amendments for byte boundary compliance
+    uint8_t reserved = (byte >> 4) & 0x0F;
     DecodedSignal sigReserved;
-    sigReserved.name = "NMEA Reserved";
-    sigReserved.value = QString("0x%1").arg(reserved, 1, 16, QChar('0')).toUpper();
+    sigReserved.name = "NMEA Reserved (4 bit)";
     sigReserved.isValid = true;
+    sigReserved.value = QString("0x%1").arg(reserved, 1, 16, QChar('0')).toUpper();
     decoded.signalList.append(sigReserved);
 
     return decoded;
