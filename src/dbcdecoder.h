@@ -113,6 +113,15 @@ private:
     QString decodeColorSequenceIndex(uint8_t index) const;
     QString calculateActualIntensity(uint8_t colorIntensity, uint8_t programIntensity) const;
     
+    // Phase 3: Core Protocol Enhancement Functions
+    QString decodeNAMEField(uint64_t nameValue) const;
+    QString decodeDeviceClass(uint8_t deviceClass) const;
+    QString decodeDeviceFunction(uint8_t deviceFunction, uint8_t deviceClass) const;
+    QString decodeManufacturerCode(uint16_t manufacturerCode) const;
+    QString decodeIndustryCode(uint8_t industryCode) const;
+    QString decodeRequestType(uint8_t requestType) const;
+    QString decodeAcknowledgmentCode(uint8_t ackCode) const;
+    
     // Lighting PGN decoders
     DecodedMessage decodePGN130330(const tN2kMsg& msg);  // Lighting System Settings
     DecodedMessage decodePGN130561(const tN2kMsg& msg);  // Zone Lighting Control
@@ -128,6 +137,11 @@ private:
     DecodedMessage decodePGN126996(const tN2kMsg& msg);  // Product Information
     DecodedMessage decodePGN126998(const tN2kMsg& msg);  // Configuration Information
     DecodedMessage decodePGN127501(const tN2kMsg& msg);  // Binary Switch Bank Status
+    
+    // Phase 3: Core Protocol Enhancement PGN decoders
+    DecodedMessage decodePGN60928(const tN2kMsg& msg);   // ISO Address Claim
+    DecodedMessage decodePGN59904(const tN2kMsg& msg);   // ISO Request
+    DecodedMessage decodePGN59392(const tN2kMsg& msg);   // ISO Acknowledgment
 
 private:
     // Custom decoder function pointer type
