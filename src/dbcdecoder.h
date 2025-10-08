@@ -124,7 +124,7 @@ private:
     
     // Lighting PGN decoders
     DecodedMessage decodePGN130330(const tN2kMsg& msg);  // Lighting System Settings
-    DecodedMessage decodePGN130561(const tN2kMsg& msg);  // Zone Lighting Control
+    DecodedMessage decodePGN130561(const tN2kMsg& msg);  // Lighting Zone 
     DecodedMessage decodePGN130562(const tN2kMsg& msg);  // Lighting Scene
     DecodedMessage decodePGN130563(const tN2kMsg& msg);  // Lighting Device
     DecodedMessage decodePGN130564(const tN2kMsg& msg);  // Lighting Device Enumeration

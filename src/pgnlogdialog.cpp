@@ -2095,9 +2095,9 @@ void PGNLogDialog::showDecodeDetails(int row)
     }
     
     // Rewrite the Source/Destination line with device names inline
-    QString sourceLine = QString("Source:       0x%1%2").arg(source).arg(sourceDeviceInfo);
+    QString sourceLine = QString("Source:       %1%2").arg(source).arg(sourceDeviceInfo);
     sourceLine = sourceLine.leftJustified(leftColumnWidth, ' ');
-    detailsText += sourceLine + QString("Destination:  0x%1%2\n").arg(destination).arg(destDeviceInfo);
+    detailsText += sourceLine + QString("Destination:  %1%2\n").arg(destination).arg(destDeviceInfo);
     
     detailsText += "\n";
     
@@ -2279,9 +2279,9 @@ void PGNLogDialog::showDecodeDetails(int row)
         }
         
         // Rewrite the Source/Destination line with device names inline
-        QString sourceLine = QString("Source:       0x%1%2").arg(source).arg(sourceDeviceInfo);
+        QString sourceLine = QString("Source:       %1%2").arg(source).arg(sourceDeviceInfo);
         sourceLine = sourceLine.leftJustified(leftColumnWidth, ' ');
-        detailsText += sourceLine + QString("Destination:  0x%1%2\n").arg(destination).arg(destDeviceInfo);
+        detailsText += sourceLine + QString("Destination:  %1%2\n").arg(destination).arg(destDeviceInfo);
         
         detailsText += "\n";
         

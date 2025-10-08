@@ -476,7 +476,7 @@ void DeviceMainWindow::initNMEA2000()
         126998L,  // Configuration Information
         127501L,  // Binary Switch Bank Status
         130330L,  // Lighting System Settings
-        130561L,  // Zone Lighting Control
+        130561L,  // Lighting Zone
         130562L,  // Lighting Scene
         130563L,  // Lighting Device
         130564L,  // Lighting Device Enumeration
@@ -1160,8 +1160,8 @@ void DeviceMainWindow::showDeviceContextMenu(const QPoint& position)
             showPocoDeviceDialog(sourceAddress, nodeAddress);
         });
         
-        // Zone Lighting Control
-        QAction* zoneLightingAction = lumitecMenu->addAction("Zone Lighting Control...");
+        // Lighting Zone
+        QAction* zoneLightingAction = lumitecMenu->addAction("Lighting Zone...");
         connect(zoneLightingAction, &QAction::triggered, [this, sourceAddress]() {
             onPocoZoneLightingControlRequested(sourceAddress);
         });

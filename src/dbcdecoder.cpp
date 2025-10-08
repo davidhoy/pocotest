@@ -620,7 +620,7 @@ void DBCDecoder::initializeCustomDecoders()
     
     // Lighting PGN decoders
     m_customDecoders[130330] = {130330, "Lighting System Settings",    [](DBCDecoder* decoder, const tN2kMsg& msg) { return decoder->decodePGN130330(msg); }};
-    m_customDecoders[130561] = {130561, "Zone Lighting Control",       [](DBCDecoder* decoder, const tN2kMsg& msg) { return decoder->decodePGN130561(msg); }};
+    m_customDecoders[130561] = {130561, "Lighting Zone",               [](DBCDecoder* decoder, const tN2kMsg& msg) { return decoder->decodePGN130561(msg); }};
     m_customDecoders[130562] = {130562, "Lighting Scene",              [](DBCDecoder* decoder, const tN2kMsg& msg) { return decoder->decodePGN130562(msg); }};
     m_customDecoders[130563] = {130563, "Lighting Device",             [](DBCDecoder* decoder, const tN2kMsg& msg) { return decoder->decodePGN130563(msg); }};
     m_customDecoders[130564] = {130564, "Lighting Device Enumeration", [](DBCDecoder* decoder, const tN2kMsg& msg) { return decoder->decodePGN130564(msg); }};
@@ -633,8 +633,8 @@ void DBCDecoder::initializeCustomDecoders()
 DecodedMessage DBCDecoder::decodePGN130561(const tN2kMsg& msg)
 {
     DecodedMessage decoded;
-    decoded.messageName = "Zone Lighting Control (130561)";
-    decoded.description = "NMEA2000 Zone Lighting Control Message";
+    decoded.messageName = "Lighting Zone (130561)";
+    decoded.description = "NMEA2000 Lighting Zone Message";
     decoded.isDecoded = true;
 
     if (msg.DataLen < 1) {
@@ -2178,7 +2178,7 @@ DecodedMessage DBCDecoder::decodePGN126998(const tN2kMsg& msg)
 QString DBCDecoder::getFieldName(unsigned long pgn, uint8_t fieldNumber) const
 {
     switch (pgn) {
-        case 130561: // Zone Lighting Control
+        case 130561: // Lighting Zone
             switch (fieldNumber) {
                 case 1: return "Field 1 - Zone ID";
                 case 2: return "Field 2 - Zone Name";
@@ -2391,7 +2391,7 @@ QString DBCDecoder::getPGNDescription(uint32_t pgn)
         
         // Lighting PGNs (Lumitec specific)
         pgnDescriptions[130330] = "Lighting System Settings";
-        pgnDescriptions[130561] = "Zone Lighting Control";
+        pgnDescriptions[130561] = "Lighting Zone";
         pgnDescriptions[130562] = "Lighting Scene";
         pgnDescriptions[130563] = "Lighting Device";
         pgnDescriptions[130564] = "Lighting Device Enumeration";
@@ -2492,8 +2492,8 @@ int DBCDecoder::getFieldSize(unsigned long pgn, uint8_t fieldNumber) const
                 case 10: return 2; // Identify Device
                 default: return 1;
             }
-            
-        case 130561: // Zone Lighting Control
+
+        case 130561: // Lighting Zone
             switch (fieldNumber) {
                 case 1: return 1; // Zone ID
                 case 2: return -1; // Zone Name (variable length string)

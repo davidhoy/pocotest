@@ -66,7 +66,7 @@ ZoneLightingDialog::ZoneLightingDialog(uint8_t deviceAddress, const QString& dev
 {
     setupUI();
     setModal(false);
-    setWindowTitle(QString("Zone Lighting Control - %1 (0x%2)")
+    setWindowTitle(QString("Lighting Zone- %1 (0x%2)")
                    .arg(m_deviceName)
                    .arg(m_deviceAddress, 2, 16, QChar('0')));
     resize(500, 600);
