@@ -613,14 +613,9 @@ void DBCDecoder::initializeCustomDecoders()
     m_customDecoders[126998] = {126998, "Configuration Information",   [](DBCDecoder* decoder, const tN2kMsg& msg) { return decoder->decodePGN126998(msg); }};
     m_customDecoders[127501] = {127501, "Binary Switch Bank Status",   [](DBCDecoder* decoder, const tN2kMsg& msg) { return decoder->decodePGN127501(msg); }};
     
-    // Phase 3: Core Protocol Enhancement PGN decoders  
-    m_customDecoders[60928] = {60928, "ISO Address Claim",             [](DBCDecoder* decoder, const tN2kMsg& msg) { return decoder->decodePGN60928(msg); }};
-    m_customDecoders[59904] = {59904, "ISO Request",                   [](DBCDecoder* decoder, const tN2kMsg& msg) { return decoder->decodePGN59904(msg); }};
-    m_customDecoders[59392] = {59392, "ISO Acknowledgment",            [](DBCDecoder* decoder, const tN2kMsg& msg) { return decoder->decodePGN59392(msg); }};
-    
     // Lighting PGN decoders
     m_customDecoders[130330] = {130330, "Lighting System Settings",    [](DBCDecoder* decoder, const tN2kMsg& msg) { return decoder->decodePGN130330(msg); }};
-    m_customDecoders[130561] = {130561, "Lighting Zone",               [](DBCDecoder* decoder, const tN2kMsg& msg) { return decoder->decodePGN130561(msg); }};
+    m_customDecoders[130561] = {130561, "Zone Lighting Control",       [](DBCDecoder* decoder, const tN2kMsg& msg) { return decoder->decodePGN130561(msg); }};
     m_customDecoders[130562] = {130562, "Lighting Scene",              [](DBCDecoder* decoder, const tN2kMsg& msg) { return decoder->decodePGN130562(msg); }};
     m_customDecoders[130563] = {130563, "Lighting Device",             [](DBCDecoder* decoder, const tN2kMsg& msg) { return decoder->decodePGN130563(msg); }};
     m_customDecoders[130564] = {130564, "Lighting Device Enumeration", [](DBCDecoder* decoder, const tN2kMsg& msg) { return decoder->decodePGN130564(msg); }};
@@ -633,8 +628,8 @@ void DBCDecoder::initializeCustomDecoders()
 DecodedMessage DBCDecoder::decodePGN130561(const tN2kMsg& msg)
 {
     DecodedMessage decoded;
-    decoded.messageName = "Lighting Zone (130561)";
-    decoded.description = "NMEA2000 Lighting Zone Message";
+    decoded.messageName = "Zone Lighting Control (130561)";
+    decoded.description = "NMEA2000 Zone Lighting Control Message";
     decoded.isDecoded = true;
 
     if (msg.DataLen < 1) {
@@ -652,7 +647,7 @@ DecodedMessage DBCDecoder::decodePGN130561(const tN2kMsg& msg)
     DecodedSignal sigZoneId;
     sigZoneId.name = "Zone ID";
     sigZoneId.isValid = true;
-    sigZoneId.value = QString("%1 - %2").arg(zoneId).arg(validateZoneID(zoneId));
+    sigZoneId.value = zoneId;
     decoded.signalList.append(sigZoneId);
 
     // Field 2 - Zone Name
@@ -701,13 +696,6 @@ DecodedMessage DBCDecoder::decodePGN130561(const tN2kMsg& msg)
     }
     decoded.signalList.append(sigColorTemp);
 
-    // Phase 2: Add color command validation
-    DecodedSignal sigColorValidation;
-    sigColorValidation.name = "Color Command Status";
-    sigColorValidation.isValid = true;
-    sigColorValidation.value = validateColorCommand(red, green, blue, colorTemp == 65535 ? 0 : colorTemp);
-    decoded.signalList.append(sigColorValidation);
-
     // Field 7 - Intensity (0-255)
     uint8_t intensity = msg.GetByte(index);
     DecodedSignal sigIntensity;
@@ -725,15 +713,23 @@ DecodedMessage DBCDecoder::decodePGN130561(const tN2kMsg& msg)
     DecodedSignal sigProgramId;
     sigProgramId.name = "Program Id";
     sigProgramId.isValid = true;
-    sigProgramId.value = QString("%1 - %2").arg(programId).arg(decodeProgramType(programId));
+    if (programId >= 252) {
+        sigProgramId.value = "Not Available";
+    } else {
+        sigProgramId.value = QString::number(programId);
+    }
     decoded.signalList.append(sigProgramId);
 
-    // Field 9 - Color Sequence Index (0-255)  
+    // Field 9 - Program Color Sequence Index (0-255)
     uint8_t programColorSeqIndex = msg.GetByte(index);
     DecodedSignal sigProgramColorSeqIndex;
     sigProgramColorSeqIndex.name = "Color Seq Index";
     sigProgramColorSeqIndex.isValid = true;
-    sigProgramColorSeqIndex.value = QString("%1 - %2").arg(programColorSeqIndex).arg(decodeColorSequenceIndex(programColorSeqIndex));
+    if (programColorSeqIndex >= 252) {
+        sigProgramColorSeqIndex.value = "Not Available";
+    } else {
+        sigProgramColorSeqIndex.value = QString::number(programColorSeqIndex);
+    }
     decoded.signalList.append(sigProgramColorSeqIndex);
 
     // Field 10 - Program Intensity (0-255)
@@ -747,15 +743,6 @@ DecodedMessage DBCDecoder::decodePGN130561(const tN2kMsg& msg)
         sigProgramIntensity.value = "Not Available";
     }
     decoded.signalList.append(sigProgramIntensity);
-
-    // Phase 2: Add combined intensity calculation if both values are valid
-    if (intensity <= 100 && programIntensity <= 100) {
-        DecodedSignal sigCombinedIntensity;
-        sigCombinedIntensity.name = "Combined Intensity";
-        sigCombinedIntensity.isValid = true;
-        sigCombinedIntensity.value = calculateActualIntensity(intensity, programIntensity);
-        decoded.signalList.append(sigCombinedIntensity);
-    }
 
     // Field 11 - Program Rate (0-255)
     uint8_t programRate = msg.GetByte(index);
@@ -795,14 +782,6 @@ DecodedMessage DBCDecoder::decodePGN130561(const tN2kMsg& msg)
         default: sigZoneEnabled.value = QString::number(zoneEnabled);
     }
     decoded.signalList.append(sigZoneEnabled);
-
-    // Field 14 - NMEA Reserved (6 bits) - Added per 2024 Amendments for byte boundary compliance
-    uint8_t reserved = (byte >> 2) & 0x3F;
-    DecodedSignal sigReserved;
-    sigReserved.name = "NMEA Reserved (6 bit)";
-    sigReserved.isValid = true;
-    sigReserved.value = QString("0x%1").arg(reserved, 1, 16, QChar('0')).toUpper();
-    decoded.signalList.append(sigReserved);
 
     return decoded;
 }
@@ -967,7 +946,19 @@ DecodedMessage DBCDecoder::decodePGN130563(const tN2kMsg& msg)
     DecodedSignal sigDeviceCapabilities;
     sigDeviceCapabilities.name = "Device Capabilities";
     sigDeviceCapabilities.isValid = true;
-    sigDeviceCapabilities.value = QString("0x%1 - %2").arg(deviceCapabilities, 2, 16, QChar('0')).toUpper().arg(decodeDeviceCapabilities(deviceCapabilities));
+    // Device Capabilities bitfield decoding
+    QStringList capabilities;
+    if (deviceCapabilities & 0x01) capabilities << "Dimmable";
+    if (deviceCapabilities & 0x02) capabilities << "Programmable";
+    if (deviceCapabilities & 0x04) capabilities << "Color Configurable";
+    // Bits 3-7 are reserved for future use
+    //if (deviceCapabilities & 0x08) capabilities << "Reserved (0x08)";
+    //if (deviceCapabilities & 0x10) capabilities << "Reserved (0x10)";
+    //if (deviceCapabilities & 0x20) capabilities << "Reserved (0x20)";
+    //if (deviceCapabilities & 0x40) capabilities << "Reserved (0x40)";
+    //if (deviceCapabilities & 0x80) capabilities << "Reserved (0x80)";
+    if (capabilities.isEmpty()) capabilities << "Default";
+    sigDeviceCapabilities.value = QString("%1 (0x%2)").arg(capabilities.join(", ")).arg(deviceCapabilities, 2, 16, QChar('0')).toUpper();
     decoded.signalList.append(sigDeviceCapabilities);
 
     // Field 3 - Color Capabilities (0-0xff)
@@ -975,7 +966,22 @@ DecodedMessage DBCDecoder::decodePGN130563(const tN2kMsg& msg)
     DecodedSignal sigColorCapabilities;
     sigColorCapabilities.name = "Color Capabilities";
     sigColorCapabilities.isValid = true;
-    sigColorCapabilities.value = QString("0x%1 - %2").arg(colorCapabilities, 2, 16, QChar('0')).toUpper().arg(decodeColorCapabilities(colorCapabilities));
+    QStringList capDesc;
+    if (colorCapabilities == 0) {
+        capDesc << "Not Changeable";
+    } else {
+        if (colorCapabilities & 0x01) capDesc << "R";
+        if (colorCapabilities & 0x02) capDesc << "G";
+        if (colorCapabilities & 0x04) capDesc << "B";
+        if (colorCapabilities & 0x08) capDesc << "K";
+        if (colorCapabilities & 0x10) capDesc << "Daylight (~65XXK)";
+        if (colorCapabilities & 0x20) capDesc << "Warm (~35XXK)";
+        // Join with comma separator
+        capDesc = QStringList{capDesc.join(", ")};
+        //if (colorCapabilities & 0x40) capDesc << "Reserved (future)";
+        //if (colorCapabilities & 0x80) capDesc << "Reserved (future)";
+    }
+    sigColorCapabilities.value = QString("%1 (0x%2)").arg(capDesc.join(", ")).arg(colorCapabilities, 2, 16, QChar('0')).toUpper();
     decoded.signalList.append(sigColorCapabilities);
 
     // Field 4 - Zone Index (0-255)
@@ -1110,12 +1116,12 @@ DecodedMessage DBCDecoder::decodePGN130563(const tN2kMsg& msg)
     }
     decoded.signalList.append(sigProgramEnabled);
 
-    // Field 18 - NMEA Reserved (6 bits) - Added per 2024 Amendments for byte boundary compliance
+    // Field 18 - Reserved (6 bits)
     uint8_t reserved = (byte >> 2) & 0x3F;
     DecodedSignal sigReserved;
-    sigReserved.name = "NMEA Reserved (6 bit)";
+    sigReserved.name = "Reserved";
     sigReserved.isValid = true;
-    sigReserved.value = QString("0x%1").arg(reserved, 1, 16, QChar('0')).toUpper();
+    sigReserved.value = QString::number(reserved);
     decoded.signalList.append(sigReserved);
 
     return decoded;
@@ -1360,12 +1366,12 @@ DecodedMessage DBCDecoder::decodePGN130566(const tN2kMsg& msg)
         decoded.signalList.append(sig);
     }
 
-    // Field 5 - NMEA Reserved (4 bits) - Added per 2024 Amendments for byte boundary compliance
-    uint8_t reserved = (byte >> 4) & 0x0F;
+    // Field 5 - NMEA Reserved (4 bits)
+    uint8_t reserved = byte & 0xF0;
     DecodedSignal sigReserved;
-    sigReserved.name = "NMEA Reserved (4 bit)";
-    sigReserved.isValid = true;
+    sigReserved.name = "NMEA Reserved";
     sigReserved.value = QString("0x%1").arg(reserved, 1, 16, QChar('0')).toUpper();
+    sigReserved.isValid = true;
     decoded.signalList.append(sigReserved);
 
     return decoded;
@@ -1642,115 +1648,105 @@ DecodedMessage DBCDecoder::decodePGN126208(const tN2kMsg& msg)
     sigPGN.isValid = true;
     decoded.signalList.append(sigPGN);
 
-    // Parse according to NMEA 2000 Group Function specification
-    if (msg.DataLen >= 6) {
-        // Byte 4: Priority Setting (bits 0-3) + Reserved (bits 4-7)
+    // Check message length to determine format
+    if (msg.DataLen >= 5) {
+        // Byte 4: Priority (in extended format) or Number of Parameters (in simple format)
         uint8_t byte4 = msg.Data[4];
-        uint8_t prioritySetting = byte4 & 0x0F;  // Lower 4 bits
-        uint8_t reservedBits = (byte4 >> 4) & 0x0F;  // Upper 4 bits
         
-        QString priorityDesc;
-        if (prioritySetting <= 7) {
-            priorityDesc = QString("Priority %1").arg(prioritySetting);
-        } else if (prioritySetting == 8) {
-            priorityDesc = "Do not change priority";
-        } else if (prioritySetting == 9) {
-            priorityDesc = "Return to default priority";
-        } else {
-            priorityDesc = QString("Reserved (%1)").arg(prioritySetting);
-        }
+        // Detect extended format: if we have > 11 bytes and byte 4 is 0xFF (priority), 
+        // then look for actual parameter count later in the message
+        uint8_t numParams = 0;
+        int paramStart = 5;
         
-        DecodedSignal sigPriority;
-        sigPriority.name = "Priority Setting";
-        sigPriority.value = QString("%1 (0x%2)").arg(priorityDesc).arg(prioritySetting, 1, 16, QChar('0')).toUpper();
-        sigPriority.isValid = true;
-        decoded.signalList.append(sigPriority);
-        
-        DecodedSignal sigReserved;
-        sigReserved.name = "Reserved Bits";
-        sigReserved.value = QString("0x%1").arg(reservedBits, 1, 16, QChar('0')).toUpper();
-        sigReserved.isValid = true;
-        decoded.signalList.append(sigReserved);
-        
-        // Byte 5: Number of parameter pairs
-        uint8_t numParams = msg.Data[5];
-        int paramStart = 6;
-        
-        // Handle special case: 0xFF means "not applicable" (simple request with no parameters)
-        if (numParams == 0xFF) {
-            DecodedSignal sigNumParams;
-            sigNumParams.name = "Number of Parameter Pairs";
-            sigNumParams.value = "Not applicable (simple request)";
-            sigNumParams.isValid = true;
-            decoded.signalList.append(sigNumParams);
+        if (msg.DataLen > 11 && byte4 == 0xFF) {
+            // Extended format detected - look for parameter count after padding
             
-            // No parameters to parse for simple requests
-            return decoded;
+            // Skip padding bytes (typically bytes 5-9 are 0xFF)
+            int paramCountIdx = 10; // Parameter count typically at byte 10
+            if (paramCountIdx < msg.DataLen) {
+                numParams = msg.Data[paramCountIdx];
+                paramStart = paramCountIdx + 1;
+                
+                DecodedSignal sigPrio;
+                sigPrio.name = "Priority";
+                sigPrio.value = byte4;
+                sigPrio.isValid = true;
+                decoded.signalList.append(sigPrio);
+            }
+        } else {
+            // Simple format - byte 4 is number of parameters
+            numParams = byte4;
+            paramStart = 5;
         }
-        
+
         DecodedSignal sigNumParams;
-        sigNumParams.name = "Number of Parameter Pairs";
+        sigNumParams.name = "Number of Parameters";
         sigNumParams.value = numParams;
         sigNumParams.isValid = true;
         decoded.signalList.append(sigNumParams);
 
-        // Parse parameter pairs according to NMEA 2000 specification
+        // Decode parameters: Handle complex structures like PGN 130565
         int paramPos = paramStart;
         
-        for (uint8_t i = 0; i < numParams && paramPos < msg.DataLen - 1; ++i) {
-            // Each parameter pair consists of: Field Number (1 byte) + Value (variable bytes)
-            if (paramPos >= msg.DataLen) break;
-            
-            uint8_t fieldNum = msg.Data[paramPos++];
-            if (paramPos >= msg.DataLen) break;
-            
-            uint32_t fieldVal = 0;
-            int valueBytes = 1; // Default
-            
-            // Determine value size based on field number and target PGN
-            int expectedSize = getFieldSize(targetPGN, fieldNum);
-            
-            if (expectedSize == -1) {
-                // Variable length field - next byte is length
-                if (paramPos < msg.DataLen) {
-                    valueBytes = msg.Data[paramPos++]; // Read length byte
-                    if (paramPos + valueBytes <= msg.DataLen) {
-                        // For string fields, store as string (up to first 4 chars as uint32)
-                        fieldVal = 0;
-                        for (int j = 0; j < std::min(valueBytes, 4); j++) {
-                            fieldVal |= (msg.Data[paramPos + j] << (j * 8));
+        if (targetPGN == 130565) {
+            // Special handling for PGN 130565 (Lighting Color Sequence)
+            decodePGN130565GroupFunction(decoded, msg, paramPos, numParams);
+        } else {
+            // Standard parameter decoding for other PGNs
+            for (uint8_t i = 0; i < numParams && paramPos < msg.DataLen; ++i) {
+                if (paramPos >= msg.DataLen) break;
+                
+                uint8_t fieldNum = msg.Data[paramPos++];
+                if (paramPos >= msg.DataLen) break;
+                
+                uint32_t fieldVal = 0;
+                int valueBytes = 1; // Default
+                
+                // Determine value size based on field number and PGN
+                int expectedSize = getFieldSize(targetPGN, fieldNum);
+                
+                if (expectedSize == -1) {
+                    // Variable length field - next byte is length
+                    if (paramPos < msg.DataLen) {
+                        valueBytes = msg.Data[paramPos++]; // Read length byte
+                        if (paramPos + valueBytes <= msg.DataLen) {
+                            // For string fields, store as string (up to first 4 chars as uint32)
+                            fieldVal = 0;
+                            for (int i = 0; i < std::min(valueBytes, 4); i++) {
+                                fieldVal |= (msg.Data[paramPos + i] << (i * 8));
+                            }
+                        } else {
+                            fieldVal = 0;
+                            valueBytes = 0;
                         }
                     } else {
                         fieldVal = 0;
                         valueBytes = 0;
                     }
+                } else if (expectedSize == 2 && paramPos + 1 < msg.DataLen) {
+                    fieldVal = msg.Data[paramPos] | (msg.Data[paramPos + 1] << 8);
+                    valueBytes = 2;
+                } else if (expectedSize == 3 && paramPos + 2 < msg.DataLen) {
+                    fieldVal = msg.Data[paramPos] | (msg.Data[paramPos + 1] << 8) | (msg.Data[paramPos + 2] << 16);
+                    valueBytes = 3;
+                } else if (expectedSize == 4 && paramPos + 3 < msg.DataLen) {
+                    fieldVal = msg.Data[paramPos] | (msg.Data[paramPos + 1] << 8) | 
+                              (msg.Data[paramPos + 2] << 16) | (msg.Data[paramPos + 3] << 24);
+                    valueBytes = 4;
                 } else {
-                    fieldVal = 0;
-                    valueBytes = 0;
+                    // Default to 1 byte
+                    fieldVal = msg.Data[paramPos];
+                    valueBytes = 1;
                 }
-            } else if (expectedSize == 2 && paramPos + 1 < msg.DataLen) {
-                fieldVal = msg.Data[paramPos] | (msg.Data[paramPos + 1] << 8);
-                valueBytes = 2;
-            } else if (expectedSize == 3 && paramPos + 2 < msg.DataLen) {
-                fieldVal = msg.Data[paramPos] | (msg.Data[paramPos + 1] << 8) | (msg.Data[paramPos + 2] << 16);
-                valueBytes = 3;
-            } else if (expectedSize == 4 && paramPos + 3 < msg.DataLen) {
-                fieldVal = msg.Data[paramPos] | (msg.Data[paramPos + 1] << 8) | 
-                          (msg.Data[paramPos + 2] << 16) | (msg.Data[paramPos + 3] << 24);
-                valueBytes = 4;
-            } else {
-                // Default to 1 byte
-                fieldVal = msg.Data[paramPos];
-                valueBytes = 1;
+                
+                DecodedSignal sigField;
+                sigField.name = getFieldName(targetPGN, fieldNum);
+                sigField.value = fieldVal;
+                sigField.isValid = true;
+                decoded.signalList.append(sigField);
+                
+                paramPos += valueBytes;
             }
-            
-            DecodedSignal sigField;
-            sigField.name = getFieldName(targetPGN, fieldNum);
-            sigField.value = fieldVal;
-            sigField.isValid = true;
-            decoded.signalList.append(sigField);
-            
-            paramPos += valueBytes;
         }
     }
     
@@ -2178,7 +2174,7 @@ DecodedMessage DBCDecoder::decodePGN126998(const tN2kMsg& msg)
 QString DBCDecoder::getFieldName(unsigned long pgn, uint8_t fieldNumber) const
 {
     switch (pgn) {
-        case 130561: // Lighting Zone
+        case 130561: // Zone Lighting Control
             switch (fieldNumber) {
                 case 1: return "Field 1 - Zone ID";
                 case 2: return "Field 2 - Zone Name";
@@ -2188,10 +2184,10 @@ QString DBCDecoder::getFieldName(unsigned long pgn, uint8_t fieldNumber) const
                 case 6: return "Field 6 - Color Temperature";
                 case 7: return "Field 7 - Intensity";
                 case 8: return "Field 8 - Program ID";
-                case 9: return "Field 9 - Color Sequence Index";
+                case 9: return "Field 9 - Program Color Seq Index";
                 case 10: return "Field 10 - Program Intensity";
                 case 11: return "Field 11 - Program Rate";
-                case 12: return "Field 12 - Color Sequence Rate";
+                case 12: return "Field 12 - Program Color Sequence";
                 case 13: return "Field 13 - Zone Enabled";
                 default: return QString("Field %1").arg(fieldNumber);
             }
@@ -2391,7 +2387,7 @@ QString DBCDecoder::getPGNDescription(uint32_t pgn)
         
         // Lighting PGNs (Lumitec specific)
         pgnDescriptions[130330] = "Lighting System Settings";
-        pgnDescriptions[130561] = "Lighting Zone";
+        pgnDescriptions[130561] = "Zone Lighting Control";
         pgnDescriptions[130562] = "Lighting Scene";
         pgnDescriptions[130563] = "Lighting Device";
         pgnDescriptions[130564] = "Lighting Device Enumeration";
@@ -2492,8 +2488,8 @@ int DBCDecoder::getFieldSize(unsigned long pgn, uint8_t fieldNumber) const
                 case 10: return 2; // Identify Device
                 default: return 1;
             }
-
-        case 130561: // Lighting Zone
+            
+        case 130561: // Zone Lighting Control
             switch (fieldNumber) {
                 case 1: return 1; // Zone ID
                 case 2: return -1; // Zone Name (variable length string)
@@ -2598,541 +2594,58 @@ int DBCDecoder::getFieldSize(unsigned long pgn, uint8_t fieldNumber) const
     }
 }
 
-// Phase 2: Lighting Appendix D Enhancement Functions
-
-QString DBCDecoder::validateZoneID(uint8_t zoneID) const
-{
-    if (zoneID <= 251) {
-        return QString("Zone %1").arg(zoneID);
-    }
-    
-    switch (zoneID) {
-        case 252: return "No Zone Assignment";
-        case 253: return "Reserved";
-        case 254: return "Out of Range";
-        case 255: return "Data Not Available";
-        default: return QString("Invalid Zone ID (%1)").arg(zoneID);
-    }
-}
-
-QString DBCDecoder::validateColorCommand(uint8_t r, uint8_t g, uint8_t b, uint16_t k) const
-{
-    bool hasRGB = (r > 0 || g > 0 || b > 0);
-    bool hasTemp = (k > 0);
-    
-    if (hasRGB && hasTemp) {
-        return "WARNING: RGB and Color Temperature cannot be set simultaneously per NMEA 2000 specification";
-    }
-    if (k == 0 && !hasRGB) {
-        return "Off (no color specified)";
-    }
-    if (hasRGB) {
-        return QString("RGB Color (R:%1, G:%2, B:%3)").arg(r).arg(g).arg(b);
-    }
-    if (hasTemp) {
-        return QString("Color Temperature %1K").arg(k);
-    }
-    return "Valid color command";
-}
-
-QString DBCDecoder::decodeProgramType(uint8_t programID) const
-{
-    if (programID == 0) {
-        return "No Program/Solid Color";
-    }
-    
-    if (programID <= 100) {
-        // NMEA-defined programs (0-100)
-        switch (programID) {
-            case 1: return "Program Solid (cycles through colors holding each solid)";
-            case 2: return "Program Fade (fades intensity to 0 then switches colors)"; 
-            case 3: return "Program Strobe (quick flashing through color sequence)";
-            case 4: return "Program Music Frequency (maps 3 frequency bands to first 3 colors)";
-            case 5: return "Program Music Intensity (adjusts intensity based on music input)";
-            default: return QString("NMEA Program %1").arg(programID);
-        }
-    } else if (programID <= 252) {
-        return QString("Vendor Custom Program %1").arg(programID);
-    } else {
-        switch (programID) {
-            case 253: return "Reserved Program ID";
-            case 254: return "Out of Range Program ID";
-            case 255: return "Data Not Available";
-            default: return QString("Invalid Program ID (%1)").arg(programID);
-        }
-    }
-}
-
-QString DBCDecoder::decodeDeviceCapabilities(uint8_t capabilities) const
-{
-    QStringList caps;
-    
-    if (capabilities & 0x01) caps << "Default (basic on/off)";
-    if (capabilities & 0x02) caps << "Dimmable (0-100% intensity)"; 
-    if (capabilities & 0x04) caps << "Programmable (can execute programs independently)";
-    if (capabilities & 0x08) caps << "Color Configurable (color capabilities can be modified)";
-    
-    // Check for reserved bits
-    uint8_t reservedBits = capabilities & 0xF0;
-    if (reservedBits != 0) {
-        caps << QString("Reserved bits: 0x%1").arg(reservedBits, 2, 16, QChar('0')).toUpper();
-    }
-    
-    if (caps.isEmpty()) {
-        return "No capabilities specified";
-    }
-    return caps.join(" | ");
-}
-
-QString DBCDecoder::decodeColorCapabilities(uint8_t colorCaps) const
-{
-    QStringList caps;
-    
-    // Based on Appendix D specification - this is a preliminary implementation
-    // The exact bit mapping would need to be verified against the specification
-    if (colorCaps & 0x01) caps << "RGB (full RGB color selector)";
-    if (colorCaps & 0x02) caps << "R only (red channel only)";
-    if (colorCaps & 0x04) caps << "G only (green channel only)"; 
-    if (colorCaps & 0x08) caps << "B only (blue channel only)";
-    if (colorCaps & 0x10) caps << "Color Temperature K (temperature selector)";
-    if (colorCaps & 0x20) caps << "Daylight (K>0=on, 0=off)";
-    if (colorCaps & 0x40) caps << "Warm (warm color bias)";
-    if (colorCaps & 0x80) caps << "Not Changeable (no color control)";
-    
-    if (caps.isEmpty()) {
-        return "No color capabilities specified";
-    }
-    return caps.join(" | ");
-}
-
-QString DBCDecoder::decodeColorSequenceIndex(uint8_t index) const
-{
-    // Predefined color sequences from Appendix D
-    switch (index) {
-        case 220: return "Red (Predefined - R:255, G:0, B:0, I:100%)";
-        case 221: return "Green (Predefined - R:0, G:255, B:0, I:100%)";
-        case 222: return "Blue (Predefined - R:0, G:0, B:255, I:100%)";
-        case 223: return "White (Predefined - R:255, G:255, B:255, I:100%)";
-        case 224: return "Daylight (Predefined - K:6500, I:100%)";
-        case 225: return "Warm (Predefined - K:3000, I:100%)";
-        default: 
-            if (index < 220) {
-                return QString("Custom Sequence %1").arg(index);
-            } else if (index <= 252) {
-                return QString("Reserved Sequence %1").arg(index);
-            } else {
-                switch (index) {
-                    case 253: return "Reserved";
-                    case 254: return "Out of Range";
-                    case 255: return "Data Not Available";
-                    default: return QString("Invalid Sequence Index (%1)").arg(index);
-                }
-            }
-    }
-}
-
-QString DBCDecoder::calculateActualIntensity(uint8_t colorIntensity, uint8_t programIntensity) const
-{
-    // Per Appendix D: actual output = color intensity × program intensity
-    if (colorIntensity > 100) colorIntensity = 100;  // Clamp to valid range
-    if (programIntensity > 100) programIntensity = 100;  // Clamp to valid range
-    
-    double actualIntensity = (colorIntensity / 100.0) * (programIntensity / 100.0) * 100.0;
-    
-    return QString("Actual: %1% (Color: %2% × Program: %3%)")
-           .arg(actualIntensity, 0, 'f', 1)
-           .arg(colorIntensity)
-           .arg(programIntensity);
-}
-
 // Phase 3: Core Protocol Enhancement Functions
-
-QString DBCDecoder::decodeNAMEField(uint64_t nameValue) const
+QString DBCDecoder::decodeManufacturerCode(uint16_t manufacturerCode)
 {
-    // Extract NAME field components according to NMEA 2000 specification
-    uint32_t uniqueNumber = nameValue & 0x1FFFFF;              // Bits 0-20
-    uint16_t manufacturerCode = (nameValue >> 21) & 0x7FF;     // Bits 21-31  
-    uint8_t deviceInstanceLower = (nameValue >> 32) & 0x7;     // Bits 32-34
-    uint8_t deviceInstanceUpper = (nameValue >> 35) & 0x1F;    // Bits 35-39
-    uint8_t deviceFunction = (nameValue >> 40) & 0xFF;         // Bits 40-47
-    uint8_t reserved = (nameValue >> 48) & 0x1;                // Bit 48
-    uint8_t deviceClass = (nameValue >> 49) & 0x7F;            // Bits 49-55
-    uint8_t systemInstance = (nameValue >> 56) & 0xF;          // Bits 56-59
-    uint8_t industryCode = (nameValue >> 60) & 0x7;            // Bits 60-62
-    uint8_t selfConfigurable = (nameValue >> 63) & 0x1;        // Bit 63
+    // NMEA2000 Manufacturer Codes
+    // Based on NMEA 2000 Registration List
+    static QMap<uint16_t, QString> manufacturerNames;
     
-    QStringList components;
-    
-    components << QString("Unique Number: %1").arg(uniqueNumber);
-    components << QString("Manufacturer: %1").arg(decodeManufacturerCode(manufacturerCode));
-    components << QString("Device Instance: %1 (Upper: %2, Lower: %3)").arg((deviceInstanceUpper << 3) | deviceInstanceLower).arg(deviceInstanceUpper).arg(deviceInstanceLower);
-    components << QString("Function: %1").arg(decodeDeviceFunction(deviceFunction, deviceClass));
-    components << QString("Class: %1").arg(decodeDeviceClass(deviceClass));
-    components << QString("System Instance: %1").arg(systemInstance);
-    components << QString("Industry: %1").arg(decodeIndustryCode(industryCode));
-    components << QString("Self-Configurable: %1").arg(selfConfigurable ? "Yes" : "No");
-    
-    if (reserved != 0) {
-        components << QString("Reserved: %1 (should be 0)").arg(reserved);
+    if (manufacturerNames.isEmpty()) {
+        // Initialize manufacturer code mapping
+        manufacturerNames[126] = "Furuno";
+        manufacturerNames[130] = "Raymarine";
+        manufacturerNames[135] = "Airmar";
+        manufacturerNames[137] = "Maretron";
+        manufacturerNames[140] = "Lowrance";
+        manufacturerNames[144] = "Furuno";
+        manufacturerNames[147] = "Garmin";
+        manufacturerNames[154] = "Navico";
+        manufacturerNames[161] = "Raymarine";
+        manufacturerNames[163] = "Maretron";
+        manufacturerNames[165] = "B&G";
+        manufacturerNames[168] = "Garmin";
+        manufacturerNames[174] = "Yacht Devices";
+        manufacturerNames[176] = "Carling Technologies";
+        manufacturerNames[194] = "Simrad";
+        manufacturerNames[199] = "Victron Energy";
+        manufacturerNames[215] = "Digital Yacht";
+        manufacturerNames[229] = "Lumitec";
+        manufacturerNames[273] = "Navionics";
+        manufacturerNames[275] = "McMurdo";
+        manufacturerNames[304] = "EmpirBus";
+        manufacturerNames[355] = "Blue Water Data";
+        manufacturerNames[358] = "Victron";
+        manufacturerNames[381] = "Rose Point Navigation";
+        manufacturerNames[419] = "Fusion Electronics";
+        manufacturerNames[437] = "Chetco Digital Instruments";
+        manufacturerNames[493] = "Ocean Signal";
+        manufacturerNames[504] = "Vesper";
+        manufacturerNames[517] = "Sea Recovery";
+        manufacturerNames[573] = "Yacht Monitoring Solutions";
+        manufacturerNames[580] = "Siren Marine";
+        manufacturerNames[591] = "NoLand Engineering";
+        manufacturerNames[658] = "Dometic";
+        manufacturerNames[1084] = "ShadowCaster";
+        manufacturerNames[1403] = "Arco";
+        manufacturerNames[1440] = "Egis Mobile";
+        manufacturerNames[1512] = "Lumitec";
+        manufacturerNames[1857] = "Simrad";
     }
     
-    return components.join(" | ");
-}
-
-QString DBCDecoder::decodeDeviceClass(uint8_t deviceClass) const
-{
-    // Device classes from NMEA 2000 Appendix B.6
-    switch (deviceClass) {
-        case 0: return "Reserved (0)";
-        case 10: return "System tools";
-        case 20: return "Safety systems";
-        case 25: return "Internetwork device";
-        case 30: return "Electrical Distribution";
-        case 35: return "Electrical Generation";  
-        case 40: return "Steering and Control surfaces";
-        case 50: return "Propulsion";
-        case 60: return "Navigation";
-        case 70: return "Communication";
-        case 75: return "Sensor Communication Interface";
-        case 80: return "Instrumentation/general systems";
-        case 85: return "External Environment";
-        case 90: return "Internal Environment";  
-        case 100: return "Deck + cargo + fishing equipment systems";
-        case 110: return "Display";
-        case 120: return "Entertainment";
-        case 125: return "Lighting";
-        default: return QString("Unknown Device Class (%1)").arg(deviceClass);
+    if (manufacturerNames.contains(manufacturerCode)) {
+        return manufacturerNames[manufacturerCode];
     }
-}
-
-QString DBCDecoder::decodeDeviceFunction(uint8_t deviceFunction, uint8_t deviceClass) const
-{
-    // Device functions from NMEA 2000 Appendix B.6 - Class-specific
-    if (deviceClass == 125) { // Lighting
-        switch (deviceFunction) {
-            case 0: return "Lighting Controller";
-            case 1: return "Lighting Device";
-            case 2: return "Lighting Gateway";
-            default: return QString("Lighting Function %1").arg(deviceFunction);
-        }
-    } else if (deviceClass == 110) { // Display
-        switch (deviceFunction) {
-            case 0: return "Multifunction Display";
-            case 1: return "Dedicated Display";
-            case 2: return "Repeater Display";
-            default: return QString("Display Function %1").arg(deviceFunction);
-        }
-    } else if (deviceClass == 60) { // Navigation
-        switch (deviceFunction) {
-            case 0: return "GPS";
-            case 1: return "GLONASS";
-            case 2: return "GPS+GLONASS";
-            case 3: return "GPS+SBAS/WAAS";
-            case 4: return "GPS+SBAS/WAAS+GLONASS";
-            case 5: return "Chayka";
-            case 6: return "integrated";
-            case 7: return "loran C";
-            case 8: return "survey";
-            case 9: return "military";
-            default: return QString("Navigation Function %1").arg(deviceFunction);
-        }
-    } else {
-        // Generic function description for other classes
-        return QString("Function %1").arg(deviceFunction);
-    }
-}
-
-QString DBCDecoder::decodeManufacturerCode(uint16_t manufacturerCode) const
-{
-    // Common manufacturer codes from NMEA 2000 database
-    switch (manufacturerCode) {
-        case 174: return "Actisense (174)";
-        case 215: return "Airmar (215)";
-        case 381: return "B&G (381)";
-        case 394: return "Garmin (394)";
-        case 1851: return "Lowrance (1851)";
-        case 419: return "Lumitec (419)";
-        case 355: return "Maretron (355)";
-        case 1857: return "Navico (1857)";
-        case 378: return "Raymarine (378)";
-        case 1862: return "Simrad (1862)";
-        case 358: return "Victron Energy (358)";
-        case 437: return "Yacht Devices (437)";
-        default: return QString("Manufacturer %1").arg(manufacturerCode);
-    }
-}
-
-QString DBCDecoder::decodeIndustryCode(uint8_t industryCode) const
-{
-    switch (industryCode) {
-        case 0: return "Global (0)";
-        case 1: return "On-Highway Equipment (1)";
-        case 2: return "Agricultural Equipment (2)";
-        case 3: return "Construction Equipment (3)";
-        case 4: return "Marine Equipment (4)";
-        case 5: return "Industrial Equipment (5)";
-        default: return QString("Reserved Industry (%1)").arg(industryCode);
-    }
-}
-
-QString DBCDecoder::decodeRequestType(uint8_t requestType) const
-{
-    switch (requestType) {
-        case 0: return "Request";
-        case 1: return "Command";  
-        case 2: return "Acknowledge";
-        case 3: return "Read Fields";
-        case 4: return "Read Fields Reply";
-        case 5: return "Write Fields";
-        case 6: return "Write Fields Reply";
-        default: return QString("Reserved Request Type (%1)").arg(requestType);
-    }
-}
-
-QString DBCDecoder::decodeAcknowledgmentCode(uint8_t ackCode) const
-{
-    switch (ackCode) {
-        case 0: return "ACK (Positive Acknowledgment)";
-        case 1: return "NAK (Negative Acknowledgment)";  
-        case 2: return "Access Denied";
-        case 3: return "Address Busy";
-        default: return QString("Reserved ACK Code (%1)").arg(ackCode);
-    }
-}
-
-// Phase 3: Enhanced PGN Decoders
-
-DecodedMessage DBCDecoder::decodePGN60928(const tN2kMsg& msg)
-{
-    DecodedMessage decoded;
-    decoded.messageName = "ISO Address Claim (60928)";
-    decoded.description = "NMEA2000 Device Address Claim with NAME Field Analysis";
-    decoded.isDecoded = true;
-
-    if (msg.DataLen < 8) {
-        DecodedSignal sig;
-        sig.name = "Error";
-        sig.value = "Message too short for PGN 60928 - requires 8 bytes";
-        decoded.signalList.append(sig);
-        return decoded;
-    }
-
-    // Extract 8-byte NAME field
-    uint64_t nameValue = 0;
-    for (int i = 0; i < 8; i++) {
-        nameValue |= (uint64_t(msg.Data[i]) << (i * 8));
-    }
-
-    // Raw NAME field
-    DecodedSignal sigNameRaw;
-    sigNameRaw.name = "NAME Field (Raw)";
-    sigNameRaw.isValid = true;
-    sigNameRaw.value = QString("0x%1").arg(nameValue, 16, 16, QChar('0')).toUpper();
-    decoded.signalList.append(sigNameRaw);
-
-    // Decoded NAME field components
-    DecodedSignal sigNameDecoded;
-    sigNameDecoded.name = "NAME Field (Decoded)";
-    sigNameDecoded.isValid = true;
-    sigNameDecoded.value = decodeNAMEField(nameValue);
-    decoded.signalList.append(sigNameDecoded);
-
-    // Extract individual components for detailed analysis
-    uint32_t uniqueNumber = nameValue & 0x1FFFFF;
-    uint16_t manufacturerCode = (nameValue >> 21) & 0x7FF;
-    uint8_t deviceInstanceLower = (nameValue >> 32) & 0x7;
-    uint8_t deviceInstanceUpper = (nameValue >> 35) & 0x1F;
-    uint8_t deviceFunction = (nameValue >> 40) & 0xFF;
-    uint8_t deviceClass = (nameValue >> 49) & 0x7F;
-    uint8_t systemInstance = (nameValue >> 56) & 0xF;
-    uint8_t industryCode = (nameValue >> 60) & 0x7;
-
-    // Detailed component analysis
-    DecodedSignal sigUniqueNumber;
-    sigUniqueNumber.name = "Unique Number";
-    sigUniqueNumber.isValid = true;
-    sigUniqueNumber.value = QString("%1 (0x%2)").arg(uniqueNumber).arg(uniqueNumber, 5, 16, QChar('0')).toUpper();
-    decoded.signalList.append(sigUniqueNumber);
-
-    DecodedSignal sigManufacturer;
-    sigManufacturer.name = "Manufacturer";
-    sigManufacturer.isValid = true;
-    sigManufacturer.value = decodeManufacturerCode(manufacturerCode);
-    decoded.signalList.append(sigManufacturer);
-
-    DecodedSignal sigDeviceInstance;
-    sigDeviceInstance.name = "Device Instance";
-    sigDeviceInstance.isValid = true;
-    uint8_t fullInstance = (deviceInstanceUpper << 3) | deviceInstanceLower;
-    sigDeviceInstance.value = QString("%1 (Upper:%2, Lower:%3)").arg(fullInstance).arg(deviceInstanceUpper).arg(deviceInstanceLower);
-    decoded.signalList.append(sigDeviceInstance);
-
-    DecodedSignal sigDeviceFunction;
-    sigDeviceFunction.name = "Device Function";
-    sigDeviceFunction.isValid = true;
-    sigDeviceFunction.value = QString("%1 - %2").arg(deviceFunction).arg(decodeDeviceFunction(deviceFunction, deviceClass));
-    decoded.signalList.append(sigDeviceFunction);
-
-    DecodedSignal sigDeviceClass;
-    sigDeviceClass.name = "Device Class";
-    sigDeviceClass.isValid = true;
-    sigDeviceClass.value = QString("%1 - %2").arg(deviceClass).arg(decodeDeviceClass(deviceClass));
-    decoded.signalList.append(sigDeviceClass);
-
-    DecodedSignal sigSystemInstance;
-    sigSystemInstance.name = "System Instance";
-    sigSystemInstance.isValid = true;
-    sigSystemInstance.value = QString("%1").arg(systemInstance);
-    decoded.signalList.append(sigSystemInstance);
-
-    DecodedSignal sigIndustryCode;
-    sigIndustryCode.name = "Industry Code";
-    sigIndustryCode.isValid = true;
-    sigIndustryCode.value = decodeIndustryCode(industryCode);
-    decoded.signalList.append(sigIndustryCode);
-
-    // Self-configurable flag
-    uint8_t selfConfigurable = (nameValue >> 63) & 0x1;
-    DecodedSignal sigSelfConfig;
-    sigSelfConfig.name = "Self-Configurable";
-    sigSelfConfig.isValid = true;
-    sigSelfConfig.value = selfConfigurable ? "Yes" : "No";
-    decoded.signalList.append(sigSelfConfig);
-
-    // Reserved bit validation
-    uint8_t reserved = (nameValue >> 48) & 0x1;
-    if (reserved != 0) {
-        DecodedSignal sigReserved;
-        sigReserved.name = "Reserved Bit (WARNING)";
-        sigReserved.isValid = true;
-        sigReserved.value = QString("Should be 0, found %1").arg(reserved);
-        decoded.signalList.append(sigReserved);
-    }
-
-    return decoded;
-}
-
-DecodedMessage DBCDecoder::decodePGN59904(const tN2kMsg& msg)
-{
-    DecodedMessage decoded;
-    decoded.messageName = "ISO Request (59904)";
-    decoded.description = "NMEA2000 Information Request";
-    decoded.isDecoded = true;
-
-    if (msg.DataLen < 3) {
-        DecodedSignal sig;
-        sig.name = "Error";
-        sig.value = "Message too short for PGN 59904 - requires at least 3 bytes";
-        decoded.signalList.append(sig);
-        return decoded;
-    }
-
-    // Extract requested PGN (3 bytes, little endian)
-    uint32_t requestedPGN = msg.Data[0] | (msg.Data[1] << 8) | (msg.Data[2] << 16);
-
-    DecodedSignal sigRequestedPGN;
-    sigRequestedPGN.name = "Requested PGN";
-    sigRequestedPGN.isValid = true;
-    QString pgnName = getPGNDescription(requestedPGN);
-    if (!pgnName.isEmpty() && pgnName != "Unknown Range") {
-        sigRequestedPGN.value = QString("%1 (%2)").arg(requestedPGN).arg(pgnName);
-    } else {
-        sigRequestedPGN.value = QString("%1").arg(requestedPGN);
-    }
-    decoded.signalList.append(sigRequestedPGN);
-
-    // Analyze request pattern
-    DecodedSignal sigRequestType;
-    sigRequestType.name = "Request Analysis";
-    sigRequestType.isValid = true;
     
-    if (msg.Destination == 255) {
-        sigRequestType.value = "Global request (broadcast)";
-    } else {
-        sigRequestType.value = QString("Directed request to device 0x%1").arg(msg.Destination, 2, 16, QChar('0')).toUpper();
-    }
-    decoded.signalList.append(sigRequestType);
-
-    // Check if PGN is known and valid
-    DecodedSignal sigPGNValidation;
-    sigPGNValidation.name = "PGN Validation";
-    sigPGNValidation.isValid = true;
-    
-    if (requestedPGN == 0) {
-        sigPGNValidation.value = "Invalid PGN (0)";
-    } else if (requestedPGN > 131071) {
-        sigPGNValidation.value = "Invalid PGN (>131071)";
-    } else if (pgnName.isEmpty() || pgnName == "Unknown Range") {
-        sigPGNValidation.value = "Unknown/Proprietary PGN";
-    } else {
-        sigPGNValidation.value = "Standard NMEA 2000 PGN";
-    }
-    decoded.signalList.append(sigPGNValidation);
-
-    return decoded;
-}
-
-DecodedMessage DBCDecoder::decodePGN59392(const tN2kMsg& msg)
-{
-    DecodedMessage decoded;
-    decoded.messageName = "ISO Acknowledgment (59392)";
-    decoded.description = "NMEA2000 Request/Command Acknowledgment";
-    decoded.isDecoded = true;
-
-    if (msg.DataLen < 5) {
-        DecodedSignal sig;
-        sig.name = "Error";
-        sig.value = "Message too short for PGN 59392 - requires at least 5 bytes";
-        decoded.signalList.append(sig);
-        return decoded;
-    }
-
-    // Field 1: Control byte (ACK/NAK)
-    uint8_t control = msg.Data[0];
-    DecodedSignal sigControl;
-    sigControl.name = "Acknowledgment";
-    sigControl.isValid = true;
-    sigControl.value = decodeAcknowledgmentCode(control);
-    decoded.signalList.append(sigControl);
-
-    // Field 2: Group Function code
-    uint8_t groupFunction = msg.Data[1];
-    DecodedSignal sigGroupFunction;
-    sigGroupFunction.name = "Group Function";
-    sigGroupFunction.isValid = true;
-    sigGroupFunction.value = decodeRequestType(groupFunction);
-    decoded.signalList.append(sigGroupFunction);
-
-    // Field 3: PGN being acknowledged (3 bytes)
-    uint32_t acknowledgedPGN = msg.Data[2] | (msg.Data[3] << 8) | (msg.Data[4] << 16);
-    DecodedSignal sigAcknowledgedPGN;
-    sigAcknowledgedPGN.name = "Acknowledged PGN";
-    sigAcknowledgedPGN.isValid = true;
-    QString pgnName = getPGNDescription(acknowledgedPGN);
-    if (!pgnName.isEmpty() && pgnName != "Unknown Range") {
-        sigAcknowledgedPGN.value = QString("%1 (%2)").arg(acknowledgedPGN).arg(pgnName);
-    } else {
-        sigAcknowledgedPGN.value = QString("%1").arg(acknowledgedPGN);
-    }
-    decoded.signalList.append(sigAcknowledgedPGN);
-
-    // Additional analysis
-    DecodedSignal sigAnalysis;
-    sigAnalysis.name = "Response Analysis";
-    sigAnalysis.isValid = true;
-    
-    if (control == 0) {
-        sigAnalysis.value = "Request/Command was successful";
-    } else if (control == 1) {
-        sigAnalysis.value = "Request/Command was rejected or failed";
-    } else if (control == 2) {
-        sigAnalysis.value = "Access denied - insufficient privileges";
-    } else if (control == 3) {
-        sigAnalysis.value = "Address busy - device cannot respond";
-    } else {
-        sigAnalysis.value = QString("Unknown response code (%1)").arg(control);
-    }
-    decoded.signalList.append(sigAnalysis);
-
-    return decoded;
+    return QString("Unknown (%1)").arg(manufacturerCode);
 }

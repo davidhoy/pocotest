@@ -77,6 +77,9 @@ public:
     QString getDecoderInfo() const;  // Enhanced decoder status info
     QList<unsigned long> getCustomDecoderPGNs() const;  // Get list of PGNs with custom decoders
     bool hasCustomDecoder(unsigned long pgn) const;     // Check if PGN has custom decoder
+    
+    // Utility functions
+    static QString decodeManufacturerCode(uint16_t manufacturerCode);
 
 private:
     void initializeStandardNMEA2000();
@@ -117,7 +120,6 @@ private:
     QString decodeNAMEField(uint64_t nameValue) const;
     QString decodeDeviceClass(uint8_t deviceClass) const;
     QString decodeDeviceFunction(uint8_t deviceFunction, uint8_t deviceClass) const;
-    QString decodeManufacturerCode(uint16_t manufacturerCode) const;
     QString decodeIndustryCode(uint8_t industryCode) const;
     QString decodeRequestType(uint8_t requestType) const;
     QString decodeAcknowledgmentCode(uint8_t ackCode) const;

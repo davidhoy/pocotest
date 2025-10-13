@@ -6,6 +6,7 @@
 #include "pocodevicedialog.h"
 #include "zonelightingdialog.h"
 #include "LumitecPoco.h"
+#include "dbcdecoder.h"
 
 #ifdef WASM_BUILD
 #include "NMEA2000_WASM.h"
@@ -2809,26 +2810,8 @@ QString DeviceMainWindow::getDeviceFunctionName(unsigned char deviceFunction) {
 }
 
 QString DeviceMainWindow::getManufacturerName(uint16_t manufacturerCode) const {
-    switch(manufacturerCode) {
-        case 126:  return "Furuno";
-        case 130:  return "Raymarine";
-        case 135:  return "Airmar";
-        case 137:  return "Maretron";
-        case 147:  return "Garmin";
-        case 165:  return "B&G";
-        case 176:  return "Carling Technologies";
-        case 194:  return "Simrad";
-        case 229:  return "Garmin"; // Furuno is also 229, but Garmin is more common
-        case 304:  return "EmpirBus"; // Added manufacturer
-        case 358:  return "Victron";
-        case 504:  return "Vesper";
-        case 1084: return "ShadowCaster";
-        case 1403: return "Arco";
-        case 1440: return "Egis Mobile";
-        case 1512: return "Lumitec";
-        case 1857: return "Simrad";
-        default:   return QString("Unknown (%1)").arg(manufacturerCode);
-    }
+    // Use DBCDecoder's comprehensive manufacturer database
+    return DBCDecoder::decodeManufacturerCode(manufacturerCode);
 }
 
 QString DeviceMainWindow::getPGNName(unsigned long pgn) {
