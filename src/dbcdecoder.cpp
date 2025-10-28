@@ -621,6 +621,9 @@ void DBCDecoder::initializeCustomDecoders()
     m_customDecoders[130564] = {130564, "Lighting Device Enumeration", [](DBCDecoder* decoder, const tN2kMsg& msg) { return decoder->decodePGN130564(msg); }};
     m_customDecoders[130565] = {130565, "Lighting Color Sequence",     [](DBCDecoder* decoder, const tN2kMsg& msg) { return decoder->decodePGN130565(msg); }};
     m_customDecoders[130566] = {130566, "Lighting Program",            [](DBCDecoder* decoder, const tN2kMsg& msg) { return decoder->decodePGN130566(msg); }};
+    
+    // Lumitec Proprietary PGN decoders
+    m_customDecoders[61184] = {61184, "Lumitec Proprietary",           [](DBCDecoder* decoder, const tN2kMsg& msg) { return decoder->decodePGN61184(msg); }};
 }
 
 // Lighting PGN Decoders
@@ -2648,4 +2651,391 @@ QString DBCDecoder::decodeManufacturerCode(uint16_t manufacturerCode)
     }
     
     return QString("Unknown (%1)").arg(manufacturerCode);
+}
+
+// Lumitec Proprietary PGN 61184 Decoder
+DecodedMessage DBCDecoder::decodePGN61184(const tN2kMsg& msg)
+{
+    DecodedMessage decoded;
+    decoded.messageName = "Lumitec Proprietary (61184)";
+    decoded.description = "Lumitec Poco CAN Protocol Message";
+    decoded.isDecoded = true;
+
+    if (msg.DataLen < 3) {
+        DecodedSignal sig;
+        sig.name = "Error";
+        sig.value = "Message too short for PGN 61184";
+        sig.isValid = false;
+        decoded.signalList.append(sig);
+        return decoded;
+    }
+
+    int index = 0;
+
+    // Parse manufacturer code and industry code (first 2 bytes)
+    uint16_t proprietaryInfo = msg.Get2ByteUInt(index);
+    uint16_t manufacturerCode = proprietaryInfo & 0x7FF;
+    uint8_t industryCode = (proprietaryInfo >> 13) & 0x07;
+
+    DecodedSignal sigMfg;
+    sigMfg.name = "Manufacturer";
+    sigMfg.isValid = true;
+    sigMfg.value = QString("%1 (%2)").arg(decodeManufacturerCode(manufacturerCode)).arg(manufacturerCode);
+    decoded.signalList.append(sigMfg);
+
+    DecodedSignal sigIndustry;
+    sigIndustry.name = "Industry Code";
+    sigIndustry.isValid = true;
+    sigIndustry.value = QString::number(industryCode);
+    decoded.signalList.append(sigIndustry);
+
+    // Get proprietary ID to determine message sub-type
+    uint8_t proprietaryId = msg.GetByte(index);
+    
+    DecodedSignal sigPropId;
+    sigPropId.name = "Proprietary ID";
+    sigPropId.isValid = true;
+    
+    // Decode based on Proprietary ID
+    switch (proprietaryId) {
+        case 1: { // PID_EXTSW_SIMPLE_ACTIONS
+            sigPropId.value = "ExtSw Simple Actions (1)";
+            decoded.signalList.append(sigPropId);
+            
+            if (msg.DataLen >= 5) {
+                uint8_t actionId = msg.GetByte(index);
+                uint8_t switchId = msg.GetByte(index);
+                
+                DecodedSignal sigAction;
+                sigAction.name = "Action ID";
+                sigAction.isValid = true;
+                sigAction.value = QString::number(actionId);
+                decoded.signalList.append(sigAction);
+                
+                DecodedSignal sigSwitch;
+                sigSwitch.name = "Switch ID";
+                sigSwitch.isValid = true;
+                sigSwitch.value = QString::number(switchId);
+                decoded.signalList.append(sigSwitch);
+            }
+            break;
+        }
+        
+        case 2: { // PID_EXTSW_STATE_INFO
+            sigPropId.value = "ExtSw State Info (2)";
+            decoded.signalList.append(sigPropId);
+            
+            if (msg.DataLen >= 6) {
+                uint8_t extSwId = msg.GetByte(index);
+                uint8_t extSwState = msg.GetByte(index);
+                uint8_t extSwType = msg.GetByte(index);
+                
+                DecodedSignal sigExtSwId;
+                sigExtSwId.name = "Switch ID";
+                sigExtSwId.isValid = true;
+                sigExtSwId.value = QString::number(extSwId);
+                decoded.signalList.append(sigExtSwId);
+                
+                DecodedSignal sigState;
+                sigState.name = "State";
+                sigState.isValid = true;
+                sigState.value = QString::number(extSwState);
+                decoded.signalList.append(sigState);
+                
+                DecodedSignal sigType;
+                sigType.name = "Switch Type";
+                sigType.isValid = true;
+                QString typeStr;
+                switch (extSwType) {
+                    case 0: typeStr = "Off"; break;
+                    case 1: typeStr = "Hue/Saturation"; break;
+                    case 2: typeStr = "White Kelvin"; break;
+                    case 3: typeStr = "Running Pattern"; break;
+                    case 4: typeStr = "Scene Select"; break;
+                    case 253: typeStr = "Not Configured"; break;
+                    default: typeStr = "Unknown"; break;
+                }
+                sigType.value = QString("%1 (%2)").arg(typeStr).arg(extSwType);
+                decoded.signalList.append(sigType);
+            }
+            break;
+        }
+        
+        case 3: { // PID_EXTSW_CUSTOM_HSB
+            sigPropId.value = "ExtSw Custom HSB (3)";
+            decoded.signalList.append(sigPropId);
+            
+            if (msg.DataLen >= 8) {
+                uint8_t actionId = msg.GetByte(index);
+                uint8_t switchId = msg.GetByte(index);
+                uint8_t hue = msg.GetByte(index);
+                uint8_t saturation = msg.GetByte(index);
+                uint8_t brightness = msg.GetByte(index);
+                
+                DecodedSignal sigAction;
+                sigAction.name = "Action ID";
+                sigAction.isValid = true;
+                sigAction.value = QString::number(actionId);
+                decoded.signalList.append(sigAction);
+                
+                DecodedSignal sigSwitch;
+                sigSwitch.name = "Switch ID";
+                sigSwitch.isValid = true;
+                sigSwitch.value = QString::number(switchId);
+                decoded.signalList.append(sigSwitch);
+                
+                DecodedSignal sigHue;
+                sigHue.name = "Hue";
+                sigHue.isValid = true;
+                sigHue.value = QString("%1 (%2°)").arg(hue).arg(hue * 360.0 / 255.0, 0, 'f', 1);
+                decoded.signalList.append(sigHue);
+                
+                DecodedSignal sigSat;
+                sigSat.name = "Saturation";
+                sigSat.isValid = true;
+                sigSat.value = QString("%1 (%2%)").arg(saturation).arg(saturation * 100.0 / 255.0, 0, 'f', 1);
+                decoded.signalList.append(sigSat);
+                
+                DecodedSignal sigBright;
+                sigBright.name = "Brightness";
+                sigBright.isValid = true;
+                sigBright.value = QString("%1 (%2%)").arg(brightness).arg(brightness * 100.0 / 255.0, 0, 'f', 1);
+                decoded.signalList.append(sigBright);
+            }
+            break;
+        }
+        
+        case 4: { // PID_EXTSW_START_PATTERN
+            sigPropId.value = "ExtSw Start Pattern (4)";
+            decoded.signalList.append(sigPropId);
+            
+            if (msg.DataLen >= 5) {
+                uint8_t switchId = msg.GetByte(index);
+                uint8_t patternId = msg.GetByte(index);
+                
+                DecodedSignal sigSwitch;
+                sigSwitch.name = "Switch ID";
+                sigSwitch.isValid = true;
+                sigSwitch.value = QString::number(switchId);
+                decoded.signalList.append(sigSwitch);
+                
+                DecodedSignal sigPattern;
+                sigPattern.name = "Pattern ID";
+                sigPattern.isValid = true;
+                sigPattern.value = QString::number(patternId);
+                decoded.signalList.append(sigPattern);
+            }
+            break;
+        }
+        
+        case 5: { // PID_OUTPUT_CHANNEL_STATUS
+            sigPropId.value = "Output Channel Status (5)";
+            decoded.signalList.append(sigPropId);
+            
+            if (msg.DataLen >= 8) {
+                uint8_t channel = msg.GetByte(index);
+                uint8_t channelMode = msg.GetByte(index);
+                uint8_t outputLevel = msg.GetByte(index);
+                uint8_t inputVoltage = msg.GetByte(index);
+                uint8_t current = msg.GetByte(index);
+                
+                DecodedSignal sigChan;
+                sigChan.name = "Channel";
+                sigChan.isValid = true;
+                sigChan.value = QString::number(channel);
+                decoded.signalList.append(sigChan);
+                
+                DecodedSignal sigMode;
+                sigMode.name = "Channel Mode";
+                sigMode.isValid = true;
+                QString modeStr;
+                switch (channelMode) {
+                    case 0: modeStr = "None/Off"; break;
+                    case 1: modeStr = "Binary On/Off"; break;
+                    case 2: modeStr = "PWM Dimming"; break;
+                    case 3: modeStr = "PLI"; break;
+                    default: modeStr = "Unknown"; break;
+                }
+                sigMode.value = QString("%1 (%2)").arg(modeStr).arg(channelMode);
+                decoded.signalList.append(sigMode);
+                
+                DecodedSignal sigLevel;
+                sigLevel.name = "Output Level";
+                sigLevel.isValid = true;
+                sigLevel.value = QString("%1 (%2%)").arg(outputLevel).arg(outputLevel * 100.0 / 255.0, 0, 'f', 1);
+                decoded.signalList.append(sigLevel);
+                
+                DecodedSignal sigVoltage;
+                sigVoltage.name = "Input Voltage";
+                sigVoltage.isValid = true;
+                sigVoltage.value = QString("%1 V").arg(inputVoltage * 0.2, 0, 'f', 1);
+                decoded.signalList.append(sigVoltage);
+                
+                DecodedSignal sigCurrent;
+                sigCurrent.name = "Current";
+                sigCurrent.isValid = true;
+                sigCurrent.value = QString("%1 A").arg(current * 0.1, 0, 'f', 1);
+                decoded.signalList.append(sigCurrent);
+            }
+            break;
+        }
+        
+        case 6: { // PID_OUTPUT_CHANNEL_BIN
+            sigPropId.value = "Output Channel Binary (6)";
+            decoded.signalList.append(sigPropId);
+            
+            if (msg.DataLen >= 5) {
+                uint8_t channel = msg.GetByte(index);
+                uint8_t state = msg.GetByte(index);
+                
+                DecodedSignal sigChan;
+                sigChan.name = "Channel";
+                sigChan.isValid = true;
+                sigChan.value = QString::number(channel);
+                decoded.signalList.append(sigChan);
+                
+                DecodedSignal sigState;
+                sigState.name = "State";
+                sigState.isValid = true;
+                sigState.value = state ? "On (1)" : "Off (0)";
+                decoded.signalList.append(sigState);
+            }
+            break;
+        }
+        
+        case 7: { // PID_OUTPUT_CHANNEL_PWM
+            sigPropId.value = "Output Channel PWM (7)";
+            decoded.signalList.append(sigPropId);
+            
+            if (msg.DataLen >= 6) {
+                uint8_t channel = msg.GetByte(index);
+                uint8_t duty = msg.GetByte(index);
+                uint16_t transitionTime = msg.Get2ByteUInt(index);
+                
+                DecodedSignal sigChan;
+                sigChan.name = "Channel";
+                sigChan.isValid = true;
+                sigChan.value = QString::number(channel);
+                decoded.signalList.append(sigChan);
+                
+                DecodedSignal sigDuty;
+                sigDuty.name = "PWM Duty";
+                sigDuty.isValid = true;
+                sigDuty.value = QString("%1 (%2%)").arg(duty).arg(duty * 100.0 / 255.0, 0, 'f', 1);
+                decoded.signalList.append(sigDuty);
+                
+                DecodedSignal sigTransition;
+                sigTransition.name = "Transition Time";
+                sigTransition.isValid = true;
+                sigTransition.value = QString("%1 ms").arg(transitionTime);
+                decoded.signalList.append(sigTransition);
+            }
+            break;
+        }
+        
+        case 8: { // PID_OUTPUT_CHANNEL_PLI
+            sigPropId.value = "Output Channel PLI (8)";
+            decoded.signalList.append(sigPropId);
+            
+            if (msg.DataLen >= 7) {
+                uint8_t channel = msg.GetByte(index);
+                uint32_t pliMessage = msg.Get4ByteUInt(index);
+                
+                DecodedSignal sigChan;
+                sigChan.name = "Channel";
+                sigChan.isValid = true;
+                sigChan.value = QString::number(channel);
+                decoded.signalList.append(sigChan);
+                
+                DecodedSignal sigPLI;
+                sigPLI.name = "PLI Message";
+                sigPLI.isValid = true;
+                sigPLI.value = QString("0x%1").arg(pliMessage, 8, 16, QChar('0')).toUpper();
+                decoded.signalList.append(sigPLI);
+            }
+            break;
+        }
+        
+        case 16: { // PID_OUTPUT_CHANNEL_PLI_T2HSB
+            sigPropId.value = "Output Channel PLI T2HSB (16)";
+            decoded.signalList.append(sigPropId);
+            
+            if (msg.DataLen >= 6) {
+                uint8_t channel = msg.GetByte(index);
+                
+                // Unpack PLI Clan and Transition
+                uint8_t packed = msg.GetByte(index);
+                uint8_t pliClan = packed & 0x3F;
+                uint8_t transition = (packed >> 6) & 0x03;
+                
+                // Unpack Brightness and Hue (high bits)
+                uint8_t packed2 = msg.GetByte(index);
+                uint8_t brightness = packed2 & 0x0F;
+                uint8_t hueHigh = packed2 & 0xF0;
+                
+                // Unpack Hue (low bits) and Saturation
+                uint8_t packed3 = msg.GetByte(index);
+                uint8_t hueLow = (packed3 >> 4) & 0x0F;
+                uint8_t hue = hueHigh | hueLow;
+                uint8_t saturation = (packed3 >> 1) & 0x07;
+                
+                DecodedSignal sigChan;
+                sigChan.name = "Channel";
+                sigChan.isValid = true;
+                sigChan.value = QString::number(channel);
+                decoded.signalList.append(sigChan);
+                
+                DecodedSignal sigClan;
+                sigClan.name = "PLI Clan";
+                sigClan.isValid = true;
+                sigClan.value = QString::number(pliClan);
+                decoded.signalList.append(sigClan);
+                
+                DecodedSignal sigTransition;
+                sigTransition.name = "Transition";
+                sigTransition.isValid = true;
+                sigTransition.value = QString::number(transition);
+                decoded.signalList.append(sigTransition);
+                
+                DecodedSignal sigHue;
+                sigHue.name = "Hue";
+                sigHue.isValid = true;
+                sigHue.value = QString::number(hue);
+                decoded.signalList.append(sigHue);
+                
+                DecodedSignal sigSat;
+                sigSat.name = "Saturation";
+                sigSat.isValid = true;
+                sigSat.value = QString::number(saturation);
+                decoded.signalList.append(sigSat);
+                
+                DecodedSignal sigBright;
+                sigBright.name = "Brightness";
+                sigBright.isValid = true;
+                sigBright.value = QString::number(brightness);
+                decoded.signalList.append(sigBright);
+            }
+            break;
+        }
+        
+        default: {
+            sigPropId.value = QString("Unknown (%1)").arg(proprietaryId);
+            decoded.signalList.append(sigPropId);
+            
+            // Display raw data bytes for unknown proprietary IDs
+            DecodedSignal sigRaw;
+            sigRaw.name = "Raw Data";
+            sigRaw.isValid = true;
+            QString rawHex;
+            for (int i = 3; i < msg.DataLen && i < 8; i++) {
+                if (!rawHex.isEmpty()) rawHex += " ";
+                rawHex += QString("%1").arg(msg.Data[i], 2, 16, QChar('0')).toUpper();
+            }
+            sigRaw.value = rawHex;
+            decoded.signalList.append(sigRaw);
+            break;
+        }
+    }
+
+    return decoded;
 }

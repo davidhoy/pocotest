@@ -140,6 +140,9 @@ private:
     DecodedMessage decodePGN126998(const tN2kMsg& msg);  // Configuration Information
     DecodedMessage decodePGN127501(const tN2kMsg& msg);  // Binary Switch Bank Status
     
+    // Lumitec Proprietary PGN decoders
+    DecodedMessage decodePGN61184(const tN2kMsg& msg);   // Lumitec Poco Protocol
+    
     // Phase 3: Core Protocol Enhancement PGN decoders
     DecodedMessage decodePGN60928(const tN2kMsg& msg);   // ISO Address Claim
     DecodedMessage decodePGN59904(const tN2kMsg& msg);   // ISO Request
