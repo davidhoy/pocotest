@@ -74,6 +74,7 @@ private slots:
     void clearConflictHistory();
     void showDeviceContextMenu(const QPoint& position);
     void editInstallationLabels(uint8_t sourceAddress, const QString& nodeAddress);
+    void changeDeviceInstance(uint8_t sourceAddress, const QString& nodeAddress);
     void onThemeChanged();
 
 private:

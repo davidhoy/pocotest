@@ -18,6 +18,7 @@
 #include "NMEA2000_IPG100.h"
 #endif
 #include "instanceconflictanalyzer.h"
+#include "toastmanager.h"
 #include <NMEA2000.h>
 #include <N2kGroupFunction.h>
 #include <N2kMessages.h>
@@ -1197,6 +1198,13 @@ void DeviceMainWindow::showDeviceContextMenu(const QPoint& position)
     connect(editLabelsAction, &QAction::triggered, [this, sourceAddress, nodeAddress]() {
         editInstallationLabels(sourceAddress, nodeAddress);
     });
+    
+    // Change Device Instance action
+    QAction* changeInstanceAction = contextMenu->addAction("Change Device Instance...");
+    changeInstanceAction->setEnabled(m_isConnected && nmea2000 != nullptr);
+    connect(changeInstanceAction, &QAction::triggered, [this, sourceAddress, nodeAddress]() {
+        changeDeviceInstance(sourceAddress, nodeAddress);
+    });
 
     contextMenu->addSeparator();
 
@@ -1641,6 +1649,205 @@ void DeviceMainWindow::editInstallationLabels(uint8_t sourceAddress, const QStri
         QMessageBox::information(this, "Labels Updated", confirmMessage);
     }
 }
+
+void DeviceMainWindow::changeDeviceInstance(uint8_t sourceAddress, const QString& nodeAddress)
+{
+    // Get current device instance from the device table
+    uint8_t currentInstance = 0;
+    
+    // Find the device row in the table
+    for (int row = 0; row < m_deviceTable->rowCount(); ++row) {
+        QTableWidgetItem* nodeAddressItem = m_deviceTable->item(row, 0);
+        if (nodeAddressItem && nodeAddressItem->text() == nodeAddress) {
+            QTableWidgetItem* instanceItem = m_deviceTable->item(row, 4); // Instance column
+            if (instanceItem) {
+                bool ok;
+                currentInstance = instanceItem->text().toUInt(&ok);
+                if (!ok) currentInstance = 0;
+            }
+            break;
+        }
+    }
+    
+    // Get device name for display
+    QString deviceName = getDeviceDisplayName(sourceAddress);
+    
+    // Create dialog for changing device instance
+    QDialog dialog(this);
+    dialog.setWindowTitle(QString("Change Device Instance - Device 0x%1").arg(nodeAddress));
+    dialog.setModal(true);
+    dialog.resize(450, 320);
+    
+    QVBoxLayout* layout = new QVBoxLayout(&dialog);
+    
+    // Header info
+    QLabel* headerLabel = new QLabel(QString("Change device instance for 0x%1").arg(nodeAddress));
+    QFont headerFont = headerLabel->font();
+    headerFont.setBold(true);
+    headerLabel->setFont(headerFont);
+    layout->addWidget(headerLabel);
+    
+    // Device info
+    QLabel* deviceInfoLabel = new QLabel(deviceName);
+    deviceInfoLabel->setStyleSheet("color: #666; margin-bottom: 10px;");
+    layout->addWidget(deviceInfoLabel);
+    
+    // Explanation
+    QLabel* explanationLabel = new QLabel(
+        "The device instance is used to distinguish between multiple devices of the same type on the network. "
+        "Changing the instance can help resolve instance conflicts."
+    );
+    explanationLabel->setWordWrap(true);
+    explanationLabel->setStyleSheet("color: #666; margin: 10px 0px;");
+    layout->addWidget(explanationLabel);
+    
+    // Warning about conflicts
+    if (m_conflictAnalyzer && m_conflictAnalyzer->hasConflictForSource(sourceAddress)) {
+        QLabel* warningLabel = new QLabel(
+            "⚠ This device has instance conflicts. Consider changing to an available instance number."
+        );
+        warningLabel->setWordWrap(true);
+        warningLabel->setStyleSheet("color: #ff6600; font-weight: bold; margin: 10px 0px; padding: 8px; "
+                                   "background-color: #fff3e0; border-radius: 4px;");
+        layout->addWidget(warningLabel);
+    }
+    
+    // Current instance display
+    QLabel* currentLabel = new QLabel(QString("Current Device Instance: %1").arg(currentInstance));
+    currentLabel->setStyleSheet("font-weight: bold; margin-top: 10px;");
+    layout->addWidget(currentLabel);
+    
+    // New instance input
+    QLabel* newLabel = new QLabel("New Device Instance (0-252):");
+    layout->addWidget(newLabel);
+    
+    QSpinBox* instanceSpinBox = new QSpinBox();
+    instanceSpinBox->setRange(0, 252);
+    instanceSpinBox->setValue(currentInstance);
+    instanceSpinBox->setToolTip("Enter a device instance number between 0 and 252");
+    layout->addWidget(instanceSpinBox);
+    
+    // Suggest available instance button
+    QPushButton* suggestButton = new QPushButton("Suggest Available Instance");
+    suggestButton->setToolTip("Automatically find an available instance number based on network analysis");
+    connect(suggestButton, &QPushButton::clicked, [this, instanceSpinBox, sourceAddress]() {
+        uint8_t suggested = suggestAvailableInstance(N2kPGNIsoAddressClaim, sourceAddress);
+        instanceSpinBox->setValue(suggested);
+        
+        ToastManager::instance()->showToast(
+            QString("Suggested instance: %1").arg(suggested),
+            ToastNotification::Info,
+            3000
+        );
+    });
+    layout->addWidget(suggestButton);
+    
+    // Info about instance numbers
+    QLabel* infoLabel = new QLabel(
+        "Valid range: 0-252\n"
+        "• 253 = NULL (reserved)\n"
+        "• 254-255 = Reserved"
+    );
+    infoLabel->setStyleSheet("color: #888; font-size: 10px; margin: 10px 0px;");
+    layout->addWidget(infoLabel);
+    
+    layout->addStretch();
+    
+    // Buttons
+    QHBoxLayout* buttonLayout = new QHBoxLayout();
+    buttonLayout->addStretch();
+    
+    QPushButton* cancelButton = new QPushButton("Cancel");
+    connect(cancelButton, &QPushButton::clicked, &dialog, &QDialog::reject);
+    buttonLayout->addWidget(cancelButton);
+    
+    QPushButton* okButton = new QPushButton("Change Instance");
+    okButton->setDefault(true);
+    okButton->setEnabled(m_isConnected && nmea2000 != nullptr);
+    
+    if (!m_isConnected || !nmea2000) {
+        okButton->setToolTip("Connect to CAN network first");
+    }
+    
+    connect(okButton, &QPushButton::clicked, [&dialog, instanceSpinBox, currentInstance]() {
+        uint8_t newInstance = instanceSpinBox->value();
+        if (newInstance == currentInstance) {
+            QMessageBox::information(&dialog, "No Change", 
+                "The selected instance is the same as the current instance.\n"
+                "Please select a different instance number.");
+        } else {
+            dialog.accept();
+        }
+    });
+    buttonLayout->addWidget(okButton);
+    
+    layout->addLayout(buttonLayout);
+    
+    // Show dialog and handle result
+    if (dialog.exec() == QDialog::Accepted) {
+        uint8_t newInstance = instanceSpinBox->value();
+        
+        // Confirm the change
+        QString confirmMsg = QString(
+            "Are you sure you want to change the device instance?\n\n"
+            "Device: 0x%1\n"
+            "%2\n\n"
+            "Current Instance: %3\n"
+            "New Instance: %4\n\n"
+            "This will send a Group Function command (PGN 126208) to the device "
+            "to modify its ISO Address Claim (PGN 60928) instance field."
+        ).arg(nodeAddress, deviceName).arg(currentInstance).arg(newInstance);
+        
+        QMessageBox::StandardButton reply = QMessageBox::question(
+            this, 
+            "Confirm Instance Change",
+            confirmMsg,
+            QMessageBox::Yes | QMessageBox::No
+        );
+        
+        if (reply == QMessageBox::Yes) {
+            // Send the instance change command
+            bool success = sendInstanceChangeCommand(sourceAddress, N2kPGNIsoAddressClaim, newInstance);
+            
+            if (success) {
+                QString successMsg = QString(
+                    "Instance change command sent successfully!\n\n"
+                    "Device 0x%1 has been commanded to change from instance %2 to instance %3.\n\n"
+                    "The device may take a moment to process the command. The conflict analysis "
+                    "will automatically re-run in a few seconds to verify the change."
+                ).arg(nodeAddress).arg(currentInstance).arg(newInstance);
+                
+                QMessageBox::information(this, "Command Sent", successMsg);
+                
+                // Show toast notification
+                ToastManager::instance()->showToast(
+                    QString("Instance change command sent to device 0x%1").arg(nodeAddress),
+                    ToastNotification::Success,
+                    4000
+                );
+            } else {
+                QString errorMsg = QString(
+                    "Failed to send instance change command to device 0x%1.\n\n"
+                    "Possible reasons:\n"
+                    "• Device is not responding\n"
+                    "• Device does not support instance changes\n"
+                    "• Network connection issue\n\n"
+                    "Check the CAN network status and try again."
+                ).arg(nodeAddress);
+                
+                QMessageBox::warning(this, "Command Failed", errorMsg);
+                
+                // Show toast notification
+                ToastManager::instance()->showToast(
+                    QString("Failed to send instance change to 0x%1").arg(nodeAddress),
+                    ToastNotification::Error,
+                    4000
+                );
+            }
+        }
+    }
+}
+
 
 QString DeviceMainWindow::getDeviceDisplayName(uint8_t sourceAddress) const
 {
