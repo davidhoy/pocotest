@@ -175,6 +175,10 @@ DeviceMainWindow::DeviceMainWindow(QWidget *parent)
     // Initial population
     updateDeviceList();
     
+    // Ensure button states are correct after initialization
+    // This is needed because initNMEA2000() sets m_isConnected to true
+    updateConnectionButtonStates();
+    
     // Set window icon explicitly
     setWindowIcon(QIcon(":/app_icon.svg"));
     
@@ -419,10 +423,14 @@ void DeviceMainWindow::initNMEA2000()
             nmea2000 = ipg100Interface;
         } else {
             qDebug() << "Invalid IPG100 interface format:" << m_currentInterface;
+            m_isConnected = false;
+            updateConnectionButtonStates();
             return; // Exit early on error
         }
 #else
         QMessageBox::information(this, "IPG100 Disabled", "IPG100 support has been disabled in this version.");
+        m_isConnected = false;
+        updateConnectionButtonStates();
         return;
 #endif
     } else {
@@ -3972,6 +3980,9 @@ void DeviceMainWindow::onConnectClicked()
     } else {
         m_statusLabel->setText("Already connected.");
     }
+    
+    // Always update button states after connect attempt
+    updateConnectionButtonStates();
 }
 
 void DeviceMainWindow::onDisconnectClicked()
@@ -4007,6 +4018,17 @@ void DeviceMainWindow::updateConnectionButtonStates()
     if (m_connectButton && m_disconnectButton) {
         m_connectButton->setEnabled(!m_isConnected);
         m_disconnectButton->setEnabled(m_isConnected);
+        
+        // Apply visual styling to make disabled state more obvious
+        QString disabledStyle = "QPushButton:disabled { color: #888; background-color: #ddd; }";
+        
+        // Apply the disabled styling to both buttons
+        m_connectButton->setStyleSheet(disabledStyle);
+        m_disconnectButton->setStyleSheet(disabledStyle);
+        
+        qDebug() << "Connection button states updated: isConnected=" << m_isConnected 
+                 << "Connect enabled=" << m_connectButton->isEnabled()
+                 << "Disconnect enabled=" << m_disconnectButton->isEnabled();
     }
 }
 
