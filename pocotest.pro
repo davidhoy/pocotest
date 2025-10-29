@@ -2,6 +2,10 @@ QT += core gui widgets network
 
 CONFIG += c++17
 
+# Enable ccache for faster compilation if available
+QMAKE_CXX = ccache $$QMAKE_CXX
+QMAKE_CC = ccache $$QMAKE_CC
+
 # Platform-specific configuration
 wasm {
     message("Building for WebAssembly")
