@@ -30,6 +30,7 @@ class tNMEA2000_SocketCAN;
 class PGNLogDialog;
 class PocoDeviceDialog;
 class InstanceConflictAnalyzer;
+class DirectChannelControlDialog;
 
 // Custom delegate for consistent text alignment
 class AlignedTextDelegate : public QStyledItemDelegate
@@ -142,7 +143,13 @@ private:
     void sendLumitecSimpleAction(uint8_t targetAddress, uint8_t actionId, uint8_t switchId);
     void showLumitecColorDialog(uint8_t targetAddress, const QString& nodeAddress);
     void showLumitecSwitchActionDialog(uint8_t targetAddress, const QString& nodeAddress);
+    void showDirectChannelControlDialog(uint8_t targetAddress, const QString& nodeAddress);
     void sendLumitecCustomHSB(uint8_t targetAddress, uint8_t hue, uint8_t saturation, uint8_t brightness);
+    void sendLumitecOutputChannelBin(uint8_t targetAddress, uint8_t channel, uint8_t state);
+    void sendLumitecOutputChannelPWM(uint8_t targetAddress, uint8_t channel, uint8_t duty, uint16_t transitionTime);
+    void sendLumitecOutputChannelPLI(uint8_t targetAddress, uint8_t channel, uint32_t pliMessage);
+    void sendLumitecOutputChannelPLIT2HSB(uint8_t targetAddress, uint8_t channel, uint8_t pliClan,
+                                         uint8_t transition, uint8_t brightness, uint8_t hue, uint8_t saturation);
     void showPocoDeviceDialog(uint8_t targetAddress, const QString& nodeAddress);
     void sendZonePGN130561(uint8_t targetAddress, uint8_t zoneId, const QString& zoneName,
                           uint8_t red, uint8_t green, uint8_t blue, uint16_t colorTemp,
@@ -172,6 +179,11 @@ private slots:
     void onPocoColorControlRequested(uint8_t deviceAddress);
     void onPocoDeviceInfoRequested(uint8_t deviceAddress);
     void onPocoZoneLightingControlRequested(uint8_t deviceAddress);
+    void onDirectChannelBinControlRequested(uint8_t deviceAddress, uint8_t channel, uint8_t state);
+    void onDirectChannelPwmControlRequested(uint8_t deviceAddress, uint8_t channel, uint8_t duty, uint16_t transitionTime);
+    void onDirectChannelPliControlRequested(uint8_t deviceAddress, uint8_t channel, uint32_t pliMessage);
+    void onDirectChannelPliT2HSBControlRequested(uint8_t deviceAddress, uint8_t channel, uint8_t pliClan,
+                                                uint8_t transition, uint8_t brightness, uint8_t hue, uint8_t saturation);
     public slots:
     void onZonePGN130561Requested(uint8_t deviceAddress, uint8_t zoneId, const QString& zoneName,
                                  uint8_t red, uint8_t green, uint8_t blue, uint16_t colorTemp,

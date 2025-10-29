@@ -82,6 +82,7 @@ SOURCES += \
     src/pgndialog.cpp \
     src/pocodevicedialog.cpp \
     src/zonelightingdialog.cpp \
+    src/directchannelcontroldialog.cpp \
     src/LumitecPoco.cpp \
     src/n2k_linux_port.cpp \
     src/dbcdecoder.cpp \
@@ -116,6 +117,7 @@ HEADERS += \
     src/pgndialog.h \
     src/pocodevicedialog.h \
     src/zonelightingdialog.h \
+    src/directchannelcontroldialog.h \
     src/LumitecPoco.h \
     src/dbcdecoder.h \
     src/instanceconflictanalyzer.h \

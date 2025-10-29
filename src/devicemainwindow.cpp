@@ -5,6 +5,7 @@
 #include "pgndialog.h"
 #include "pocodevicedialog.h"
 #include "zonelightingdialog.h"
+#include "directchannelcontroldialog.h"
 #include "LumitecPoco.h"
 #include "dbcdecoder.h"
 
@@ -1186,6 +1187,12 @@ void DeviceMainWindow::showDeviceContextMenu(const QPoint& position)
         QAction* customControlAction = lumitecMenu->addAction("Custom Color Control...");
         connect(customControlAction, &QAction::triggered, [this, sourceAddress, nodeAddress]() {
             showLumitecColorDialog(sourceAddress, nodeAddress);
+        });
+        
+        // Direct Channel Control
+        QAction* directChannelAction = lumitecMenu->addAction("Direct Channel Control...");
+        connect(directChannelAction, &QAction::triggered, [this, sourceAddress, nodeAddress]() {
+            showDirectChannelControlDialog(sourceAddress, nodeAddress);
         });
     }
 
@@ -3496,6 +3503,124 @@ void DeviceMainWindow::sendLumitecCustomHSB(uint8_t targetAddress, uint8_t hue, 
     }
 }
 
+void DeviceMainWindow::sendLumitecOutputChannelBin(uint8_t targetAddress, uint8_t channel, uint8_t state) {
+    if (!nmea2000) {
+        qDebug() << "NMEA2000 not initialized, cannot send Lumitec message";
+        return;
+    }
+
+    tN2kMsg msg;
+    if (SetLumitecOutputChannelBin(msg, targetAddress, channel, state)) {
+        if (nmea2000->SendMsg(msg)) {
+            // Blink TX indicator for transmitted messages
+            blinkTxIndicator(8); // Default 8 bytes
+
+            // Log the sent message to all PGN log dialogs
+            for (PGNLogDialog* dialog : m_pgnLogDialogs) {
+                if (dialog && dialog->isVisible()) {
+                    dialog->appendSentMessage(msg);
+                }
+            }
+
+            qDebug() << "Sent Lumitec Output Channel BIN - Target:" << QString("0x%1").arg(targetAddress, 2, 16, QChar('0'))
+                     << "Channel:" << channel << "State:" << state;
+        } else {
+            qDebug() << "Failed to send Lumitec Output Channel BIN message";
+        }
+    } else {
+        qDebug() << "Failed to create Lumitec Output Channel BIN message";
+    }
+}
+
+void DeviceMainWindow::sendLumitecOutputChannelPWM(uint8_t targetAddress, uint8_t channel, uint8_t duty, uint16_t transitionTime) {
+    if (!nmea2000) {
+        qDebug() << "NMEA2000 not initialized, cannot send Lumitec message";
+        return;
+    }
+
+    tN2kMsg msg;
+    if (SetLumitecOutputChannelPWM(msg, targetAddress, channel, duty, transitionTime)) {
+        if (nmea2000->SendMsg(msg)) {
+            // Blink TX indicator for transmitted messages
+            blinkTxIndicator(8); // Default 8 bytes
+
+            // Log the sent message to all PGN log dialogs
+            for (PGNLogDialog* dialog : m_pgnLogDialogs) {
+                if (dialog && dialog->isVisible()) {
+                    dialog->appendSentMessage(msg);
+                }
+            }
+
+            qDebug() << "Sent Lumitec Output Channel PWM - Target:" << QString("0x%1").arg(targetAddress, 2, 16, QChar('0'))
+                     << "Channel:" << channel << "Duty:" << duty << "Transition:" << transitionTime << "ms";
+        } else {
+            qDebug() << "Failed to send Lumitec Output Channel PWM message";
+        }
+    } else {
+        qDebug() << "Failed to create Lumitec Output Channel PWM message";
+    }
+}
+
+void DeviceMainWindow::sendLumitecOutputChannelPLI(uint8_t targetAddress, uint8_t channel, uint32_t pliMessage) {
+    if (!nmea2000) {
+        qDebug() << "NMEA2000 not initialized, cannot send Lumitec message";
+        return;
+    }
+
+    tN2kMsg msg;
+    if (SetLumitecOutputChannelPLI(msg, targetAddress, channel, pliMessage)) {
+        if (nmea2000->SendMsg(msg)) {
+            // Blink TX indicator for transmitted messages
+            blinkTxIndicator(8); // Default 8 bytes
+
+            // Log the sent message to all PGN log dialogs
+            for (PGNLogDialog* dialog : m_pgnLogDialogs) {
+                if (dialog && dialog->isVisible()) {
+                    dialog->appendSentMessage(msg);
+                }
+            }
+
+            qDebug() << "Sent Lumitec Output Channel PLI - Target:" << QString("0x%1").arg(targetAddress, 2, 16, QChar('0'))
+                     << "Channel:" << channel << "PLI:" << QString("0x%1").arg(pliMessage, 8, 16, QChar('0'));
+        } else {
+            qDebug() << "Failed to send Lumitec Output Channel PLI message";
+        }
+    } else {
+        qDebug() << "Failed to create Lumitec Output Channel PLI message";
+    }
+}
+
+void DeviceMainWindow::sendLumitecOutputChannelPLIT2HSB(uint8_t targetAddress, uint8_t channel, uint8_t pliClan,
+                                                       uint8_t transition, uint8_t brightness, uint8_t hue, uint8_t saturation) {
+    if (!nmea2000) {
+        qDebug() << "NMEA2000 not initialized, cannot send Lumitec message";
+        return;
+    }
+
+    tN2kMsg msg;
+    if (SetLumitecOutputChannelPLIT2HSB(msg, targetAddress, channel, pliClan, transition, brightness, hue, saturation)) {
+        if (nmea2000->SendMsg(msg)) {
+            // Blink TX indicator for transmitted messages
+            blinkTxIndicator(8); // Default 8 bytes
+
+            // Log the sent message to all PGN log dialogs
+            for (PGNLogDialog* dialog : m_pgnLogDialogs) {
+                if (dialog && dialog->isVisible()) {
+                    dialog->appendSentMessage(msg);
+                }
+            }
+
+            qDebug() << "Sent Lumitec Output Channel PLI T2HSB - Target:" << QString("0x%1").arg(targetAddress, 2, 16, QChar('0'))
+                     << "Channel:" << channel << "Clan:" << pliClan << "Transition:" << transition
+                     << "Brightness:" << brightness << "Hue:" << hue << "Saturation:" << saturation;
+        } else {
+            qDebug() << "Failed to send Lumitec Output Channel PLI T2HSB message";
+        }
+    } else {
+        qDebug() << "Failed to create Lumitec Output Channel PLI T2HSB message";
+    }
+}
+
 void DeviceMainWindow::showPocoDeviceDialog(uint8_t targetAddress, const QString& nodeAddress) {
     PocoDeviceDialog* dialog = new PocoDeviceDialog(targetAddress, nodeAddress, this);
     
@@ -3512,6 +3637,26 @@ void DeviceMainWindow::showPocoDeviceDialog(uint8_t targetAddress, const QString
     
     // Set up automatic cleanup when dialog is closed
     connect(dialog, &QDialog::finished, dialog, &QObject::deleteLater);
+}
+
+void DeviceMainWindow::showDirectChannelControlDialog(uint8_t targetAddress, const QString& nodeAddress) {
+    DirectChannelControlDialog* dialog = new DirectChannelControlDialog(targetAddress, nodeAddress, this);
+    
+    // Connect signals from the dialog to our slots
+    connect(dialog, &DirectChannelControlDialog::binControlRequested,
+            this, &DeviceMainWindow::onDirectChannelBinControlRequested);
+    connect(dialog, &DirectChannelControlDialog::pwmControlRequested,
+            this, &DeviceMainWindow::onDirectChannelPwmControlRequested);
+    connect(dialog, &DirectChannelControlDialog::pliControlRequested,
+            this, &DeviceMainWindow::onDirectChannelPliControlRequested);
+    connect(dialog, &DirectChannelControlDialog::pliT2HSBControlRequested,
+            this, &DeviceMainWindow::onDirectChannelPliT2HSBControlRequested);
+    
+    // Show the dialog modally
+    dialog->exec();
+    
+    // Clean up
+    delete dialog;
 }
 
 void DeviceMainWindow::onPocoSwitchActionRequested(uint8_t deviceAddress, uint8_t switchId, uint8_t actionId) {
@@ -3571,6 +3716,23 @@ void DeviceMainWindow::onPocoDeviceInfoRequested(uint8_t deviceAddress) {
     // Request product information and device configuration
     requestProductInformation(deviceAddress);
     queryDeviceConfiguration(deviceAddress);
+}
+
+void DeviceMainWindow::onDirectChannelBinControlRequested(uint8_t deviceAddress, uint8_t channel, uint8_t state) {
+    sendLumitecOutputChannelBin(deviceAddress, channel, state);
+}
+
+void DeviceMainWindow::onDirectChannelPwmControlRequested(uint8_t deviceAddress, uint8_t channel, uint8_t duty, uint16_t transitionTime) {
+    sendLumitecOutputChannelPWM(deviceAddress, channel, duty, transitionTime);
+}
+
+void DeviceMainWindow::onDirectChannelPliControlRequested(uint8_t deviceAddress, uint8_t channel, uint32_t pliMessage) {
+    sendLumitecOutputChannelPLI(deviceAddress, channel, pliMessage);
+}
+
+void DeviceMainWindow::onDirectChannelPliT2HSBControlRequested(uint8_t deviceAddress, uint8_t channel, uint8_t pliClan,
+                                                             uint8_t transition, uint8_t brightness, uint8_t hue, uint8_t saturation) {
+    sendLumitecOutputChannelPLIT2HSB(deviceAddress, channel, pliClan, transition, brightness, hue, saturation);
 }
 
 // Device Activity Tracking Methods
